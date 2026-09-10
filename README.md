@@ -11,6 +11,8 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * Background copy and move with persistent progress tracking
 * Freedesktop trash integration, compatible with GNOME Files
 * Recursive file search across directories
+* Image previews in grid view
+* Bookmarks for the folders you use most
 * Bar widget with places, drives, transfers, and trash overview
 * Keyboard-first workflow with standard shortcuts
 
@@ -59,7 +61,11 @@ Press Delete to move items to trash or Shift+Delete to delete permanently. Cut w
 
 Press Ctrl+H to toggle hidden files. Press Ctrl+F to search recursively from the current directory, and Escape to leave the results and return to the folder.
 
-Press Ctrl+D to split the window into two panes and Ctrl+B to hide the sidebar.
+Press Ctrl+D to split the window into two panes and Ctrl+B to hide the sidebar. The toolbar has the same split toggle, next to the view and hidden-file buttons.
+
+Press F1, or the last toolbar button, for the full list of keyboard shortcuts.
+
+Right click a folder and choose Bookmark this folder to pin it to the sidebar. Remove a bookmark with the cross beside it.
 
 When a copy or move finds a file of the same name, Omafile asks what to do. Choose with the mouse, or press R to replace, K to keep both, S to skip and A to skip every remaining conflict. Escape skips the file.
 
@@ -81,6 +87,8 @@ Configure these keys through the Omarchy bar widget settings:
 | `terminal` | Terminal command to open in the current directory |
 | `editor` | Text editor command to open selected files |
 | `showTransferBadge` | Show a progress ring on the bar icon while a transfer runs |
+| `showDrives` | Show the Drives section in the sidebar |
+| `thumbnails` | Show image previews in grid view |
 | `glyph` | Custom icon for the bar widget |
 
 ## Command Line
@@ -96,6 +104,12 @@ Move a file or folder to trash:
 
 ```bash
 omarchy-shell omafile trash /path/to/item
+```
+
+Open the keyboard shortcut list:
+
+```bash
+omarchy-shell omafile shortcuts
 ```
 
 Toggle the window from a keybinding or script:
