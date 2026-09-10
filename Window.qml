@@ -108,6 +108,7 @@ Item {
     p.filter = tab.filter || ""
     p.showHidden = tab.hidden === true
     p.dirsFirst = service ? service.setting("sortDirsFirst", true) === true : true
+    p.thumbnails = service ? service.setting("thumbnails", true) !== false : true
     p.ready = true
     p.navigate(tab.path, true)
   }
@@ -356,6 +357,13 @@ Item {
     service.openExternally(entry.path)
   }
 
+  function isBookmarked(path) {
+    if (!service) return false
+    var list = service.pinned
+    for (var i = 0; i < list.length; i++) if (String(list[i]) === String(path)) return true
+    return false
+  }
+
   function contextActions(entry) {
     var p = activePane()
     var hasEntry = entry !== null && entry !== undefined
@@ -363,7 +371,14 @@ Item {
     if (hasEntry) {
       items.push({ key: "open", label: entry.isDir ? "Open" : "Open", glyph: Icons.actionGlyph("open") })
       if (!entry.isDir) items.push({ key: "openwith", label: "Open with", glyph: Icons.actionGlyph("open") })
-      if (entry.isDir) items.push({ key: "opentab", label: "Open in new tab", glyph: Icons.actionGlyph("add") })
+      if (entry.isDir) {
+        items.push({ key: "opentab", label: "Open in new tab", glyph: Icons.actionGlyph("add") })
+        items.push({
+          key: "bookmark",
+          label: root.isBookmarked(entry.path) ? "Remove bookmark" : "Add to bookmarks",
+          glyph: Icons.placeGlyph("pinned")
+        })
+      }
       items.push({ key: "sep1", label: "", glyph: "" })
       items.push({ key: "copy", label: "Copy", glyph: Icons.actionGlyph("copy") })
       items.push({ key: "cut", label: "Cut", glyph: Icons.actionGlyph("cut") })
@@ -383,6 +398,11 @@ Item {
       items.push({ key: "newfolder", label: "New folder", glyph: Icons.actionGlyph("newfolder") })
       items.push({ key: "newfile", label: "New file", glyph: Icons.actionGlyph("newfile") })
       items.push({ key: "sep3", label: "", glyph: "" })
+      items.push({
+        key: "bookmark",
+        label: root.isBookmarked(p.path) ? "Remove this bookmark" : "Bookmark this folder",
+        glyph: Icons.placeGlyph("pinned")
+      })
       items.push({ key: "terminal", label: "Open in terminal", glyph: Icons.actionGlyph("terminal") })
       items.push({ key: "refresh", label: "Refresh", glyph: Icons.actionGlyph("refresh") })
     }
@@ -406,6 +426,7 @@ Item {
     else if (key === "properties") showProperties(entry)
     else if (key === "newfolder") showDialog("newfolder", "New folder", "untitled folder", null)
     else if (key === "newfile") showDialog("newfile", "New file", "untitled", null)
+    else if (key === "bookmark") service.togglePinned(entry && entry.isDir ? entry.path : p.path)
     else if (key === "terminal") service.openTerminal(p.path)
     else if (key === "refresh") p.refresh()
   }
@@ -509,6 +530,7 @@ Item {
     if (ctrl && event.key === Qt.Key_R) { p.refresh(); return true }
     if (ctrl && event.key === Qt.Key_B) { sidebarVisible = !sidebarVisible; rememberSession(); return true }
     if (ctrl && event.key === Qt.Key_D) { toggleSplit(); return true }
+    if (event.key === Qt.Key_F1) { showDialog("shortcuts", "Keyboard shortcuts", "", null); return true }
 
     if (event.key === Qt.Key_Tab) {
       if (split) { activeSide = otherSide(); return true }
@@ -595,13 +617,13 @@ Item {
           color: Util.alpha(Color.foreground, 0.04)
 
           Row {
-            anchors.fill: parent
+            id: navButtons
+            anchors.left: parent.left
             anchors.leftMargin: Style.space(8)
-            anchors.rightMargin: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(4)
 
             Button {
-              anchors.verticalCenter: parent.verticalCenter
               iconText: Icons.actionGlyph("back")
               tooltipText: "Back"
               enabled: root.activePane() ? root.activePane().canGoBack : false
@@ -610,7 +632,6 @@ Item {
             }
 
             Button {
-              anchors.verticalCenter: parent.verticalCenter
               iconText: Icons.actionGlyph("forward")
               tooltipText: "Forward"
               enabled: root.activePane() ? root.activePane().canGoForward : false
@@ -619,26 +640,23 @@ Item {
             }
 
             Button {
-              anchors.verticalCenter: parent.verticalCenter
               iconText: Icons.actionGlyph("up")
               tooltipText: "Up"
               onClicked: root.activePane().goUp()
             }
+          }
 
-            PathBar {
-              id: pathBar
-              anchors.verticalCenter: parent.verticalCenter
-              width: parent.width - Style.space(360)
-              path: root.activePane() ? root.activePane().path : ""
-              home: root.home
-              onNavigate: function (target) { root.activePane().navigate(target) }
-              onEditRequested: root.showDialog("path", "Go to", root.activePane().path, null)
-            }
+          Row {
+            id: rightControls
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(4)
 
             TextField {
               id: searchField
               anchors.verticalCenter: parent.verticalCenter
-              width: Style.space(170)
+              width: Style.space(160)
               placeholderText: root.findMode ? "Search in folder" : "Filter"
               accent: root.findMode ? Color.urgent : Color.accent
               onTextChanged: {
@@ -688,10 +706,30 @@ Item {
             Button {
               anchors.verticalCenter: parent.verticalCenter
               iconText: Icons.actionGlyph("split")
-              tooltipText: "Split panes"
+              tooltipText: root.split ? "Close the second pane" : "Split into two panes"
               selected: root.split
               onClicked: root.toggleSplit()
             }
+
+            Button {
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: Icons.actionGlyph("menu")
+              tooltipText: "Keyboard shortcuts"
+              onClicked: root.showDialog("shortcuts", "Keyboard shortcuts", "", null)
+            }
+          }
+
+          PathBar {
+            id: pathBar
+            anchors.left: navButtons.right
+            anchors.right: rightControls.left
+            anchors.leftMargin: Style.space(6)
+            anchors.rightMargin: Style.space(6)
+            anchors.verticalCenter: parent.verticalCenter
+            path: root.activePane() ? root.activePane().path : ""
+            home: root.home
+            onNavigate: function (target) { root.activePane().navigate(target) }
+            onEditRequested: root.showDialog("path", "Go to", root.activePane().path, null)
           }
         }
 
@@ -707,8 +745,10 @@ Item {
             visible: root.sidebarVisible
             service: root.service
             currentPath: root.activePane() ? root.activePane().path : ""
+            showDrives: root.service ? root.service.setting("showDrives", true) !== false : true
             onNavigate: function (target) { root.activePane().navigate(target) }
             onOpenInNewTab: function (target) { root.newTab(root.activeSide, target) }
+            onRemoveBookmark: function (target) { root.service.togglePinned(target) }
           }
 
           Row {
@@ -956,8 +996,9 @@ Item {
 
         Rectangle {
           anchors.centerIn: parent
-          width: root.dialogMode === "openwith" || root.dialogMode === "properties"
-            ? Style.space(420) : Style.space(360)
+          width: root.dialogMode === "shortcuts" ? Style.space(470)
+            : ((root.dialogMode === "openwith" || root.dialogMode === "properties")
+              ? Style.space(420) : Style.space(360))
           height: dialogColumn.implicitHeight + Style.space(28)
           color: Color.popups.background
           border.width: Math.max(1, Style.space(1))
@@ -1051,6 +1092,67 @@ Item {
               }
             }
 
+            Flickable {
+              width: parent.width
+              height: Math.min(Style.space(430), shortcutColumn.implicitHeight)
+              visible: root.dialogMode === "shortcuts"
+              contentHeight: shortcutColumn.implicitHeight
+              clip: true
+              boundsBehavior: Flickable.StopAtBounds
+
+              ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+              Column {
+                id: shortcutColumn
+                width: parent.width
+                spacing: Style.space(2)
+
+                Repeater {
+                  model: root.dialogMode === "shortcuts" ? root.shortcutRows() : []
+
+                  delegate: Item {
+                    required property var modelData
+                    width: shortcutColumn.width
+                    height: modelData.section ? Style.space(26) : Style.space(20)
+
+                    Text {
+                      anchors.left: parent.left
+                      anchors.bottom: parent.bottom
+                      visible: modelData.section !== undefined
+                      text: modelData.section ? modelData.section : ""
+                      color: Color.accent
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.caption
+                    }
+
+                    Text {
+                      anchors.left: parent.left
+                      anchors.verticalCenter: parent.verticalCenter
+                      visible: modelData.section === undefined
+                      width: Style.space(190)
+                      text: modelData.keys ? modelData.keys : ""
+                      color: Color.popups.text
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.bodySmall
+                    }
+
+                    Text {
+                      anchors.left: parent.left
+                      anchors.leftMargin: Style.space(196)
+                      anchors.right: parent.right
+                      anchors.verticalCenter: parent.verticalCenter
+                      visible: modelData.section === undefined
+                      text: modelData.label ? modelData.label : ""
+                      color: Util.alpha(Color.popups.text, 0.65)
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.bodySmall
+                      elide: Text.ElideRight
+                    }
+                  }
+                }
+              }
+            }
+
             Column {
               width: parent.width
               visible: root.dialogMode === "properties"
@@ -1134,10 +1236,10 @@ Item {
               visible: root.dialogMode !== "conflict"
 
               Button {
-                text: root.dialogMode === "properties" || root.dialogMode === "openwith" ? "Close" : "Confirm"
+                text: root.isReadOnlyDialog() ? "Close" : "Confirm"
                 bordered: true
                 onClicked: {
-                  if (root.dialogMode === "properties" || root.dialogMode === "openwith") root.closeDialog()
+                  if (root.isReadOnlyDialog()) root.closeDialog()
                   else root.submitDialog()
                 }
               }
@@ -1145,7 +1247,7 @@ Item {
               Button {
                 text: "Cancel"
                 bordered: true
-                visible: root.dialogMode !== "properties" && root.dialogMode !== "openwith"
+                visible: !root.isReadOnlyDialog()
                 onClicked: root.closeDialog()
               }
             }
@@ -1190,6 +1292,41 @@ Item {
     return out
   }
 
+  function shortcutRows() {
+    return [
+      { section: "Navigation" },
+      { keys: "Enter", label: "Open the selected item" },
+      { keys: "Backspace", label: "Go to the parent folder" },
+      { keys: "Alt+Left / Alt+Right", label: "Back and forward" },
+      { keys: "Ctrl+L", label: "Type a path" },
+      { keys: "Home / End", label: "First and last item" },
+      { section: "Selection" },
+      { keys: "Ctrl+Click", label: "Add one item to the selection" },
+      { keys: "Shift+Click", label: "Select a range" },
+      { keys: "Ctrl+A", label: "Select everything" },
+      { section: "Files" },
+      { keys: "Ctrl+C / Ctrl+X / Ctrl+V", label: "Copy, cut and paste" },
+      { keys: "F2", label: "Rename" },
+      { keys: "F7", label: "New folder" },
+      { keys: "Delete", label: "Move to trash" },
+      { keys: "Shift+Delete", label: "Delete permanently" },
+      { section: "Panes and tabs" },
+      { keys: "Ctrl+T / Ctrl+W", label: "New tab and close tab" },
+      { keys: "Ctrl+D", label: "Split into two panes" },
+      { keys: "Tab", label: "Switch the active pane" },
+      { keys: "F5 / F6", label: "Copy and move to the other pane" },
+      { section: "View" },
+      { keys: "Ctrl+H", label: "Show hidden files" },
+      { keys: "Ctrl+F", label: "Search in this folder" },
+      { keys: "Ctrl+B", label: "Show or hide the sidebar" },
+      { keys: "Ctrl+R", label: "Refresh" },
+      { keys: "F1", label: "This list" },
+      { keys: "Escape", label: "Leave search, then close the window" },
+      { section: "When a file already exists" },
+      { keys: "R / K / S / A", label: "Replace, keep both, skip, skip all" }
+    ]
+  }
+
   function propertyRows() {
     var entry = dialogPayload
     var info = propsInfo
@@ -1212,6 +1349,10 @@ Item {
     }
     if (entry.linkTarget) rows.push({ label: "Links to", value: String(entry.linkTarget) })
     return rows
+  }
+
+  function isReadOnlyDialog() {
+    return dialogMode === "properties" || dialogMode === "openwith" || dialogMode === "shortcuts"
   }
 
   function conflictMessage() {

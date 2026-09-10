@@ -5,6 +5,6 @@
   "license": "MIT",
   "description": "A lightweight, fast file manager plugin for Omarchy running in the shell.",
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test tests/*.test.js"
   }
 }

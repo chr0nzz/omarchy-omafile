@@ -13,8 +13,11 @@ Item {
   property string currentPath: ""
   readonly property string home: Quickshell.env("HOME") || ""
 
+  property bool showDrives: true
+
   signal navigate(string target)
   signal openInNewTab(string target)
+  signal removeBookmark(string target)
 
   function usablePlace(value, homePath) {
     var p = String(value || "")
@@ -54,11 +57,15 @@ Item {
     if (pinned && pinned.length > 0) {
       var pins = []
       for (var p = 0; p < pinned.length; p++)
-        pins.push({ key: "pinned", label: Model.basename(String(pinned[p])) || "/", path: String(pinned[p]) })
-      out.push({ title: "Pinned", rows: pins })
+        pins.push({
+          key: "pinned", bookmark: true,
+          label: Model.basename(String(pinned[p])) || "/",
+          path: String(pinned[p])
+        })
+      out.push({ title: "Bookmarks", rows: pins })
     }
 
-    var drives = service ? service.drives : []
+    var drives = (sidebar.showDrives && service) ? service.drives : []
     if (drives && drives.length > 0) {
       var vols = []
       for (var d = 0; d < drives.length; d++) {
@@ -163,6 +170,22 @@ Item {
                     font.family: Style.font.family
                     font.pixelSize: Style.font.bodySmall
                     elide: Text.ElideMiddle
+                  }
+
+                  Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: modelData.bookmark === true
+                    text: Icons.actionGlyph("close")
+                    color: unpinHover.hovered ? Color.urgent : Util.alpha(Color.foreground, 0.35)
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.iconSmall
+
+                    HoverHandler { id: unpinHover }
+
+                    MouseArea {
+                      anchors.fill: parent
+                      onClicked: sidebar.removeBookmark(modelData.path)
+                    }
                   }
 
                   Text {

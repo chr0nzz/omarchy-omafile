@@ -6,7 +6,11 @@
   "author": "xyzlab",
   "license": "MIT",
   "description": "A file manager for Omarchy. Opens as a real window with tabs and dual panes, watches directories live, copies and moves in the background with progress, and puts places, drives, transfers and trash in the bar.",
-  "kinds": ["service", "bar-widget", "panel"],
+  "kinds": [
+    "service",
+    "bar-widget",
+    "panel"
+  ],
   "keepLoaded": true,
   "entryPoints": {
     "service": "Service.qml",
@@ -30,20 +34,89 @@
       "terminal": "",
       "editor": "",
       "showTransferBadge": true,
-      "glyph": ""
+      "glyph": "",
+      "showDrives": true,
+      "thumbnails": true
     },
     "schema": [
-      { "key": "homePath", "type": "string", "label": "Start directory (empty for home)", "defaultValue": "" },
-      { "key": "showHidden", "type": "boolean", "label": "Show hidden files", "defaultValue": false },
-      { "key": "sortBy", "type": "string", "label": "Sort by: name, size, modified, type", "defaultValue": "name" },
-      { "key": "sortDirsFirst", "type": "boolean", "label": "Directories first", "defaultValue": true },
-      { "key": "confirmDelete", "type": "boolean", "label": "Confirm before deleting", "defaultValue": true },
-      { "key": "useTrash", "type": "boolean", "label": "Delete moves to trash", "defaultValue": true },
-      { "key": "defaultView", "type": "string", "label": "Default view: list or grid", "defaultValue": "list" },
-      { "key": "terminal", "type": "string", "label": "Terminal command (empty for system default)", "defaultValue": "" },
-      { "key": "editor", "type": "string", "label": "Editor command (empty for Omarchy default)", "defaultValue": "" },
-      { "key": "showTransferBadge", "type": "boolean", "label": "Show transfer progress on the bar icon", "defaultValue": true },
-      { "key": "glyph", "type": "string", "label": "Custom bar glyph (empty for folder)", "defaultValue": "" }
+      {
+        "key": "homePath",
+        "type": "string",
+        "label": "Start directory (empty for home)",
+        "defaultValue": ""
+      },
+      {
+        "key": "showHidden",
+        "type": "boolean",
+        "label": "Show hidden files",
+        "defaultValue": false
+      },
+      {
+        "key": "sortBy",
+        "type": "string",
+        "label": "Sort by: name, size, modified, type",
+        "defaultValue": "name"
+      },
+      {
+        "key": "sortDirsFirst",
+        "type": "boolean",
+        "label": "Directories first",
+        "defaultValue": true
+      },
+      {
+        "key": "confirmDelete",
+        "type": "boolean",
+        "label": "Confirm before deleting",
+        "defaultValue": true
+      },
+      {
+        "key": "useTrash",
+        "type": "boolean",
+        "label": "Delete moves to trash",
+        "defaultValue": true
+      },
+      {
+        "key": "defaultView",
+        "type": "string",
+        "label": "Default view: list or grid",
+        "defaultValue": "list"
+      },
+      {
+        "key": "terminal",
+        "type": "string",
+        "label": "Terminal command (empty for system default)",
+        "defaultValue": ""
+      },
+      {
+        "key": "editor",
+        "type": "string",
+        "label": "Editor command (empty for Omarchy default)",
+        "defaultValue": ""
+      },
+      {
+        "key": "showTransferBadge",
+        "type": "boolean",
+        "label": "Show transfer progress on the bar icon",
+        "defaultValue": true
+      },
+      {
+        "key": "glyph",
+        "type": "string",
+        "label": "Custom bar glyph (empty for folder)",
+        "defaultValue": ""
+      },
+      {
+        "key": "showDrives",
+        "type": "boolean",
+        "label": "Show drives in the sidebar",
+        "defaultValue": true
+      },
+      {
+        "key": "thumbnails",
+        "type": "boolean",
+        "label": "Show image previews in grid view",
+        "defaultValue": true
+      }
     ]
   }
 }

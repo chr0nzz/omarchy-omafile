@@ -16,6 +16,7 @@ Item {
   property bool descending: false
   property bool dirsFirst: true
   property string view: "list"
+  property bool thumbnails: true
   property bool active: false
   property string filter: ""
 
@@ -332,6 +333,15 @@ Item {
     else pane.openRequested(entry)
   }
 
+  function previewable(entry) {
+    if (!pane.thumbnails) return false
+    if (entry.isDir || entry.isBroken) return false
+    if (entry.size <= 0 || entry.size > 24000000) return false
+    var e = entry.ext
+    return e === "png" || e === "jpg" || e === "jpeg" || e === "gif"
+      || e === "webp" || e === "bmp" || e === "svg" || e === "ico" || e === "avif"
+  }
+
   function openRow(row) {
     openEntry(Model.decodeEntry(row, pane.path))
   }
@@ -635,13 +645,36 @@ Item {
             width: parent.width - Style.space(12)
             spacing: Style.space(6)
 
-            Text {
+            Item {
               anchors.horizontalCenter: parent.horizontalCenter
-              text: Icons.glyphFor(cell.entry)
-              color: cell.entry.isBroken ? Color.urgent
-                : (cell.entry.isDir ? pane.accent : Util.alpha(pane.fg, 0.8))
-              font.family: Style.font.family
-              font.pixelSize: Style.font.displayLarge
+              width: Style.space(48)
+              height: Style.space(48)
+
+              Text {
+                anchors.centerIn: parent
+                visible: !thumb.visible
+                text: Icons.glyphFor(cell.entry)
+                color: cell.entry.isBroken ? Color.urgent
+                  : (cell.entry.isDir ? pane.accent : Util.alpha(pane.fg, 0.8))
+                font.family: Style.font.family
+                font.pixelSize: Style.font.displayLarge
+              }
+
+              Image {
+                id: thumb
+                anchors.centerIn: parent
+                width: parent.width
+                height: parent.height
+                visible: pane.previewable(cell.entry) && status === Image.Ready
+                source: pane.previewable(cell.entry) ? Util.fileUrl(cell.entry.path) : ""
+                sourceSize.width: Style.space(96)
+                sourceSize.height: Style.space(96)
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                cache: true
+                smooth: true
+                mipmap: true
+              }
             }
 
             Text {

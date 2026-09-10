@@ -13,7 +13,7 @@ jobs:
         with:
           node-version: 22
       - name: JavaScript tests
-        run: node --test tests/
+        run: node --test tests/*.test.js
       - name: Python tests
         run: python3 -m unittest discover -s tests -p "*_test.py" -v
       - name: House rules
