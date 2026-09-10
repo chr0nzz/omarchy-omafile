@@ -311,6 +311,13 @@ Item {
     selection = ({})
   }
 
+  function jumpCursor(index, extend) {
+    if (rows.length === 0) return
+    var target = Math.max(0, Math.min(rows.length - 1, index))
+    setCursor(target, extend, false)
+    listView.positionViewAtIndex(target, ListView.Contain)
+  }
+
   function moveCursor(delta, extend) {
     if (rows.length === 0) return
     var next = cursorIndex < 0 ? 0 : cursorIndex + delta

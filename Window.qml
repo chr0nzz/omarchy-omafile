@@ -525,8 +525,8 @@ Item {
     if (event.key === Qt.Key_Up) { p.moveCursor(-1, shiftKey); return true }
     if (event.key === Qt.Key_PageDown) { p.moveCursor(12, shiftKey); return true }
     if (event.key === Qt.Key_PageUp) { p.moveCursor(-12, shiftKey); return true }
-    if (event.key === Qt.Key_Home) { p.moveCursor(-999999, shiftKey); return true }
-    if (event.key === Qt.Key_End) { p.moveCursor(999999, shiftKey); return true }
+    if (event.key === Qt.Key_Home) { p.jumpCursor(0, shiftKey); return true }
+    if (event.key === Qt.Key_End) { p.jumpCursor(p.rows.length - 1, shiftKey); return true }
     return false
   }
 
@@ -687,20 +687,9 @@ Item {
           }
         }
 
-        TabStrip {
-          id: tabStripA
-          width: parent.width
-          tabs: root.tabsA
-          activeIndex: root.activeA
-          onSelectTab: function (index) { root.selectTab(0, index) }
-          onCloseTab: function (index) { root.closeTab(0, index) }
-          onAddTab: root.newTab(0, null)
-          visible: root.tabsA.length > 1 || root.split
-        }
-
         Row {
           width: parent.width
-          height: parent.height - toolbar.height - (tabStripA.visible ? tabStripA.height : 0) - statusBar.height
+          height: parent.height - toolbar.height - statusBar.height
           spacing: 0
 
           SidebarPlaces {
@@ -714,18 +703,33 @@ Item {
             onOpenInNewTab: function (target) { root.newTab(root.activeSide, target) }
           }
 
-          Item {
+          Row {
+            id: panesRow
             width: parent.width - (root.sidebarVisible ? sidebar.width : 0)
             height: parent.height
+            spacing: Style.space(2)
 
-            Row {
-              anchors.fill: parent
-              spacing: Style.space(2)
+            Column {
+              id: sideA
+              width: root.split ? (panesRow.width - Style.space(2)) / 2 : panesRow.width
+              height: parent.height
+              spacing: 0
+
+              TabStrip {
+                id: tabStripA
+                width: parent.width
+                tabs: root.tabsA
+                activeIndex: root.activeA
+                visible: root.tabsA.length > 1
+                onSelectTab: function (index) { root.selectTab(0, index) }
+                onCloseTab: function (index) { root.closeTab(0, index) }
+                onAddTab: root.newTab(0, null)
+              }
 
               PaneView {
                 id: paneA
-                width: root.split ? (parent.width - Style.space(2)) / 2 : parent.width
-                height: parent.height
+                width: parent.width
+                height: parent.height - (tabStripA.visible ? tabStripA.height : 0)
                 service: root.service
                 active: root.activeSide === 0
                 onActivated: root.activeSide = 0
@@ -733,17 +737,35 @@ Item {
                 onNavigated: function (p) { root.rememberSession() }
                 onContextRequested: function (entry, x, y) {
                   root.menuEntry = entry
-                  root.menuX = x
+                  root.menuX = x + (root.sidebarVisible ? sidebar.width : 0)
                   root.menuY = y + toolbar.height + (tabStripA.visible ? tabStripA.height : 0)
                   root.menuOpen = true
                 }
               }
+            }
+
+            Column {
+              id: sideB
+              width: root.split ? (panesRow.width - Style.space(2)) / 2 : 0
+              height: parent.height
+              visible: root.split
+              spacing: 0
+
+              TabStrip {
+                id: tabStripB
+                width: parent.width
+                tabs: root.tabsB
+                activeIndex: root.activeB
+                visible: root.tabsB.length > 1
+                onSelectTab: function (index) { root.selectTab(1, index) }
+                onCloseTab: function (index) { root.closeTab(1, index) }
+                onAddTab: root.newTab(1, null)
+              }
 
               PaneView {
                 id: paneB
-                width: root.split ? (parent.width - Style.space(2)) / 2 : 0
-                height: parent.height
-                visible: root.split
+                width: parent.width
+                height: parent.height - (tabStripB.visible ? tabStripB.height : 0)
                 service: root.service
                 active: root.activeSide === 1
                 onActivated: root.activeSide = 1
@@ -751,8 +773,8 @@ Item {
                 onNavigated: function (p) { root.rememberSession() }
                 onContextRequested: function (entry, x, y) {
                   root.menuEntry = entry
-                  root.menuX = x + paneA.width
-                  root.menuY = y + toolbar.height + (tabStripA.visible ? tabStripA.height : 0)
+                  root.menuX = x + (root.sidebarVisible ? sidebar.width : 0) + sideA.width
+                  root.menuY = y + toolbar.height + (tabStripB.visible ? tabStripB.height : 0)
                   root.menuOpen = true
                 }
               }
