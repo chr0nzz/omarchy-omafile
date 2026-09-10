@@ -409,7 +409,20 @@ Item {
     })
   }
 
+  property var localSettings: ({})
+
+  readonly property string windowMode: String(settingNow("windowMode", "window"))
+
+  function settingNow(name, fallback) {
+    if (localSettings[name] !== undefined) return localSettings[name]
+    return setting(name, fallback)
+  }
+
   function updateSetting(key, value) {
+    var next = {}
+    for (var k in localSettings) next[k] = localSettings[k]
+    next[key] = value
+    localSettings = next
     if (!shell || typeof shell.updateEntryInline !== "function") return false
     var patch = {}
     patch[key] = value
@@ -729,6 +742,13 @@ Item {
 
     function toggle(): string {
       root.toggleWindow()
+      return "ok"
+    }
+
+    function windowmode(mode: string): string {
+      var value = String(mode || "").toLowerCase()
+      if (value !== "window" && value !== "popup") return "use window or popup"
+      root.updateSetting("windowMode", value)
       return "ok"
     }
 

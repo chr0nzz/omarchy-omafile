@@ -14,12 +14,12 @@ Item {
   property var service: null
 
   readonly property string pluginId: "xyzlab.omafile"
-  readonly property string popupMode: service
-    ? String(service.setting("windowMode", "window")) : "window"
+  readonly property string popupMode: service ? service.windowMode : "window"
   readonly property bool asPopup: popupMode === "popup"
 
   property bool shown: false
   property bool closingFromHost: false
+  property bool switchingSurface: false
   property string pendingPayload: "{}"
 
   function open(payloadJson) {
@@ -56,9 +56,12 @@ Item {
 
   onAsPopupChanged: {
     if (!shown) return
+    switchingSurface = true
     Qt.callLater(function () {
       var item = host.activeBrowser()
       if (item) item.open("{}")
+      if (!host.asPopup) raiseTimer.restart()
+      host.switchingSurface = false
     })
   }
 
@@ -91,7 +94,9 @@ Item {
     minimumSize: Qt.size(640, 420)
 
     onVisibleChanged: {
-      if (!visible && !host.closingFromHost && !host.asPopup) host.requestClose()
+      if (visible) return
+      if (host.closingFromHost || host.switchingSurface || host.asPopup) return
+      host.requestClose()
     }
 
     Loader {

@@ -85,7 +85,7 @@ The Network section of the sidebar holds everything remote. Choose Connect to a 
 
 Hover a drive in the sidebar and click the eye to hide it. Hidden drives come back from Settings.
 
-Settings also chooses whether Omafile opens as a normal window or as a popup panel centred over the desktop that closes when you click away.
+Settings also chooses whether Omafile opens as a normal window or as a popup panel centred over the desktop that closes when you click away. The change applies straight away, even while Omafile is open.
 
 Turn on Default file manager in Settings to have folders opened from other applications land in Omafile. This covers two separate mechanisms: it points `inode/directory` at a desktop entry in `~/.local/share/applications/`, which is what `xdg-open` and `gio open` use, and it claims `org.freedesktop.FileManager1` through a user D-Bus service file, which is what browsers and editors use for Show in folder. Show in folder opens the containing folder with the file selected. Turning the setting off removes both and restores the handler you had before.
 
@@ -143,6 +143,13 @@ Open the keyboard shortcut list:
 
 ```bash
 omarchy-shell omafile shortcuts
+```
+
+Switch between a window and a popup:
+
+```bash
+omarchy-shell omafile windowmode window
+omarchy-shell omafile windowmode popup
 ```
 
 Toggle the window from a keybinding or script:

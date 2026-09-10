@@ -1530,12 +1530,11 @@ Item {
       || dialogMode === "shortcuts" || dialogMode === "settings"
   }
 
-  readonly property bool popupMode: service
-    ? String(service.setting("windowMode", "window")) === "popup" : false
+  readonly property bool popupMode: service ? service.windowMode === "popup" : false
 
   function boolSetting(key, fallback) {
     if (!service) return fallback
-    var v = service.setting(key, fallback)
+    var v = service.settingNow(key, fallback)
     if (typeof v === "boolean") return v
     var text = String(v).toLowerCase()
     if (text === "true" || text === "1" || text === "yes" || text === "on") return true
