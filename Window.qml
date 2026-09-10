@@ -162,7 +162,7 @@ Item {
   }
 
   function rememberSession() {
-    if (!service) return
+    if (!service || !sessionRestored) return
     storeCurrentTab(activeSide)
     service.rememberSession({
       split: split, activeSide: activeSide, sidebar: sidebarVisible,
@@ -199,7 +199,7 @@ Item {
       } catch (e) {
       }
     }
-    if (tabsA.length === 0) restoreSession()
+    ensureSession()
     window.visible = true
     Qt.callLater(function () {
       if (target) activePane().navigate(target)
@@ -540,7 +540,13 @@ Item {
     }
   }
 
-  Component.onCompleted: Qt.callLater(restoreSession)
+  property bool sessionRestored: false
+
+  function ensureSession() {
+    if (sessionRestored) return
+    sessionRestored = true
+    restoreSession()
+  }
 
   Connections {
     target: root.service
