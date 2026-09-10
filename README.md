@@ -57,7 +57,7 @@ o.window({ class = "^org.quickshell$", title = "^Omafile$" }, { tag = "-default-
 
 ## Usage
 
-Press Super+E to toggle the Omafile window.
+Press Super+E to toggle the Omafile window. Opening it again while it is already open brings it to the front rather than doing nothing.
 
 Navigate directories with Enter or double-click. Backspace or Alt+Left go up or back; Alt+Right goes forward.
 

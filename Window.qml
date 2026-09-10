@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
 import "components"
@@ -28,7 +29,13 @@ Item {
     Qt.callLater(function () {
       var item = host.activeBrowser()
       if (item) item.open(host.pendingPayload)
+      if (!host.asPopup) raiseTimer.restart()
     })
+  }
+
+  function raiseWindow() {
+    if (host.asPopup) return
+    Hyprland.dispatch("hl.dsp.focus({ window = \"title:^Omafile$\" })")
   }
 
   function close() {
@@ -53,6 +60,13 @@ Item {
       var item = host.activeBrowser()
       if (item) item.open("{}")
     })
+  }
+
+  Timer {
+    id: raiseTimer
+    interval: 90
+    repeat: false
+    onTriggered: host.raiseWindow()
   }
 
   Component {
