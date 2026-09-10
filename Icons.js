@@ -96,7 +96,11 @@ var actionGlyphs = {
   chevronRight: '',
   chevronDown: '',
   chevronUp: '',
-  chevronLeft: ''
+  chevronLeft: '',
+  settings: '',
+  keyboard: '',
+  window: '',
+  popup: ''
 };
 
 var FALLBACK_CATEGORY = '';

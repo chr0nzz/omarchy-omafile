@@ -730,14 +730,14 @@ Item {
 
             Button {
               anchors.verticalCenter: parent.verticalCenter
-              iconText: Icons.actionGlyph("properties")
+              iconText: Icons.actionGlyph("settings")
               tooltipText: "Settings"
               onClicked: root.showDialog("settings", "Settings", "", null)
             }
 
             Button {
               anchors.verticalCenter: parent.verticalCenter
-              iconText: Icons.actionGlyph("menu")
+              iconText: Icons.actionGlyph("keyboard")
               tooltipText: "Keyboard shortcuts"
               onClicked: root.showDialog("shortcuts", "Keyboard shortcuts", "", null)
             }
