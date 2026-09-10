@@ -48,6 +48,12 @@ Add to `~/.config/hypr/windows.lua`:
 o.window({ class = "^org.quickshell$", title = "^Omafile$" }, { float = true, size = { 1100, 720 }, center = true })
 ```
 
+Omarchy makes every window slightly transparent, so the wallpaper shows faintly through empty space. To keep Omafile fully opaque, add this alongside the rule above:
+
+```lua
+o.window({ class = "^org.quickshell$", title = "^Omafile$" }, { tag = "-default-opacity", opacity = "1 1" })
+```
+
 ## Usage
 
 Press Super+E to toggle the Omafile window.
