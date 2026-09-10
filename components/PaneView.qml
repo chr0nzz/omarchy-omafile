@@ -389,6 +389,20 @@ Item {
   }
 
   Timer {
+    id: stallWatchdog
+    interval: 6000
+    repeat: false
+    running: pane.loading && pane.rows.length === 0 && pane.path !== ""
+    onTriggered: {
+      if (!pane.loading || pane.rows.length > 0) return
+      if (!pane.service) return
+      if (pane.searching) return
+      pane.loading = false
+      pane.reload()
+    }
+  }
+
+  Timer {
     id: refreshTimer
     interval: 180
     repeat: false
