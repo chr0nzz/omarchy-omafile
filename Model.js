@@ -70,7 +70,7 @@ function decodeEntry(arr, dirPath) {
     mtime: mtime,
     mode: mode,
     linkTarget: linkTarget,
-    path: joinPath(dirPath, name),
+    path: (arr.length > 6 && typeof arr[6] === 'string' && arr[6].length > 0) ? arr[6] : joinPath(dirPath, name),
     isDir: isDir,
     isLink: isLink,
     isBroken: isBroken,
@@ -443,4 +443,54 @@ function countSelected(selectionObject) {
 function sortIndicator(sortBy, column, descending) {
   if (sortBy !== column) return '';
   return descending ? '▼' : '▲';
+}
+
+function rawName(row) {
+  return row[0];
+}
+
+function rawIsDir(row) {
+  return row[1] === 'd' || row[1] === 'L';
+}
+
+function filterRaw(rows, query) {
+  var needle = String(query || '').toLowerCase();
+  if (!needle) {
+    var all = [];
+    for (var a = 0; a < rows.length; a++) all.push(rows[a]);
+    return all;
+  }
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]).toLowerCase().indexOf(needle) >= 0) out.push(rows[i]);
+  }
+  return out;
+}
+
+function isDefaultOrder(sortBy, descending, dirsFirst) {
+  return sortBy === 'name' && !descending && dirsFirst;
+}
+
+function sortRaw(rows, sortBy, descending, dirsFirst) {
+  var out = [];
+  for (var i = 0; i < rows.length; i++) out.push(rows[i]);
+  var direction = descending ? -1 : 1;
+  out.sort(function (a, b) {
+    if (dirsFirst) {
+      var ad = rawIsDir(a) ? 0 : 1;
+      var bd = rawIsDir(b) ? 0 : 1;
+      if (ad !== bd) return ad - bd;
+    }
+    var result = 0;
+    if (sortBy === 'size') result = (Number(a[2]) || 0) - (Number(b[2]) || 0);
+    else if (sortBy === 'modified') result = (Number(a[3]) || 0) - (Number(b[3]) || 0);
+    else if (sortBy === 'type' || sortBy === 'ext') {
+      var ae = extOf(String(a[0]));
+      var be = extOf(String(b[0]));
+      result = ae < be ? -1 : (ae > be ? 1 : 0);
+    }
+    if (result === 0) return naturalCompare(String(a[0]), String(b[0])) * direction;
+    return result * direction;
+  });
+  return out;
 }

@@ -60,20 +60,20 @@ Item {
   function collectSelected() {
     var out = []
     for (var i = 0; i < rows.length; i++)
-      if (selection[rows[i].name]) out.push(rows[i])
+      if (selection[rows[i][0]]) out.push(Model.decodeEntry(rows[i], pane.path))
     return out
   }
 
   function selectedPaths() {
-    var items = collectSelected()
     var out = []
-    for (var i = 0; i < items.length; i++) out.push(items[i].path)
+    for (var i = 0; i < rows.length; i++)
+      if (selection[rows[i][0]]) out.push(Model.decodeEntry(rows[i], pane.path).path)
     return out
   }
 
   function cursorEntry() {
     if (cursorIndex < 0 || cursorIndex >= rows.length) return null
-    return rows[cursorIndex]
+    return Model.decodeEntry(rows[cursorIndex], pane.path)
   }
 
   function navigate(target, recordHistory) {
@@ -126,7 +126,7 @@ Item {
 
   function focusName(name) {
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i].name === name) {
+      if (rows[i][0] === name) {
         setCursor(i, false, false)
         listView.positionViewAtIndex(i, ListView.Contain)
         return
@@ -134,20 +134,12 @@ Item {
     }
   }
 
-  function hitToEntry(hit) {
-    var kind = String(hit.kind || "f")
-    var name = String(hit.name || "")
-    return {
-      name: name, kind: kind, size: Number(hit.size) || 0,
-      mtime: Number(hit.mtime) || 0, mode: 0, linkTarget: null,
-      path: String(hit.path || ""),
-      isDir: kind === "d" || kind === "L",
-      isLink: kind === "L" || kind === "l" || kind === "b",
-      isBroken: kind === "b",
-      isExec: false,
-      isHidden: name.charAt(0) === ".",
-      ext: ""
-    }
+  function hitToRow(hit) {
+    return [
+      String(hit.name || ""), String(hit.kind || "f"),
+      Number(hit.size) || 0, Number(hit.mtime) || 0,
+      Number(hit.mode) || 0, null, String(hit.path || "")
+    ]
   }
 
   function startSearch(query) {
@@ -172,7 +164,7 @@ Item {
 
     _searchId = service.searchFiles(pane.path, trimmed, "substring", pane.showHidden,
       function (hit) {
-        pane._pendingChunks.push(pane.hitToEntry(hit))
+        pane._pendingChunks.push(pane.hitToRow(hit))
         if (!rebuildTimer.running) rebuildTimer.start()
       },
       function (msg) {
@@ -217,9 +209,8 @@ Item {
 
     _listId = service.listDirectory(pane.path, pane.showHidden,
       function (chunk) {
-        var decoded = Model.decodeEntries(chunk, pane.path)
         var acc = pane._pendingChunks
-        for (var i = 0; i < decoded.length; i++) acc.push(decoded[i])
+        for (var i = 0; i < chunk.length; i++) acc.push(chunk[i])
         if (!rebuildTimer.running) rebuildTimer.start()
       },
       function (msg) {
@@ -247,7 +238,7 @@ Item {
       _pendingChunks = []
     }
     if (loading) {
-      rows = Model.filterEntries(entries, pane.filter, true)
+      rows = pane.filter ? Model.filterRaw(entries, pane.filter) : entries
       statusChanged()
       return
     }
@@ -255,8 +246,11 @@ Item {
   }
 
   function rebuild() {
-    var filtered = pane.searching ? entries : Model.filterEntries(entries, pane.filter, true)
-    rows = Model.sortEntries(filtered, pane.sortBy, pane.descending, pane.dirsFirst)
+    var filtered = (pane.searching || !pane.filter) ? entries : Model.filterRaw(entries, pane.filter)
+    if (!pane.searching && Model.isDefaultOrder(pane.sortBy, pane.descending, pane.dirsFirst))
+      rows = filtered
+    else
+      rows = Model.sortRaw(filtered, pane.sortBy, pane.descending, pane.dirsFirst)
     if (cursorIndex >= rows.length) cursorIndex = rows.length - 1
     statusChanged()
   }
@@ -284,7 +278,7 @@ Item {
     if (index < 0 || index >= rows.length) return
     cursorIndex = index
     if (toggle) {
-      var name = rows[index].name
+      var name = rows[index][0]
       var next = ({})
       for (var k in selection) next[k] = selection[k]
       next[name] = !next[name]
@@ -296,19 +290,19 @@ Item {
       var lo = Math.min(anchorIndex, index)
       var hi = Math.max(anchorIndex, index)
       var range = ({})
-      for (var i = lo; i <= hi; i++) range[rows[i].name] = true
+      for (var i = lo; i <= hi; i++) range[rows[i][0]] = true
       selection = range
       return
     }
     var single = ({})
-    single[rows[index].name] = true
+    single[rows[index][0]] = true
     selection = single
     anchorIndex = index
   }
 
   function selectAll() {
     var all = ({})
-    for (var i = 0; i < rows.length; i++) all[rows[i].name] = true
+    for (var i = 0; i < rows.length; i++) all[rows[i][0]] = true
     selection = all
   }
 
@@ -328,6 +322,10 @@ Item {
     if (!entry) return
     if (entry.isDir && !entry.isBroken) navigate(entry.path)
     else pane.openRequested(entry)
+  }
+
+  function openRow(row) {
+    openEntry(Model.decodeEntry(row, pane.path))
   }
 
   function activateCursor() {
@@ -463,9 +461,11 @@ Item {
           required property var modelData
           required property int index
 
+          readonly property var entry: Model.decodeEntry(modelData, pane.path)
+
           width: listView.width
           height: Style.space(22)
-          color: pane.selection[modelData.name]
+          color: pane.selection[modelData[0]]
             ? Util.alpha(pane.accent, Style.selectedFillAlpha)
             : (rowHover.hovered ? Util.alpha(pane.fg, Style.hoverFillAlpha) : "transparent")
 
@@ -484,8 +484,8 @@ Item {
             onPressed: function (mouse) {
               pane.activated()
               if (mouse.button === Qt.RightButton) {
-                if (!pane.selection[row.modelData.name]) pane.setCursor(row.index, false, false)
-                pane.contextRequested(row.modelData, mouse.x + row.x, mouse.y + row.y)
+                if (!pane.selection[row.modelData[0]]) pane.setCursor(row.index, false, false)
+                pane.contextRequested(row.entry, mouse.x + row.x, mouse.y + row.y)
                 return
               }
               var extend = (mouse.modifiers & Qt.ShiftModifier) !== 0
@@ -494,7 +494,7 @@ Item {
             }
             onDoubleClicked: function (mouse) {
               if (mouse.button !== Qt.LeftButton) return
-              pane.openEntry(row.modelData)
+              pane.openEntry(row.entry)
             }
           }
 
@@ -516,9 +516,9 @@ Item {
 
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
-                  text: Icons.glyphFor(row.modelData)
-                  color: row.modelData.isBroken ? Color.urgent
-                    : (row.modelData.isDir ? pane.accent : Util.alpha(pane.fg, 0.75))
+                  text: Icons.glyphFor(row.entry)
+                  color: row.entry.isBroken ? Color.urgent
+                    : (row.entry.isDir ? pane.accent : Util.alpha(pane.fg, 0.75))
                   font.family: Style.font.family
                   font.pixelSize: Style.font.icon
                 }
@@ -526,11 +526,11 @@ Item {
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
                   width: parent.width - Style.space(28)
-                  text: row.modelData.name
-                  color: row.modelData.isHidden ? Util.alpha(pane.fg, 0.55) : pane.fg
+                  text: row.entry.name
+                  color: row.entry.isHidden ? Util.alpha(pane.fg, 0.55) : pane.fg
                   font.family: Style.font.family
                   font.pixelSize: Style.font.body
-                  font.italic: row.modelData.isLink
+                  font.italic: row.entry.isLink
                   elide: Text.ElideMiddle
                 }
               }
@@ -542,7 +542,7 @@ Item {
               verticalAlignment: Text.AlignVCenter
               horizontalAlignment: Text.AlignRight
               rightPadding: Style.space(10)
-              text: row.modelData.isDir ? "" : Model.formatSize(row.modelData.size)
+              text: row.entry.isDir ? "" : Model.formatSize(row.entry.size)
               color: Util.alpha(pane.fg, 0.7)
               font.family: Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -553,7 +553,7 @@ Item {
               height: parent.height
               verticalAlignment: Text.AlignVCenter
               leftPadding: Style.space(10)
-              text: Model.kindLabel(row.modelData)
+              text: Model.kindLabel(row.entry)
               color: Util.alpha(pane.fg, 0.55)
               font.family: Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -565,7 +565,7 @@ Item {
               height: parent.height
               verticalAlignment: Text.AlignVCenter
               leftPadding: Style.space(10)
-              text: Model.formatDate(row.modelData.mtime, Date.now())
+              text: Model.formatDate(row.entry.mtime, Date.now())
               color: Util.alpha(pane.fg, 0.55)
               font.family: Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -594,10 +594,12 @@ Item {
           required property var modelData
           required property int index
 
+          readonly property var entry: Model.decodeEntry(modelData, pane.path)
+
           width: gridView.cellWidth
           height: gridView.cellHeight
           radius: Style.cornerRadius
-          color: pane.selection[modelData.name]
+          color: pane.selection[modelData[0]]
             ? Util.alpha(pane.accent, Style.selectedFillAlpha)
             : (cellHover.hovered ? Util.alpha(pane.fg, Style.hoverFillAlpha) : "transparent")
 
@@ -609,15 +611,15 @@ Item {
             onPressed: function (mouse) {
               pane.activated()
               if (mouse.button === Qt.RightButton) {
-                if (!pane.selection[cell.modelData.name]) pane.setCursor(cell.index, false, false)
-                pane.contextRequested(cell.modelData, mouse.x + cell.x, mouse.y + cell.y)
+                if (!pane.selection[cell.modelData[0]]) pane.setCursor(cell.index, false, false)
+                pane.contextRequested(cell.entry, mouse.x + cell.x, mouse.y + cell.y)
                 return
               }
               var extend = (mouse.modifiers & Qt.ShiftModifier) !== 0
               var toggle = (mouse.modifiers & Qt.ControlModifier) !== 0
               pane.setCursor(cell.index, extend, toggle)
             }
-            onDoubleClicked: pane.openEntry(cell.modelData)
+            onDoubleClicked: pane.openEntry(cell.entry)
           }
 
           Column {
@@ -627,9 +629,9 @@ Item {
 
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
-              text: Icons.glyphFor(cell.modelData)
-              color: cell.modelData.isBroken ? Color.urgent
-                : (cell.modelData.isDir ? pane.accent : Util.alpha(pane.fg, 0.8))
+              text: Icons.glyphFor(cell.entry)
+              color: cell.entry.isBroken ? Color.urgent
+                : (cell.entry.isDir ? pane.accent : Util.alpha(pane.fg, 0.8))
               font.family: Style.font.family
               font.pixelSize: Style.font.displayLarge
             }
@@ -637,7 +639,7 @@ Item {
             Text {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
-              text: cell.modelData.name
+              text: cell.entry.name
               color: pane.fg
               font.family: Style.font.family
               font.pixelSize: Style.font.caption

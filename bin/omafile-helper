@@ -94,6 +94,25 @@ def classify(full_path_bytes, lst):
         return "f", lst.st_size, None
     return "o", getattr(lst, "st_size", 0), None
 
+NATURAL_SPLIT = re.compile(r"(\d+)")
+
+
+def natural_key(name):
+    parts = NATURAL_SPLIT.split(name.lower())
+    key = []
+    for index, part in enumerate(parts):
+        if index % 2:
+            key.append((1, int(part), ""))
+        else:
+            key.append((0, 0, part))
+    return key
+
+
+def list_sort_key(entry):
+    directory_first = 0 if entry[1] in ("d", "L") else 1
+    return (directory_first, natural_key(entry[0]), entry[0])
+
+
 def op_list(req, cancel_event):
     req_id = req["id"]
     path = req.get("path")
@@ -128,7 +147,7 @@ def op_list(req, cancel_event):
     except OSError as e:
         send_error(req_id, errno_code(e), e.strerror or str(e), path)
         return
-    collected.sort(key=lambda e: e[0])
+    collected.sort(key=list_sort_key)
     total = len(collected)
     for i in range(0, total, chunk_size):
         if cancel_event.is_set():
