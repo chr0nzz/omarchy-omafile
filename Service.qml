@@ -412,6 +412,32 @@ Item {
   }
 
   property var discovered: []
+  property bool isDefaultFileManager: false
+  property string previousFileManager: ""
+
+  function refreshDefaultHandler() {
+    request({ op: "defaultfm" }, {
+      onDone: function (m) {
+        root.isDefaultFileManager = m.isOmafile === true
+      }
+    })
+  }
+
+  function setDefaultFileManager(enabled, onDone, onError) {
+    return request({
+      op: "setdefaultfm", enabled: enabled === true, previous: previousFileManager
+    }, {
+      onDone: function (m) {
+        root.isDefaultFileManager = m.isOmafile === true
+        if (m.previous !== undefined) {
+          root.previousFileManager = String(m.previous || "")
+          root.persist()
+        }
+        if (onDone) onDone(m)
+      },
+      onError: onError
+    })
+  }
 
   function refreshDiscovered() {
     request({ op: "netdiscover" }, {
@@ -545,6 +571,7 @@ Item {
       pinned: pinned,
       hiddenDrives: hiddenDrives,
       servers: servers,
+      previousFileManager: previousFileManager,
       session: session
     }
     stateFile.setText(JSON.stringify(payload, null, 2))
@@ -562,6 +589,7 @@ Item {
     if (parsed.pinned) pinned = parsed.pinned
     if (parsed.hiddenDrives) hiddenDrives = parsed.hiddenDrives
     if (parsed.servers) servers = parsed.servers
+    if (parsed.previousFileManager) previousFileManager = String(parsed.previousFileManager)
     if (parsed.session) session = parsed.session
   }
 
@@ -577,6 +605,7 @@ Item {
       refreshDrives()
       refreshTrash()
       refreshDiscovered()
+      refreshDefaultHandler()
     })
   }
 

@@ -1183,6 +1183,20 @@ Item {
                 }
               }
 
+              Toggle {
+                width: settingsColumn.width
+                label: "Default file manager"
+                description: root.service && root.service.isDefaultFileManager
+                  ? "Folders opened from other apps come here"
+                  : "Other apps currently open folders in something else"
+                checked: root.service ? root.service.isDefaultFileManager : false
+                onClicked: {
+                  if (!root.service) return
+                  root.service.setDefaultFileManager(!checked, null, null)
+                }
+              }
+
+
               PanelSectionHeader {
                 width: parent.width
                 text: "Browsing"

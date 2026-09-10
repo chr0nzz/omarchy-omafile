@@ -1263,6 +1263,98 @@ def gvfs_mounts():
     return out
 
 
+DESKTOP_ID = "xyzlab.omafile.desktop"
+DESKTOP_DIR = os.path.join(
+    os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share"),
+    "applications")
+DESKTOP_BODY = """[Desktop Entry]
+Type=Application
+Name=Omafile
+Comment=Browse your files
+Exec=omarchy-shell omafile open %f
+Icon=system-file-manager
+Terminal=false
+Categories=System;FileTools;FileManager;
+MimeType=inode/directory;
+StartupNotify=false
+"""
+
+
+def current_default_handler():
+    try:
+        proc = subprocess.run(
+            ["xdg-mime", "query", "default", "inode/directory"],
+            capture_output=True, text=True, timeout=10, shell=False)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    return (proc.stdout or "").strip()
+
+
+def refresh_desktop_database():
+    try:
+        subprocess.run(
+            ["update-desktop-database", DESKTOP_DIR],
+            capture_output=True, text=True, timeout=20, shell=False)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+
+def op_defaultfm(req):
+    req_id = req["id"]
+    handler = current_default_handler()
+    emit({
+        "id": req_id, "t": "done",
+        "handler": handler,
+        "isOmafile": handler == DESKTOP_ID,
+        "installed": os.path.exists(os.path.join(DESKTOP_DIR, DESKTOP_ID)),
+    })
+
+
+def op_setdefaultfm(req, cancel_event):
+    req_id = req["id"]
+    enabled = bool(req.get("enabled", False))
+    previous = str(req.get("previous") or "")
+    desktop_path = os.path.join(DESKTOP_DIR, DESKTOP_ID)
+    if not shutil.which("xdg-mime"):
+        send_error(req_id, "EUNSUPPORTED", "xdg-mime is not installed")
+        return
+    if enabled:
+        was = current_default_handler()
+        try:
+            os.makedirs(DESKTOP_DIR, exist_ok=True)
+            with open(desktop_path, "w", encoding="utf-8") as f:
+                f.write(DESKTOP_BODY)
+        except OSError as e:
+            send_error(req_id, errno_code(e), e.strerror or str(e), desktop_path)
+            return
+        refresh_desktop_database()
+        try:
+            subprocess.run(
+                ["xdg-mime", "default", DESKTOP_ID, "inode/directory"],
+                capture_output=True, text=True, timeout=15, shell=False)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            send_error(req_id, "EUNSUPPORTED", "could not set the default handler")
+            return
+        emit({"id": req_id, "t": "done", "handler": current_default_handler(),
+              "isOmafile": current_default_handler() == DESKTOP_ID,
+              "previous": was if was != DESKTOP_ID else previous})
+        return
+    restore = previous if previous and previous != DESKTOP_ID else "org.gnome.Nautilus.desktop"
+    try:
+        subprocess.run(
+            ["xdg-mime", "default", restore, "inode/directory"],
+            capture_output=True, text=True, timeout=15, shell=False)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    try:
+        os.unlink(desktop_path)
+    except OSError:
+        pass
+    refresh_desktop_database()
+    emit({"id": req_id, "t": "done", "handler": current_default_handler(),
+          "isOmafile": current_default_handler() == DESKTOP_ID, "previous": ""})
+
+
 def op_netdiscover(req):
     req_id = req["id"]
     found = []
@@ -1518,6 +1610,7 @@ CANCELLABLE_OPS = {
     "copy": lambda r, c: op_copy_move(r, c, False),
     "move": lambda r, c: op_copy_move(r, c, True),
     "mounturi": op_mounturi,
+    "setdefaultfm": op_setdefaultfm,
     "unmounturi": op_unmounturi,
 }
 
@@ -1536,6 +1629,7 @@ SIMPLE_OPS = {
     "drives": op_drives,
     "netmounts": op_netmounts,
     "netdiscover": op_netdiscover,
+    "defaultfm": op_defaultfm,
     "dirs": op_dirs,
     "ping": op_ping,
     "watch": op_watch,

@@ -80,6 +80,13 @@ Hover a drive in the sidebar and click the eye to hide it. Hidden drives come ba
 
 Settings also chooses whether Omafile opens as a normal window or as a popup panel centred over the desktop that closes when you click away.
 
+Turn on Default file manager in Settings to have folders opened from other applications land in Omafile. This writes a desktop entry to `~/.local/share/applications/xyzlab.omafile.desktop` and points `inode/directory` at it. Turning it off removes the entry and restores the handler you had before. To do the same from a terminal:
+
+```bash
+xdg-mime default xyzlab.omafile.desktop inode/directory
+xdg-mime query default inode/directory
+```
+
 Right click a folder and choose Bookmark this folder to pin it to the sidebar. Remove a bookmark with the cross beside it.
 
 When a copy or move finds a file of the same name, Omafile asks what to do. Choose with the mouse, or press R to replace, K to keep both, S to skip and A to skip every remaining conflict. Escape skips the file.
