@@ -1263,6 +1263,30 @@ def gvfs_mounts():
     return out
 
 
+def op_netdiscover(req):
+    req_id = req["id"]
+    found = []
+    try:
+        proc = subprocess.run(
+            ["gio", "list", "-u", "network:///"],
+            capture_output=True, text=True, timeout=10, shell=False)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        emit({"id": req_id, "t": "drives", "drives": found})
+        send_done(req_id)
+        return
+    for line in (proc.stdout or "").splitlines():
+        parts = line.split("\t")
+        name = parts[0].strip()
+        uri = parts[-1].strip() if len(parts) > 1 else ""
+        if not name:
+            continue
+        if not uri or not uri.startswith(("smb://", "sftp://", "ftp://", "dav://", "davs://", "nfs://")):
+            uri = "network:///" + name
+        found.append({"name": name, "label": name, "uri": uri, "network": True})
+    emit({"id": req_id, "t": "drives", "drives": found})
+    send_done(req_id)
+
+
 def op_netmounts(req):
     emit({"id": req["id"], "t": "drives", "drives": gvfs_mounts()})
     send_done(req["id"])
@@ -1511,6 +1535,7 @@ SIMPLE_OPS = {
     "freespace": op_freespace,
     "drives": op_drives,
     "netmounts": op_netmounts,
+    "netdiscover": op_netdiscover,
     "dirs": op_dirs,
     "ping": op_ping,
     "watch": op_watch,

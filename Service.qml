@@ -411,6 +411,21 @@ Item {
     })
   }
 
+  property var discovered: []
+
+  function refreshDiscovered() {
+    request({ op: "netdiscover" }, {
+      onData: function (m) { if (m.t === "drives") root.discovered = m.drives || [] }
+    })
+  }
+
+  function networkMounts() {
+    var out = []
+    for (var i = 0; i < drives.length; i++)
+      if (drives[i] && drives[i].gvfs === true) out.push(drives[i])
+    return out
+  }
+
   function rememberServer(uri) {
     var value = String(uri || "").trim()
     if (!value) return
@@ -561,6 +576,7 @@ Item {
       refreshUserDirs()
       refreshDrives()
       refreshTrash()
+      refreshDiscovered()
     })
   }
 

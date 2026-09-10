@@ -732,7 +732,12 @@ Item {
           onRemoveBookmark: function (target) { root.service.togglePinned(target) }
           onHideDrive: function (key) { root.service.toggleHiddenDrive(key) }
           onShowAllDrives: root.showDialog("settings", "Settings", "", null)
-          onConnectServer: root.showDialog("connect", "Connect to a server", "", null)
+          onConnectServer: function (uri) {
+            root.showDialog("connect", "Connect to a server", String(uri || ""), null)
+          }
+          onDisconnectServer: function (path) {
+            if (root.service) root.service.disconnectServer(path, null, null)
+          }
         }
 
         Row {
@@ -1213,31 +1218,6 @@ Item {
                   glyph: Icons.placeGlyph("drive")
                   trailing: "show"
                   onClicked: root.service.toggleHiddenDrive(modelData.path)
-                }
-              }
-
-              PanelSectionHeader {
-                width: parent.width
-                text: "Network"
-              }
-
-              PlaceRow {
-                width: settingsColumn.width
-                label: "Connect to a server"
-                glyph: Icons.placeGlyph("network")
-                onClicked: root.showDialog("connect", "Connect to a server", "", null)
-              }
-
-              Repeater {
-                model: root.dialogMode === "settings" && root.service ? root.service.servers : []
-
-                delegate: PlaceRow {
-                  required property var modelData
-                  width: settingsColumn.width
-                  label: String(modelData)
-                  glyph: Icons.placeGlyph("recent")
-                  trailing: "connect"
-                  onClicked: root.showDialog("connect", "Connect to a server", String(modelData), null)
                 }
               }
             }

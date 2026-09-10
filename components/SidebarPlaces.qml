@@ -20,7 +20,8 @@ Item {
   signal removeBookmark(string target)
   signal hideDrive(string key)
   signal showAllDrives()
-  signal connectServer()
+  signal connectServer(string uri)
+  signal disconnectServer(string path)
 
   function usablePlace(value, homePath) {
     var p = String(value || "")
@@ -87,7 +88,46 @@ Item {
       }
       if (vols.length > 0) out.push({ title: "Drives", rows: vols })
     }
+
+    var net = []
+    var mounted = service ? service.networkMounts() : []
+    for (var n = 0; n < mounted.length; n++) {
+      var share = mounted[n]
+      if (service && service.driveHidden(String(share.mount))) continue
+      net.push({
+        key: "network", label: String(share.label || share.mount),
+        path: String(share.mount), mounted: true,
+        free: Number(share.free) || 0, total: Number(share.total) || 0
+      })
+    }
+
+    var found = service ? service.discovered : []
+    for (var f = 0; f < found.length; f++) {
+      net.push({
+        key: "network", label: String(found[f].label || found[f].name),
+        path: "", uri: String(found[f].uri || ""), server: true
+      })
+    }
+
+    var previous = service ? service.servers : []
+    for (var v = 0; v < previous.length; v++) {
+      var uri = String(previous[v])
+      if (alreadyMounted(mounted, uri)) continue
+      net.push({ key: "recent", label: uri, path: "", uri: uri, server: true })
+    }
+
+    net.push({ key: "network", label: "Connect to a server", path: "", connect: true })
+    out.push({ title: "Network", rows: net })
     return out
+  }
+
+  function alreadyMounted(mounted, uri) {
+    for (var i = 0; i < mounted.length; i++) {
+      var label = String(mounted[i].label || "")
+      var host = String(uri).replace(/^[a-z]+:\/\//, "").replace(/\/$/, "")
+      if (host && label.indexOf(host.split("/")[0]) >= 0) return true
+    }
+    return false
   }
 
   Rectangle {
@@ -147,6 +187,18 @@ Item {
                   onClicked: function (mouse) {
                     if (modelData.unhide === true) {
                       sidebar.showAllDrives()
+                      return
+                    }
+                    if (modelData.connect === true) {
+                      sidebar.connectServer()
+                      return
+                    }
+                    if (modelData.server === true) {
+                      sidebar.connectServer(modelData.uri)
+                      return
+                    }
+                    if (mouse.button === Qt.RightButton && modelData.mounted === true) {
+                      sidebar.disconnectServer(modelData.path)
                       return
                     }
                     if (mouse.button === Qt.RightButton) {
@@ -248,44 +300,6 @@ Item {
         Item {
           width: column.width
           height: Style.space(10)
-        }
-
-        Rectangle {
-          width: column.width - Style.space(8)
-          x: Style.space(4)
-          height: Style.space(24)
-          radius: Style.cornerRadius
-          color: connectHover.hovered ? Util.alpha(Color.foreground, 0.08) : "transparent"
-
-          HoverHandler { id: connectHover }
-
-          MouseArea {
-            anchors.fill: parent
-            onClicked: sidebar.connectServer()
-          }
-
-          Row {
-            anchors.fill: parent
-            anchors.leftMargin: Style.space(8)
-            anchors.rightMargin: Style.space(8)
-            spacing: Style.space(8)
-
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: Icons.placeGlyph("network")
-              color: Util.alpha(Color.foreground, 0.6)
-              font.family: Style.font.family
-              font.pixelSize: Style.font.iconSmall
-            }
-
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: "Connect to a server"
-              color: Util.alpha(Color.foreground, 0.75)
-              font.family: Style.font.family
-              font.pixelSize: Style.font.bodySmall
-            }
-          }
         }
 
         Rectangle {
