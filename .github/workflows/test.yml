@@ -15,7 +15,7 @@ jobs:
       - name: JavaScript tests
         run: node --test tests/
       - name: Python tests
-        run: python3 -m unittest discover -s tests -v
+        run: python3 -m unittest discover -s tests -p "*_test.py" -v
       - name: House rules
         run: |
           status=0

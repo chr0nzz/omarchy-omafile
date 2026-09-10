@@ -771,6 +771,8 @@ Item {
               text: {
                 var p = root.activePane()
                 if (!p) return ""
+                if (p.loading)
+                  return Model.formatCount(p.rows.length, "item", "items") + ", reading"
                 if (p.selectedCount > 0)
                   return Model.formatCount(p.selectedCount, "item selected", "items selected")
                 if (p.searching)

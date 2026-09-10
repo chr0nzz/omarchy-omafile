@@ -246,6 +246,11 @@ Item {
       entries = entries.concat(_pendingChunks)
       _pendingChunks = []
     }
+    if (loading) {
+      rows = Model.filterEntries(entries, pane.filter, true)
+      statusChanged()
+      return
+    }
     rebuild()
   }
 
@@ -352,7 +357,7 @@ Item {
 
   Timer {
     id: rebuildTimer
-    interval: 90
+    interval: 120
     repeat: false
     onTriggered: pane.flushChunks()
   }
