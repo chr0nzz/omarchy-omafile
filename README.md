@@ -19,7 +19,7 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * Omarchy 4 (Quattro)
 * Python 3 (included with Omarchy)
 * util-linux `lsblk` and `findmnt` (included with Arch)
-* Optional: `bsdtar` for archive operations, `udisksctl` for drive ejection
+* Optional: `udisksctl` for ejecting removable drives
 
 ## Install
 
@@ -57,7 +57,11 @@ Press F7 to create a new folder. Press F2 to rename a file or folder.
 
 Press Delete to move items to trash or Shift+Delete to delete permanently. Cut with Ctrl+X, copy with Ctrl+C, and paste with Ctrl+V. Select all files with Ctrl+A.
 
-Press Ctrl+H to toggle hidden files and Ctrl+F to search recursively from the current directory.
+Press Ctrl+H to toggle hidden files. Press Ctrl+F to search recursively from the current directory, and Escape to leave the results and return to the folder.
+
+Press Ctrl+D to split the window into two panes and Ctrl+B to hide the sidebar.
+
+When a copy or move finds a file of the same name, Omafile asks what to do. Choose with the mouse, or press R to replace, K to keep both, S to skip and A to skip every remaining conflict. Escape skips the file.
 
 Press Escape to close the window.
 
@@ -69,14 +73,14 @@ Configure these keys through the Omarchy bar widget settings:
 |-----|---------|
 | `homePath` | Default directory when opening Omafile |
 | `showHidden` | Show hidden files and folders by default |
-| `sortBy` | Sort files by name, size, or date |
+| `sortBy` | Sort by `name`, `size`, `modified` or `type` |
 | `sortDirsFirst` | List directories before files |
 | `confirmDelete` | Prompt before deleting items |
 | `useTrash` | Send deleted items to trash (vs. permanent deletion) |
-| `defaultView` | Start in list or grid view |
+| `defaultView` | Start in `list` or `grid` view |
 | `terminal` | Terminal command to open in the current directory |
 | `editor` | Text editor command to open selected files |
-| `showTransferBadge` | Show active transfers on the window title |
+| `showTransferBadge` | Show a progress ring on the bar icon while a transfer runs |
 | `glyph` | Custom icon for the bar widget |
 
 ## Command Line
@@ -94,7 +98,13 @@ Move a file or folder to trash:
 omarchy-shell omafile trash /path/to/item
 ```
 
-Check the status of background transfers:
+Toggle the window from a keybinding or script:
+
+```bash
+omarchy-shell omafile toggle
+```
+
+Check the helper, running transfers, drives and trash:
 
 ```bash
 omarchy-shell omafile status
@@ -106,7 +116,7 @@ omarchy-shell omafile status
 omarchy plugin remove xyzlab.omafile
 ```
 
-State is stored at `~/.local/state/omarchy/omafile/state.json` and the thumbnail cache at `~/.cache/omarchy/omafile/`.
+Removal leaves one file behind, `~/.local/state/omarchy/omafile/state.json`, which remembers open tabs and recent folders. Delete it if you do not want to keep it.
 
 ## License
 
