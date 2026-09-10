@@ -757,7 +757,7 @@ Item {
               width: parent.width
               tabs: root.tabsA
               activeIndex: root.activeA
-              visible: root.tabsA.length > 1
+              visible: root.tabsA.length > 1 || root.split
               onSelectTab: function (index) { root.selectTab(0, index) }
               onCloseTab: function (index) { root.closeTab(0, index) }
               onAddTab: root.newTab(0, null)
@@ -797,7 +797,7 @@ Item {
               width: parent.width
               tabs: root.tabsB
               activeIndex: root.activeB
-              visible: root.tabsB.length > 1
+              visible: root.tabsB.length > 1 || root.split
               onSelectTab: function (index) { root.selectTab(1, index) }
               onCloseTab: function (index) { root.closeTab(1, index) }
               onAddTab: root.newTab(1, null)

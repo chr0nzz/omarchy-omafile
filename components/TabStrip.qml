@@ -91,14 +91,14 @@ Item {
         width: Style.space(22)
         height: Style.space(22)
         radius: Style.cornerRadius
-        color: addHover.hovered ? Util.alpha(Color.foreground, 0.1) : "transparent"
+        color: addHover.hovered ? Util.alpha(Color.foreground, 0.12) : "transparent"
 
         HoverHandler { id: addHover }
 
         Text {
           anchors.centerIn: parent
           text: Icons.actionGlyph("add")
-          color: Util.alpha(Color.foreground, 0.6)
+          color: addHover.hovered ? Color.accent : Util.alpha(Color.foreground, 0.6)
           font.family: Style.font.family
           font.pixelSize: Style.font.iconSmall
         }
