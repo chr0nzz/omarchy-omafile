@@ -109,13 +109,24 @@ Item {
     var body = {}
     for (var k in payload) body[k] = payload[k]
     body.id = id
-    _pending[id] = handlers || ({})
+    var entry = handlers || ({})
+    entry._op = String(payload.op || "")
+    _pending[id] = entry
     var line = JSON.stringify(body) + "\n"
     if (helperReady && helper.running) helper.write(line)
     else {
       _queue.push(line)
       ensureHelper()
     }
+    return id
+  }
+
+  function sendOneWay(payload) {
+    var id = _nextId++
+    var body = {}
+    for (var k in payload) body[k] = payload[k]
+    body.id = id
+    sendRaw(body)
     return id
   }
 
@@ -183,6 +194,15 @@ Item {
     if (handlers.onData) handlers.onData(msg)
   }
 
+  function pendingSummary() {
+    var counts = {}
+    for (var k in _pending) {
+      var op = String(_pending[k]._op || "unknown")
+      counts[op] = (counts[op] || 0) + 1
+    }
+    return counts
+  }
+
   function releasePending(id) {
     var next = {}
     for (var k in _pending) if (Number(k) !== Number(id)) next[k] = _pending[k]
@@ -210,7 +230,7 @@ Item {
 
   function unwatch(watchId, path) {
     if (watchId) releasePending(watchId)
-    if (path) request({ op: "unwatch", path: path }, null)
+    if (path) sendOneWay({ op: "unwatch", path: path })
   }
 
   function statPaths(paths, onResult) {
@@ -726,7 +746,7 @@ Item {
           return { id: t.id, op: t.op, label: t.label, state: t.state, bytes: t.bytes, total: t.total }
         }),
         active: root.activeTransfers,
-        pending: Object.keys(root._pending),
+        pending: root.pendingSummary(),
         trashCount: root.trashCount,
         drives: root.drives.length,
         windowOpen: root.windowOpen()
