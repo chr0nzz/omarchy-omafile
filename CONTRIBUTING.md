@@ -92,10 +92,12 @@ Verification is for a plugin that is already listed. The first listing is a diff
 | --- | --- | --- |
 | Initial submission | Once, before the plugin is listed | Run the Submit to marketplace workflow by hand and type the plugin id to confirm. It opens a `[Plugin]:` issue with the category, tags, and checklist |
 | Update verification | Every release after that | Automatic on a `v*` tag. Opens a `[Verify]:` issue naming the exact commit |
-| Revalidation | Every push to `main` while a request is open and unapproved | Automatic. Points the open request at the new head so review never lands on a stale commit |
+| Revalidation | Every push to `main` while an initial submission is open and unapproved | Automatic. Points the submission at the new head so review never lands on a stale commit |
 
 All three touch `omacom/omarchy-plugin-marketplace`. A maintainer reviews the request. Approval binds to one exact commit, and it is a listing check, not a security audit.
 
-Approval can take days, and any commit pushed in the meantime leaves the validated snapshot behind. The revalidation workflow handles that: on every push to `main` it looks for an open request that is not approved yet, compares the last validated commit against the new head, and edits the issue only when they differ. An already current request is left alone, so review is never spammed.
+Approval can take days, and any commit pushed in the meantime leaves the validated snapshot behind. The revalidation workflow handles that: on every push to `main` it looks for an open initial submission that is not approved yet, compares the last validated commit against the new head, and edits the issue only when they differ. An already current submission is left alone, so review is never spammed.
+
+It deliberately ignores `[Verify]:` update requests. Those name one exact release commit, and later commits on `main` belong to the next release, not to the one under review.
 
 By contributing you agree that your work is released under the [MIT License](LICENSE).

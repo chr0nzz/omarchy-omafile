@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   revalidate:
-    name: Point an open marketplace request at the current head
+    name: Point an open initial submission at the current head
     runs-on: ubuntu-latest
     if: ${{ github.event.head_commit != null }}
     env:
@@ -51,7 +51,7 @@ jobs:
           chosen = None
           for issue in issues:
               title = issue.get("title", "")
-              if not (title.startswith("[Plugin]: %s" % name) or title.startswith("[Verify]: %s" % name)):
+              if not title.startswith("[Plugin]: %s" % name):
                   continue
               labels = [l["name"] for l in issue.get("labels", [])]
               if "approved-and-verified" in labels or "maintainer-verified" in labels:
@@ -66,7 +66,6 @@ jobs:
               else:
                   print("Found issue #%s: %s" % (chosen["number"], chosen["title"]))
                   fh.write("number=%s\n" % chosen["number"])
-                  fh.write("kind=%s\n" % ("verify" if chosen["title"].startswith("[Verify]") else "submission"))
           with open("/tmp/issue.json", "w") as fh:
               json.dump(chosen or {}, fh)
           PY
@@ -119,13 +118,10 @@ jobs:
 
           note = "Head moved to %s. Please validate the current head." % head[:7]
 
-          if kind == "verify":
-              body = re.sub(r"(### Target commit\n\n)[0-9a-f]{40}", r"\g<1>" + head, body, count=1)
-          else:
-              body = re.sub(
-                  r"(### Maintainer notes\n\n).*?(\n\n### Submission checklist)",
-                  lambda m: m.group(1) + note + m.group(2),
-                  body, count=1, flags=re.S)
+          body = re.sub(
+              r"(### Maintainer notes\n\n).*?(\n\n### Submission checklist)",
+              lambda m: m.group(1) + note + m.group(2),
+              body, count=1, flags=re.S)
 
           with open("/tmp/new-body.md", "w") as fh:
               fh.write(body)
@@ -137,4 +133,3 @@ jobs:
           PY
         env:
           ISSUE_NUMBER: ${{ steps.find.outputs.number }}
-          ISSUE_KIND: ${{ steps.find.outputs.kind }}
