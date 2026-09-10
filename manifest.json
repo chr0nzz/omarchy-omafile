@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "xyzlab.omafile",
   "name": "Omafile",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "author": "xyzlab",
   "license": "MIT",
   "description": "A file manager for Omarchy. Opens as a real window with tabs and dual panes, watches directories live, copies and moves in the background with progress, and puts places, drives, transfers and trash in the bar.",

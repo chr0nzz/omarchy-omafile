@@ -641,7 +641,7 @@ class PingTests(HelperTestCase):
         msgs = self.helper.call({"id": self.next_id(), "op": "ping"})
         done = self.terminal(msgs)
         self.assertEqual(done["t"], "done")
-        self.assertEqual(done["version"], "0.1.0")
+        self.assertEqual(done["version"], "1.0.0")
         self.assertIsInstance(done["pid"], int)
         self.assertIn(done["inotify"], (True, False))
 

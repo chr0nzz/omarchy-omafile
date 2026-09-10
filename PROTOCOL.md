@@ -229,7 +229,7 @@ Cancels in-flight request `M`. The cancelled request terminates with
 {"id": N, "op": "ping"}
 ```
 
-Replies `{"t": "done", "version": "0.1.0", "pid": <int>, "inotify": true}`.
+Replies `{"t": "done", "version": "1.0.0", "pid": <int>, "inotify": true}`.
 
 ## Concurrency
 
