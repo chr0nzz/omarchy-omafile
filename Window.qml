@@ -455,6 +455,14 @@ Item {
 
   function handleKey(event) {
     if (confirm.opened) return confirm.handleKey(event)
+    if (dialogMode === "conflict") {
+      if (event.key === Qt.Key_Escape) { resolveConflict("skip", false); return true }
+      if (event.key === Qt.Key_R) { resolveConflict("overwrite", false); return true }
+      if (event.key === Qt.Key_K) { resolveConflict("rename", false); return true }
+      if (event.key === Qt.Key_S) { resolveConflict("skip", false); return true }
+      if (event.key === Qt.Key_A) { resolveConflict("skip", true); return true }
+      return true
+    }
     if (dialogMode !== "") {
       if (event.key === Qt.Key_Escape) {
         closeDialog()
@@ -940,7 +948,10 @@ Item {
 
         MouseArea {
           anchors.fill: parent
-          onClicked: root.closeDialog()
+          onClicked: {
+            if (root.dialogMode === "conflict") root.resolveConflict("skip", false)
+            else root.closeDialog()
+          }
         }
 
         Rectangle {
@@ -1091,25 +1102,25 @@ Item {
                 spacing: Style.space(8)
 
                 Button {
-                  text: "Replace"
+                  text: "Replace  R"
                   bordered: true
                   onClicked: root.resolveConflict("overwrite", false)
                 }
 
                 Button {
-                  text: "Keep both"
+                  text: "Keep both  K"
                   bordered: true
                   onClicked: root.resolveConflict("rename", false)
                 }
 
                 Button {
-                  text: "Skip"
+                  text: "Skip  S"
                   bordered: true
                   onClicked: root.resolveConflict("skip", false)
                 }
 
                 Button {
-                  text: "Skip all"
+                  text: "Skip all  A"
                   bordered: true
                   onClicked: root.resolveConflict("skip", true)
                 }
