@@ -11,7 +11,7 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * Background copy and move with persistent progress tracking
 * Freedesktop trash integration, compatible with GNOME Files
 * Recursive file search across directories
-* Image previews in grid view
+* Image previews in both list and grid view
 * Bookmarks for the folders you use most
 * Bar widget with places, drives, transfers, and trash overview
 * Keyboard-first workflow with standard shortcuts
@@ -49,7 +49,11 @@ o.window({ class = "^org.quickshell$", title = "^Omafile$" }, { float = true, si
 
 Press Super+E to toggle the Omafile window.
 
-Navigate directories with Enter or double-click. Backspace or Alt+Left go up or back; Alt+Right goes forward. Press Ctrl+L to type a path directly.
+Navigate directories with Enter or double-click. Backspace or Alt+Left go up or back; Alt+Right goes forward.
+
+Click any part of the address bar to type a path, or press Ctrl+L. Click a breadcrumb to jump to that folder.
+
+The magnifier at the end of the address bar filters the current folder. Press Ctrl+F instead to search the folder and everything inside it. Escape clears the text, then closes the filter.
 
 Use Ctrl+T to open a new tab and Ctrl+W to close it. Press Tab to switch between the left and right panes.
 
