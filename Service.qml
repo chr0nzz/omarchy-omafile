@@ -582,8 +582,11 @@ Item {
       return JSON.stringify({
         helper: root.helperReady,
         helperError: root.helperError,
-        transfers: root.transfers.length,
+        transfers: root.transfers.map(function (t) {
+          return { id: t.id, op: t.op, label: t.label, state: t.state, bytes: t.bytes, total: t.total }
+        }),
         active: root.activeTransfers,
+        pending: Object.keys(root._pending),
         trashCount: root.trashCount,
         drives: root.drives.length,
         windowOpen: root.windowOpen()
