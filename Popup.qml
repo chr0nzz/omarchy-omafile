@@ -66,6 +66,14 @@ Panel {
     return p
   }
 
+  function mountableDrive(drive) {
+    if (!drive || !drive.mount) return false
+    var mount = String(drive.mount)
+    if (mount.charAt(0) === "[") return false
+    if (String(drive.fstype || "") === "swap") return false
+    return true
+  }
+
   function placeRows() {
     var dirs = service ? service.userDirs : ({})
     var rows = []
@@ -99,7 +107,7 @@ Panel {
     var rows = []
     for (var i = 0; i < list.length; i++) {
       var d = list[i]
-      if (!d || !d.mount) continue
+      if (!mountableDrive(d)) continue
       rows.push({
         key: d.removable ? "usb" : "drive",
         label: String(d.label || d.name || d.mount),

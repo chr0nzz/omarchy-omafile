@@ -24,6 +24,14 @@ Item {
     return p
   }
 
+  function mountableDrive(drive) {
+    if (!drive || !drive.mount) return false
+    var mount = String(drive.mount)
+    if (mount.charAt(0) === "[") return false
+    if (String(drive.fstype || "") === "swap") return false
+    return true
+  }
+
   function sections() {
     var out = []
     var dirs = service ? service.userDirs : ({})
@@ -55,7 +63,7 @@ Item {
       var vols = []
       for (var d = 0; d < drives.length; d++) {
         var drive = drives[d]
-        if (!drive || !drive.mount) continue
+        if (!mountableDrive(drive)) continue
         vols.push({
           key: drive.removable ? "usb" : "drive",
           label: String(drive.label || drive.name || drive.mount),
