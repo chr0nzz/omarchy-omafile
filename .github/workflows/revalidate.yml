@@ -1,4 +1,4 @@
-name: Revalidate while in review
+name: Revalidate
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   revalidate:
-    name: Point an open initial submission at the current head
+    name: Point an open submission at the current head
     runs-on: ubuntu-latest
     if: ${{ github.event.head_commit != null }}
     env:
@@ -111,7 +111,6 @@ jobs:
           number = os.environ["ISSUE_NUMBER"]
           marketplace = os.environ["MARKETPLACE"]
           head = os.environ["HEAD_SHA"]
-          kind = os.environ["ISSUE_KIND"]
 
           issue = json.load(open("/tmp/issue.json"))
           body = issue.get("body", "")
