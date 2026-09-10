@@ -25,6 +25,7 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * util-linux `lsblk` and `findmnt` (included with Arch)
 * Optional: `udisksctl` for ejecting removable drives
 * Optional: `gvfs` and `gvfs-smb` for connecting to network servers
+* Optional: PyGObject for Show in folder from other applications
 
 ## Install
 
@@ -86,7 +87,9 @@ Hover a drive in the sidebar and click the eye to hide it. Hidden drives come ba
 
 Settings also chooses whether Omafile opens as a normal window or as a popup panel centred over the desktop that closes when you click away.
 
-Turn on Default file manager in Settings to have folders opened from other applications land in Omafile. This writes a desktop entry to `~/.local/share/applications/xyzlab.omafile.desktop` and points `inode/directory` at it. Turning it off removes the entry and restores the handler you had before. To do the same from a terminal:
+Turn on Default file manager in Settings to have folders opened from other applications land in Omafile. This covers two separate mechanisms: it points `inode/directory` at a desktop entry in `~/.local/share/applications/`, which is what `xdg-open` and `gio open` use, and it claims `org.freedesktop.FileManager1` through a user D-Bus service file, which is what browsers and editors use for Show in folder. Show in folder opens the containing folder with the file selected. Turning the setting off removes both and restores the handler you had before.
+
+The D-Bus half needs PyGObject, which Omarchy already ships. Without it the desktop entry still works and Show in folder keeps going to your previous file manager. To do the same from a terminal:
 
 ```bash
 xdg-mime default xyzlab.omafile.desktop inode/directory

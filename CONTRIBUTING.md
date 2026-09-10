@@ -25,7 +25,8 @@ The panel is declared `keepLoaded`, so QML changes do **not** hot reload. Run `o
 | `components/PathBar.qml` | Address bar, breadcrumbs, inline editing, the filter |
 | `components/SidebarPlaces.qml` | Places, bookmarks, drives, network |
 | `components/TabStrip.qml`, `TransferBar.qml`, `PlaceRow.qml` | Small pieces |
-| `bin/omafile-helper` | Python 3 daemon. Every filesystem operation happens here |
+| `bin/omafile-helper` | Python 3 daemon, standard library only. Every filesystem operation happens here |
+| `bin/omafile-filemanager1` | Optional D-Bus service for Show in folder. Needs PyGObject, and is feature detected |
 | `Model.js` | Pure logic: decoding, sorting, filtering, formatting, paths |
 | `Icons.js` | Glyph tables |
 | `PROTOCOL.md` | The contract between the shell and the helper |
@@ -52,7 +53,7 @@ qmllint -I /usr/share/omarchy/shell -I . *.qml components/*.qml
 - No em dashes anywhere: code, docs, commit messages. Use a comma, a hyphen, or a full stop.
 - Match the shell: build on `Button`, `TextField`, `Toggle`, `ConfirmDialog`, and `KeyboardPanel`, and take colours, spacing, and fonts from `qs.Commons`. Never hardcode a colour, a size, or a font.
 - The shell is one process for the whole desktop. Nothing may block it. Every filesystem call belongs in the helper, and the helper must answer on a worker thread.
-- The helper is Python standard library only. No third party imports, no `sudo`, no `pkexec`, no `shell=True`.
+- The helper is Python standard library only. No third party imports, no `sudo`, no `pkexec`, no `shell=True`. The one exception is `bin/omafile-filemanager1`, which needs PyGObject for D-Bus. It is optional, feature detected, and never on the path of a normal file operation.
 - Paths go to the helper as JSON on standard input, never in argv and never through a shell.
 - Keep docs short. Prefer a table to a paragraph. Describe what a thing does, not why.
 

@@ -20,6 +20,7 @@ Only the latest release on `main` receives fixes.
 | Tabs, bookmarks, hidden drives, server addresses | `~/.local/state/omarchy/omafile/state.json` | Plain text. Server addresses are stored, passwords are not |
 | Trashed files | `$XDG_DATA_HOME/Trash` and per volume `.Trash-$uid` | The freedesktop trash, shared with every other file manager |
 | Desktop entry | `~/.local/share/applications/xyzlab.omafile.desktop` | Only while Default file manager is on |
+| D-Bus service file | `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service` | Only while Default file manager is on. Overrides the system file so Show in folder reaches Omafile |
 | Default handler | `xdg-mime` for `inode/directory` | Only while Default file manager is on. Turning it off restores the previous handler |
 | Clipboard | `wl-copy` | Only when you choose Copy path |
 
@@ -28,6 +29,7 @@ Only the latest release on `main` receives fixes.
 | Command | When |
 | --- | --- |
 | `bin/omafile-helper` | Always. One long lived Python process that does every filesystem operation |
+| `bin/omafile-filemanager1` | Only while Default file manager is on. Started by D-Bus when another app asks to show a file, exits after two idle minutes |
 | `lsblk`, `findmnt` | Listing drives, every 15 seconds while the shell runs |
 | `gio open` | Opening a file with its default application |
 | `gio mount` | Connecting to or disconnecting from a network server |
@@ -38,6 +40,12 @@ Only the latest release on `main` receives fixes.
 | `xdg-terminal-exec`, `omarchy-launch-editor` | Only when you choose Open in terminal or Open in editor |
 
 Every one of these is spawned as a fixed argument list. No command Omafile runs is ever assembled into a shell string, so a file name cannot become part of a command.
+
+## Owning org.freedesktop.FileManager1
+
+Turning on Default file manager installs a user D-Bus service file that claims `org.freedesktop.FileManager1`, the interface browsers and editors call for Show in folder. A user service file takes precedence over the system one, so the call reaches Omafile instead of the system file manager.
+
+This is deliberate and reversible. Turning the setting off deletes the service file and the next call goes back to whatever owned the name before. The service only implements `ShowFolders`, `ShowItems`, and `ShowItemProperties`, does nothing but forward a path to `omarchy-shell omafile`, and exits on its own after two idle minutes.
 
 ## Credentials
 
