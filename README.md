@@ -74,7 +74,11 @@ Press F1, or the last toolbar button, for the full list of keyboard shortcuts.
 
 Open Settings from the toolbar or with Ctrl+Comma to turn hidden files, folders-first ordering, image previews, trash behaviour and the sidebar drive list on or off.
 
-Choose Connect to a server in the sidebar to mount an SMB share, an SFTP host or a WebDAV server. Connections use GVFS and need no root. Install `gvfs-smb` for Windows shares if it is missing. Hover a drive in the sidebar and click the eye to hide it; hidden drives come back from Settings.
+The Network section of the sidebar holds everything remote. Choose Connect to a server to mount an SMB share, an SFTP host, FTP or WebDAV. Servers you have used before are listed there so one click reconnects, and any server the network advertises appears alongside them. Right click a connected share to disconnect it. Connections use GVFS and need no root; install `gvfs-smb` for Windows shares if it is missing.
+
+Hover a drive in the sidebar and click the eye to hide it. Hidden drives come back from Settings.
+
+Settings also chooses whether Omafile opens as a normal window or as a popup panel centred over the desktop that closes when you click away.
 
 Right click a folder and choose Bookmark this folder to pin it to the sidebar. Remove a bookmark with the cross beside it.
 
