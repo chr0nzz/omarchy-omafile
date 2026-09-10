@@ -33,9 +33,14 @@ Item {
     })
   }
 
+  readonly property string raiseCommand:
+    "(function() local p = hl.get_cursor_pos() "
+    + "hl.dispatch(hl.dsp.focus({ window = \"title:^Omafile$\" })) "
+    + "return hl.dsp.cursor.move(p) end)()"
+
   function raiseWindow() {
     if (host.asPopup) return
-    Hyprland.dispatch("hl.dsp.focus({ window = \"title:^Omafile$\" })")
+    Hyprland.dispatch(host.raiseCommand)
   }
 
   function close() {
