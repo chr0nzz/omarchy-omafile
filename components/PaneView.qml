@@ -261,9 +261,11 @@ Item {
     rebuild()
   }
 
-  onShowHiddenChanged: reload()
-  onFilterChanged: rebuild()
-  onDirsFirstChanged: rebuild()
+  property bool ready: true
+
+  onShowHiddenChanged: if (ready) reload()
+  onFilterChanged: if (ready) rebuild()
+  onDirsFirstChanged: if (ready) rebuild()
 
   Component.onDestruction: {
     if (service && _watchId) service.unwatch(_watchId, _watchPath)
