@@ -190,11 +190,11 @@ Item {
                       return
                     }
                     if (modelData.connect === true) {
-                      sidebar.connectServer()
+                      sidebar.connectServer("")
                       return
                     }
                     if (modelData.server === true) {
-                      sidebar.connectServer(modelData.uri)
+                      sidebar.connectServer(String(modelData.uri || ""))
                       return
                     }
                     if (mouse.button === Qt.RightButton && modelData.mounted === true) {
