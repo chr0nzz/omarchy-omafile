@@ -12,7 +12,7 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * Freedesktop trash integration, compatible with GNOME Files
 * Recursive file search across directories
 * Image previews in both list and grid view
-* Bookmarks for the folders you use most
+* Recent files, and bookmarks for the folders you use most
 * Connect to SMB, SFTP, WebDAV and other servers
 * Settings inside the window, no config file editing
 * Bar widget with places, drives, transfers, and trash overview
@@ -88,6 +88,8 @@ xdg-mime query default inode/directory
 ```
 
 Right click a folder and choose Bookmark this folder to pin it to the sidebar. Remove a bookmark with the cross beside it.
+
+Recent in Places lists the files you opened most recently, newest first, drawn from the same history the rest of the desktop uses. Opening one takes you straight to the file; there is no folder to go up to, so use a place or a bookmark to leave.
 
 When a copy or move finds a file of the same name, Omafile asks what to do. Choose with the mouse, or press R to replace, K to keep both, S to skip and A to skip every remaining conflict. Escape skips the file.
 

@@ -12,7 +12,10 @@ Item {
   property bool findMode: false
   property bool editing: false
   property bool filterOpen: false
-  readonly property var crumbs: Model.breadcrumbs(Model.collapseTilde(path, home))
+  readonly property bool virtualView: path === "recent:"
+  readonly property var crumbs: virtualView
+    ? [{ label: "Recent", path: "recent:" }]
+    : Model.breadcrumbs(Model.collapseTilde(path, home))
   readonly property alias filterText: filterInput.text
   readonly property bool filterFocused: filterInput.activeFocus
   readonly property bool pathFocused: pathInput.activeFocus
@@ -88,7 +91,7 @@ Item {
           anchors.fill: parent
           acceptedButtons: Qt.LeftButton
           onClicked: bar.beginEdit()
-          enabled: !bar.editing
+          enabled: !bar.editing && !bar.virtualView
         }
 
         Item {

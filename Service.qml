@@ -244,6 +244,14 @@ Item {
     return request({ op: "rename", path: path, newName: newName }, { onDone: onDone, onError: onError })
   }
 
+  function listRecent(onChunk, onDone, onError) {
+    return request({ op: "recent", limit: 200 }, {
+      onData: function (m) { if (m.t === "entries" && onChunk) onChunk(m.c) },
+      onDone: onDone,
+      onError: onError
+    })
+  }
+
   function searchFiles(rootPath, query, mode, hidden, onHit, onDone, onError) {
     return request({
       op: "search", root: rootPath, query: query, mode: mode || "substring",

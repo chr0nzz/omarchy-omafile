@@ -60,6 +60,7 @@ Item {
     var dirs = service ? service.userDirs : ({})
     var places = []
     places.push({ key: "home", label: "Home", path: home })
+    places.push({ key: "recent", label: "Recent", path: "recent:" })
     var order = ["desktop", "documents", "downloads", "music", "pictures", "videos"]
     var labels = {
       desktop: "Desktop", documents: "Documents", downloads: "Downloads",

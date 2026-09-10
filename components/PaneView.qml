@@ -37,6 +37,7 @@ Item {
   property bool searchTruncated: false
   property int _searchId: 0
   property int _generation: 0
+  readonly property bool virtualView: pane.path === "recent:"
   property int _listId: 0
   property int _watchId: 0
   property string _watchPath: ""
@@ -79,7 +80,10 @@ Item {
   }
 
   function navigate(target, recordHistory) {
-    var next = Model.normalizePath(Model.expandTilde(String(target || ""), Quickshell.env("HOME") || ""))
+    var raw = String(target || "")
+    var next = raw === "recent:"
+      ? raw
+      : Model.normalizePath(Model.expandTilde(raw, Quickshell.env("HOME") || ""))
     if (!next) return
     if (pane.searching) {
       if (_searchId && service) service.cancel(_searchId)
@@ -119,6 +123,7 @@ Item {
   }
 
   function goUp() {
+    if (pane.virtualView) return
     var parent = Model.parentPath(pane.path)
     if (parent === pane.path) return
     var leaving = Model.basename(pane.path)
@@ -199,8 +204,56 @@ Item {
     }
   }
 
+  function loadRecent() {
+    if (!service) return
+    if (_listId) service.cancel(_listId)
+    var generation = ++pane._generation
+    _pendingChunks = []
+    entries = []
+    rows = []
+    selection = ({})
+    cursorIndex = -1
+    anchorIndex = -1
+    errorMessage = ""
+    loading = true
+    total = 0
+    rebuildTimer.stop()
+
+    if (_watchId) {
+      service.unwatch(_watchId, _watchPath)
+      _watchId = 0
+      _watchPath = ""
+    }
+
+    _listId = service.listRecent(
+      function (chunk) {
+        if (generation !== pane._generation) return
+        var acc = pane._pendingChunks
+        for (var i = 0; i < chunk.length; i++) acc.push(chunk[i])
+        if (!rebuildTimer.running) rebuildTimer.start()
+      },
+      function (msg) {
+        if (generation !== pane._generation) return
+        pane.loading = false
+        pane.total = Number(msg.total) || 0
+        pane.flushChunks()
+        pane.statusChanged()
+      },
+      function (msg) {
+        if (generation !== pane._generation) return
+        pane.loading = false
+        if (String(msg.code || "") !== "ECANCELED")
+          pane.errorMessage = String(msg.message || "Could not read recent files")
+        pane.statusChanged()
+      })
+  }
+
   function reload() {
     if (!service || !pane.path) return
+    if (pane.virtualView) {
+      loadRecent()
+      return
+    }
     if (pane.searching) return
     if (_listId) service.cancel(_listId)
     _pendingChunks = []
@@ -259,8 +312,10 @@ Item {
   }
 
   function rebuild() {
-    var filtered = (pane.searching || !pane.filter) ? entries : Model.filterRaw(entries, pane.filter)
-    if (!pane.searching && Model.isDefaultOrder(pane.sortBy, pane.descending, pane.dirsFirst))
+    var filtered = ((pane.searching || pane.virtualView) || !pane.filter)
+      ? entries : Model.filterRaw(entries, pane.filter)
+    if (!pane.searching && !pane.virtualView
+      && Model.isDefaultOrder(pane.sortBy, pane.descending, pane.dirsFirst))
       rows = filtered
     else
       rows = Model.sortRaw(filtered, pane.sortBy, pane.descending, pane.dirsFirst)
@@ -763,7 +818,9 @@ Item {
     Text {
       anchors.centerIn: parent
       visible: !pane.loading && pane.errorMessage === "" && pane.rows.length === 0
-      text: pane.searching ? "No matches" : (pane.filter ? "Nothing matches" : "Empty folder")
+      text: pane.searching ? "No matches"
+        : (pane.virtualView ? "Nothing opened recently"
+          : (pane.filter ? "Nothing matches" : "Empty folder"))
       color: Util.alpha(pane.fg, 0.45)
       font.family: Style.font.family
       font.pixelSize: Style.font.body

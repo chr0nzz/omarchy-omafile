@@ -528,7 +528,7 @@ Item {
       else doTrash()
       return true
     }
-    if (event.key === Qt.Key_Backspace) { p.goUp(); return true }
+    if (event.key === Qt.Key_Backspace) { if (!p.virtualView) p.goUp(); return true }
     if (alt && event.key === Qt.Key_Left) { p.goBack(); return true }
     if (alt && event.key === Qt.Key_Right) { p.goForward(); return true }
     if (alt && event.key === Qt.Key_Up) { p.goUp(); return true }

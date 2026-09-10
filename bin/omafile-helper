@@ -13,6 +13,7 @@ import shutil
 import stat
 import struct
 import subprocess
+import xml.etree.ElementTree
 import sys
 import threading
 import time
@@ -1355,6 +1356,61 @@ def op_setdefaultfm(req, cancel_event):
           "isOmafile": current_default_handler() == DESKTOP_ID, "previous": ""})
 
 
+RECENT_FILE = os.path.join(
+    os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share"),
+    "recently-used.xbel")
+
+
+def recent_rows(limit):
+    try:
+        tree = xml.etree.ElementTree.parse(RECENT_FILE)
+    except (OSError, xml.etree.ElementTree.ParseError):
+        return []
+    marks = []
+    for bookmark in tree.getroot().findall("bookmark"):
+        href = bookmark.get("href") or ""
+        if not href.startswith("file://"):
+            continue
+        raw = percent_decode(href[7:])
+        marks.append((bookmark.get("visited") or bookmark.get("modified") or "", raw))
+    marks.sort(key=lambda item: item[0], reverse=True)
+    rows = []
+    seen = set()
+    for visited, path_bytes in marks:
+        if path_bytes in seen:
+            continue
+        seen.add(path_bytes)
+        try:
+            lst = os.lstat(path_bytes)
+        except OSError:
+            continue
+        path_str = to_str(path_bytes)
+        kind, size, link_target = classify(path_bytes, lst)
+        rows.append([
+            os.path.basename(path_str) or path_str, kind, size,
+            int(lst.st_mtime), lst.st_mode, link_target, path_str,
+        ])
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def op_recent(req, cancel_event):
+    req_id = req["id"]
+    try:
+        limit = int(req.get("limit") or 200)
+    except (TypeError, ValueError):
+        limit = 200
+    rows = recent_rows(max(1, limit))
+    chunk_size = 200
+    for i in range(0, len(rows), chunk_size):
+        if cancel_event.is_set():
+            send_error(req_id, "ECANCELED", "cancelled")
+            return
+        emit({"id": req_id, "t": "entries", "c": rows[i:i + chunk_size]})
+    send_done(req_id, total=len(rows))
+
+
 def op_netdiscover(req):
     req_id = req["id"]
     found = []
@@ -1610,6 +1666,7 @@ CANCELLABLE_OPS = {
     "copy": lambda r, c: op_copy_move(r, c, False),
     "move": lambda r, c: op_copy_move(r, c, True),
     "mounturi": op_mounturi,
+    "recent": op_recent,
     "setdefaultfm": op_setdefaultfm,
     "unmounturi": op_unmounturi,
 }
