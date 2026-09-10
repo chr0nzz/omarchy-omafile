@@ -5,6 +5,7 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 import "Icons.js" as Icons
+import "components"
 
 Panel {
   id: root
@@ -166,11 +167,11 @@ Panel {
       Repeater {
         model: root.placeRows()
 
-        delegate: PanelActionButton {
+        delegate: PlaceRow {
           required property var modelData
           width: column.width
-          text: modelData.label
-          iconText: Icons.placeGlyph(modelData.key)
+          label: modelData.label
+          glyph: Icons.placeGlyph(modelData.key)
           onClicked: root.openPath(modelData.path)
         }
       }
@@ -184,11 +185,11 @@ Panel {
       Repeater {
         model: root.recentRows()
 
-        delegate: PanelActionButton {
+        delegate: PlaceRow {
           required property var modelData
           width: column.width
-          text: modelData.label
-          iconText: Icons.placeGlyph("recent")
+          label: modelData.label
+          glyph: Icons.placeGlyph("recent")
           onClicked: root.openPath(modelData.path)
         }
       }
@@ -212,10 +213,10 @@ Panel {
             width: parent.width
             spacing: Style.space(2)
 
-            PanelActionButton {
+            PlaceRow {
               width: parent.width
-              text: modelData.label
-              iconText: Icons.placeGlyph(modelData.key)
+              label: modelData.label
+              glyph: Icons.placeGlyph(modelData.key)
               onClicked: root.openPath(modelData.path)
             }
 
@@ -318,14 +319,17 @@ Panel {
 
       PanelSeparator { width: parent.width }
 
-      PanelActionButton {
+      PlaceRow {
         width: parent.width
-        text: root.confirmEmpty
+        label: root.confirmEmpty
           ? "Really empty the trash?"
           : (root.service && root.service.trashCount > 0
-            ? "Trash  " + Model.formatCount(root.service.trashCount, "item", "items")
-            : "Trash is empty")
-        iconText: Icons.placeGlyph("trash")
+            ? "Trash" : "Trash is empty")
+        trailing: root.service && root.service.trashCount > 0 && !root.confirmEmpty
+          ? String(root.service.trashCount) : ""
+        glyph: Icons.placeGlyph("trash")
+        foreground: root.confirmEmpty ? Color.urgent : Color.popups.text
+        enabled: root.service !== null && root.service.trashCount > 0
         onClicked: {
           if (!root.service) return
           if (root.service.trashCount === 0) return
