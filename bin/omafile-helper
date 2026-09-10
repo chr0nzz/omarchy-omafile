@@ -1208,12 +1208,40 @@ def flatten_lsblk(devices):
         out.extend(flatten_lsblk(d.get("children")))
     return out
 
+NETWORK_FILESYSTEMS = frozenset([
+    "cifs", "smb3", "nfs", "nfs4", "sshfs", "fuse.sshfs", "davfs", "fuse.rclone",
+    "fuse.gvfsd-fuse", "9p", "ceph", "glusterfs",
+])
+
+USER_VOLUME_ROOTS = ("/mnt", "/media", "/run/media")
+
+PSEUDO_FILESYSTEMS = frozenset([
+    "proc", "sysfs", "devtmpfs", "devpts", "cgroup", "cgroup2", "securityfs",
+    "pstore", "bpf", "configfs", "debugfs", "tracefs", "fusectl", "mqueue",
+    "hugetlbfs", "autofs", "binfmt_misc", "efivarfs", "ramfs", "squashfs",
+])
+
+
+def is_user_volume(target, fstype):
+    if not target or target == "/":
+        return False
+    if fstype in PSEUDO_FILESYSTEMS:
+        return False
+    for root in USER_VOLUME_ROOTS:
+        if target == root:
+            return False
+        if target.startswith(root + "/"):
+            return True
+    return False
+
+
 def op_drives(req):
     req_id = req["id"]
     drives = []
     lsblk_data = run_tool(["lsblk", "-J", "-b", "-o", "NAME,PATH,LABEL,SIZE,FSTYPE,MOUNTPOINT,RM"])
     findmnt_data = run_tool(["findmnt", "-J", "-b"])
     space_by_mount = {}
+    mounted_volumes = []
     if findmnt_data:
         def walk(fs_list):
             for fs in fs_list or []:
@@ -1224,6 +1252,7 @@ def op_drives(req):
                         space_by_mount[tgt] = (st.f_frsize * st.f_blocks, st.f_frsize * st.f_bavail)
                     except OSError:
                         pass
+                    mounted_volumes.append((tgt, fs.get("source"), fs.get("fstype")))
                 walk(fs.get("children"))
         walk(findmnt_data.get("filesystems"))
     if lsblk_data:
@@ -1238,6 +1267,24 @@ def op_drives(req):
                 "size": dev.get("size"), "fstype": dev.get("fstype"), "mount": mount,
                 "removable": bool(dev.get("rm")), "free": free, "total": total,
             })
+    seen_mounts = set(d["mount"] for d in drives if d.get("mount"))
+    for target, source, fstype in mounted_volumes:
+        if target in seen_mounts:
+            continue
+        if not is_user_volume(target, fstype):
+            continue
+        total = None
+        free = None
+        if target in space_by_mount:
+            total, free = space_by_mount[target]
+        drives.append({
+            "name": os.path.basename(target) or target, "path": target,
+            "label": os.path.basename(target) or target, "size": total,
+            "fstype": fstype, "mount": target, "removable": False,
+            "network": fstype in NETWORK_FILESYSTEMS,
+            "free": free, "total": total,
+        })
+        seen_mounts.add(target)
     emit({"id": req_id, "t": "drives", "drives": drives})
     send_done(req_id)
 

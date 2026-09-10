@@ -75,7 +75,7 @@ Item {
         if (!mountableDrive(drive)) continue
         if (service && service.driveHidden(String(drive.mount))) continue
         vols.push({
-          key: drive.removable ? "usb" : "drive",
+          key: drive.network === true ? "network" : (drive.removable ? "usb" : "drive"),
           label: String(drive.label || drive.name || drive.mount),
           path: String(drive.mount),
           device: String(drive.path || ""),
@@ -152,7 +152,8 @@ Item {
                       return
                     }
                     if (mouse.button === Qt.RightButton) {
-                      if (modelData.key === "drive" || modelData.key === "usb")
+                      if (modelData.key === "drive" || modelData.key === "usb"
+                        || modelData.key === "network")
                         sidebar.hideDrive(modelData.path)
                       else if (modelData.bookmark === true)
                         sidebar.removeBookmark(modelData.path)
@@ -207,7 +208,8 @@ Item {
 
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: (modelData.key === "drive" || modelData.key === "usb")
+                    visible: (modelData.key === "drive" || modelData.key === "usb"
+                      || modelData.key === "network")
                       && modelData.unhide !== true && placeHover.hovered
                     text: Icons.actionGlyph("hidden")
                     color: hideHover.hovered ? Color.urgent : Util.alpha(Color.foreground, 0.35)

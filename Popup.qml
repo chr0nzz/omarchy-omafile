@@ -109,7 +109,7 @@ Panel {
       var d = list[i]
       if (!mountableDrive(d)) continue
       rows.push({
-        key: d.removable ? "usb" : "drive",
+        key: d.network === true ? "network" : (d.removable ? "usb" : "drive"),
         label: String(d.label || d.name || d.mount),
         path: String(d.mount),
         device: String(d.path || ""),
