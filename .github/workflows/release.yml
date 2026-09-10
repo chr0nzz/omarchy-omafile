@@ -68,6 +68,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MARKETPLACE_TOKEN }}
         run: |
+          if ! curl -sfL --max-time 30 https://plugins.omarchy.org/catalog.json -o /tmp/catalog.json; then
+            echo "Could not read the marketplace catalog, so the listing state is unknown."
+            echo "Open the verification issue by hand if the plugin is already listed."
+            exit 0
+          fi
+          listed=$(jq -r --arg id "xyzlab.omafile" '[.plugins[] | select(type == "object") | .id] | index($id) != null' /tmp/catalog.json)
+          if [ "$listed" != "true" ]; then
+            echo "xyzlab.omafile is not listed on the marketplace yet."
+            echo "Verification is only for a plugin that is already listed."
+            echo "Run the Submit to marketplace workflow for the first listing, then tag again."
+            exit 0
+          fi
           sha=$(git rev-parse "${GITHUB_REF_NAME}^{commit}")
           body=$(printf '%s\n' \
             "### Verification action" "" "Verify and publish a newer upstream commit" "" \
