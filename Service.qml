@@ -32,6 +32,7 @@ Item {
   property real trashBytes: 0
   property var recent: []
   property var pinned: []
+  property var hiddenDrives: []
   property var session: null
 
   signal directoryChanged(string path, var names)
@@ -417,6 +418,32 @@ Item {
     saveSoon()
   }
 
+  function driveHidden(key) {
+    var id = String(key || "")
+    for (var i = 0; i < hiddenDrives.length; i++)
+      if (String(hiddenDrives[i]) === id) return true
+    return false
+  }
+
+  function toggleHiddenDrive(key) {
+    var id = String(key || "")
+    if (!id) return
+    var next = []
+    var found = false
+    for (var i = 0; i < hiddenDrives.length; i++) {
+      if (String(hiddenDrives[i]) === id) found = true
+      else next.push(hiddenDrives[i])
+    }
+    if (!found) next.push(id)
+    hiddenDrives = next
+    persist()
+  }
+
+  function showAllDrives() {
+    hiddenDrives = []
+    persist()
+  }
+
   function togglePinned(path) {
     var next = []
     var found = false
@@ -426,7 +453,7 @@ Item {
     }
     if (!found) next.push(path)
     pinned = next
-    saveSoon()
+    persist()
   }
 
   function openWindow(path) {
@@ -451,6 +478,7 @@ Item {
       version: 1,
       recent: recent,
       pinned: pinned,
+      hiddenDrives: hiddenDrives,
       session: session
     }
     stateFile.setText(JSON.stringify(payload, null, 2))
@@ -466,6 +494,7 @@ Item {
     if (!parsed || typeof parsed !== "object") return
     if (parsed.recent) recent = parsed.recent
     if (parsed.pinned) pinned = parsed.pinned
+    if (parsed.hiddenDrives) hiddenDrives = parsed.hiddenDrives
     if (parsed.session) session = parsed.session
   }
 

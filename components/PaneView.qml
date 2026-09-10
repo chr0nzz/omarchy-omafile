@@ -367,6 +367,10 @@ Item {
 
   property bool ready: true
 
+  onServiceChanged: {
+    if (service && pane.path && !loading && rows.length === 0) reload()
+  }
+
   onShowHiddenChanged: if (ready) reload()
   onFilterChanged: if (ready) rebuild()
   onDirsFirstChanged: if (ready) rebuild()

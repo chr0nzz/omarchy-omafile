@@ -18,6 +18,8 @@ Item {
   signal navigate(string target)
   signal openInNewTab(string target)
   signal removeBookmark(string target)
+  signal hideDrive(string key)
+  signal showAllDrives()
 
   function usablePlace(value, homePath) {
     var p = String(value || "")
@@ -71,6 +73,7 @@ Item {
       for (var d = 0; d < drives.length; d++) {
         var drive = drives[d]
         if (!mountableDrive(drive)) continue
+        if (service && service.driveHidden(String(drive.mount))) continue
         vols.push({
           key: drive.removable ? "usb" : "drive",
           label: String(drive.label || drive.name || drive.mount),
@@ -81,6 +84,9 @@ Item {
           total: Number(drive.total) || 0
         })
       }
+      var hiddenCount = service && service.hiddenDrives ? service.hiddenDrives.length : 0
+      if (hiddenCount > 0)
+        vols.push({ key: "drive", label: "Show " + hiddenCount + " hidden", path: "", unhide: true })
       if (vols.length > 0) out.push({ title: "Drives", rows: vols })
     }
     return out
@@ -139,8 +145,19 @@ Item {
 
                 MouseArea {
                   anchors.fill: parent
-                  acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                  acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                   onClicked: function (mouse) {
+                    if (modelData.unhide === true) {
+                      sidebar.showAllDrives()
+                      return
+                    }
+                    if (mouse.button === Qt.RightButton) {
+                      if (modelData.key === "drive" || modelData.key === "usb")
+                        sidebar.hideDrive(modelData.path)
+                      else if (modelData.bookmark === true)
+                        sidebar.removeBookmark(modelData.path)
+                      return
+                    }
                     if (mouse.button === Qt.MiddleButton) sidebar.openInNewTab(modelData.path)
                     else sidebar.navigate(modelData.path)
                   }
@@ -185,6 +202,23 @@ Item {
                     MouseArea {
                       anchors.fill: parent
                       onClicked: sidebar.removeBookmark(modelData.path)
+                    }
+                  }
+
+                  Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: (modelData.key === "drive" || modelData.key === "usb")
+                      && modelData.unhide !== true && placeHover.hovered
+                    text: Icons.actionGlyph("hidden")
+                    color: hideHover.hovered ? Color.urgent : Util.alpha(Color.foreground, 0.35)
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.iconSmall
+
+                    HoverHandler { id: hideHover }
+
+                    MouseArea {
+                      anchors.fill: parent
+                      onClicked: sidebar.hideDrive(modelData.path)
                     }
                   }
 

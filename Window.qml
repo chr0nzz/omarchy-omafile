@@ -580,6 +580,13 @@ Item {
     restoreSession()
   }
 
+  onServiceChanged: {
+    if (!service) return
+    if (window.visible) ensureSession()
+    if (paneA.path && paneA.rows.length === 0 && !paneA.loading) paneA.reload()
+    if (root.split && paneB.path && paneB.rows.length === 0 && !paneB.loading) paneB.reload()
+  }
+
   Connections {
     target: root.service
     enabled: root.service !== null
@@ -748,6 +755,8 @@ Item {
             onNavigate: function (target) { root.activePane().navigate(target) }
             onOpenInNewTab: function (target) { root.newTab(root.activeSide, target) }
             onRemoveBookmark: function (target) { root.service.togglePinned(target) }
+            onHideDrive: function (key) { root.service.toggleHiddenDrive(key) }
+            onShowAllDrives: root.service.showAllDrives()
           }
 
           Row {
