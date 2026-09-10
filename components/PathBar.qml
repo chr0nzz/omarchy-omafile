@@ -31,12 +31,20 @@ Item {
       onClicked: bar.editRequested()
     }
 
-    Row {
+    Item {
+      id: viewport
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
       anchors.leftMargin: Style.space(8)
       anchors.rightMargin: Style.space(8)
+      height: parent.height
+      clip: true
+
+    Row {
+      id: crumbRow
+      anchors.verticalCenter: parent.verticalCenter
+      x: crumbRow.implicitWidth > viewport.width ? viewport.width - crumbRow.implicitWidth : 0
       spacing: 0
 
       Repeater {
@@ -81,6 +89,7 @@ Item {
           }
         }
       }
+    }
     }
   }
 }
