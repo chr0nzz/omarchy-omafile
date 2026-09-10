@@ -463,13 +463,14 @@ Item {
     var p = activePane()
     if (p) p.filter = ""
     findMode = true
-    searchField.text = ""
-    searchField.forceActiveFocus()
+    pathBar.clearFilter()
+    pathBar.focusFilter()
   }
 
   function exitFind() {
     findDebounce.stop()
     findMode = false
+    pathBar.clearFilter()
     var p = activePane()
     if (p) {
       p.filter = ""
@@ -510,12 +511,10 @@ Item {
     if (event.key === Qt.Key_Escape) {
       if (p.searching || findMode) {
         exitFind()
-        searchField.text = ""
         return true
       }
       if (p.filter !== "") {
-        p.filter = ""
-        searchField.text = ""
+        pathBar.clearFilter()
         return true
       }
       requestClose()
@@ -523,7 +522,7 @@ Item {
     }
     if (ctrl && event.key === Qt.Key_T) { newTab(activeSide, null); return true }
     if (ctrl && event.key === Qt.Key_W) { closeTab(activeSide, activeIndexFor(activeSide)); return true }
-    if (ctrl && event.key === Qt.Key_L) { showDialog("path", "Go to", p.path, null); return true }
+    if (ctrl && event.key === Qt.Key_L) { pathBar.beginEdit(); return true }
     if (ctrl && event.key === Qt.Key_H) { p.showHidden = !p.showHidden; rememberSession(); return true }
     if (ctrl && event.key === Qt.Key_A) { p.selectAll(); return true }
     if (ctrl && event.key === Qt.Key_C) { doCopy(); return true }
@@ -569,7 +568,7 @@ Item {
     repeat: false
     onTriggered: {
       if (!root.findMode) return
-      root.activePane().startSearch(searchField.text)
+      root.activePane().startSearch(pathBar.filterText)
     }
   }
 
@@ -656,33 +655,6 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(4)
 
-            TextField {
-              id: searchField
-              anchors.verticalCenter: parent.verticalCenter
-              width: Style.space(160)
-              placeholderText: root.findMode ? "Search in folder" : "Filter"
-              accent: root.findMode ? Color.urgent : Color.accent
-              onTextChanged: {
-                if (root.findMode) {
-                  findDebounce.restart()
-                  return
-                }
-                var p = root.activePane()
-                if (p) p.filter = text
-              }
-              onAccepted: {
-                if (root.findMode) {
-                  findDebounce.stop()
-                  root.activePane().startSearch(text)
-                }
-              }
-              Keys.onEscapePressed: {
-                root.exitFind()
-                text = ""
-                keyCatcher.forceActiveFocus()
-              }
-            }
-
             Button {
               anchors.verticalCenter: parent.verticalCenter
               iconText: Icons.actionGlyph(root.activePane() && root.activePane().view === "grid" ? "list" : "grid")
@@ -731,8 +703,32 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             path: root.activePane() ? root.activePane().path : ""
             home: root.home
-            onNavigate: function (target) { root.activePane().navigate(target) }
-            onEditRequested: root.showDialog("path", "Go to", root.activePane().path, null)
+            findMode: root.findMode
+
+            onNavigate: function (target) {
+              root.activePane().navigate(target)
+              keyCatcher.forceActiveFocus()
+            }
+
+            onFilterEdited: function (text) {
+              if (root.findMode) {
+                findDebounce.restart()
+                return
+              }
+              var p = root.activePane()
+              if (p) p.filter = text
+            }
+
+            onSearchSubmitted: function (text) {
+              if (!root.findMode) return
+              findDebounce.stop()
+              root.activePane().startSearch(text)
+            }
+
+            onDismissed: {
+              root.exitFind()
+              keyCatcher.forceActiveFocus()
+            }
           }
         }
 
