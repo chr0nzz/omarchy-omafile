@@ -231,7 +231,11 @@ Item {
 
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - Style.space(46)
+                    width: parent.width - Style.space(
+                      (modelData.removable === true || modelData.bookmark === true
+                        || modelData.key === "drive" || modelData.key === "usb"
+                        || (modelData.key === "network" && modelData.mounted === true))
+                      ? 46 : 30)
                     text: modelData.label
                     color: sidebar.currentPath === modelData.path
                       ? Color.foreground : Util.alpha(Color.foreground, 0.75)
