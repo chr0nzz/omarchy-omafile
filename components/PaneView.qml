@@ -538,13 +538,34 @@ Item {
                 anchors.rightMargin: Style.space(8)
                 spacing: Style.space(8)
 
-                Text {
+                Item {
                   anchors.verticalCenter: parent.verticalCenter
-                  text: Icons.glyphFor(row.entry)
-                  color: row.entry.isBroken ? Color.urgent
-                    : (row.entry.isDir ? pane.accent : Util.alpha(pane.fg, 0.75))
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.icon
+                  width: Style.space(18)
+                  height: Style.space(18)
+
+                  Text {
+                    anchors.centerIn: parent
+                    visible: !rowThumb.visible
+                    text: Icons.glyphFor(row.entry)
+                    color: row.entry.isBroken ? Color.urgent
+                      : (row.entry.isDir ? pane.accent : Util.alpha(pane.fg, 0.75))
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.icon
+                  }
+
+                  Image {
+                    id: rowThumb
+                    anchors.fill: parent
+                    visible: pane.previewable(row.entry) && status === Image.Ready
+                    source: pane.previewable(row.entry) ? Util.fileUrl(row.entry.path) : ""
+                    sourceSize.width: Style.space(36)
+                    sourceSize.height: Style.space(36)
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                    cache: true
+                    smooth: true
+                    mipmap: true
+                  }
                 }
 
                 Text {
