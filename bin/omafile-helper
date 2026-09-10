@@ -1,0 +1,1400 @@
+#!/usr/bin/env python3
+import ctypes
+import errno
+import fnmatch
+import grp
+import json
+import mimetypes
+import os
+import pwd
+import re
+import select
+import shutil
+import stat
+import struct
+import subprocess
+import sys
+import threading
+import time
+
+VERSION = "0.1.0"
+HOME = os.path.expanduser("~")
+
+STDOUT_LOCK = threading.Lock()
+
+def emit(obj):
+    line = json.dumps(obj, ensure_ascii=True)
+    with STDOUT_LOCK:
+        sys.stdout.write(line)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+def send_error(req_id, code, message, path=None):
+    obj = {"id": req_id, "t": "error", "code": code, "message": message}
+    if path is not None:
+        obj["path"] = path
+    emit(obj)
+
+def send_done(req_id, **fields):
+    obj = {"id": req_id, "t": "done"}
+    obj.update(fields)
+    emit(obj)
+
+def errno_code(e):
+    if isinstance(e, OSError) and e.errno:
+        return errno.errorcode.get(e.errno, "EINTERNAL")
+    return "EINTERNAL"
+
+def to_bytes(p):
+    return os.fsencode(p)
+
+def to_str(b):
+    return os.fsdecode(b)
+
+INFLIGHT_LOCK = threading.Lock()
+INFLIGHT = {}
+
+def register_inflight(req_id, kind):
+    ev = threading.Event()
+    with INFLIGHT_LOCK:
+        INFLIGHT[req_id] = {"cancel": ev, "kind": kind}
+    return ev
+
+def unregister_inflight(req_id):
+    with INFLIGHT_LOCK:
+        INFLIGHT.pop(req_id, None)
+
+CONFLICT_LOCK = threading.Lock()
+PENDING_CONFLICTS = {}
+
+WATCH_LOCK = threading.Lock()
+WATCHES = {}
+
+class Cancelled(Exception):
+    pass
+
+def classify(full_path_bytes, lst):
+    mode = lst.st_mode
+    if stat.S_ISLNK(mode):
+        try:
+            target = os.readlink(full_path_bytes)
+        except OSError:
+            target = b""
+        link_target_str = to_str(target)
+        try:
+            st = os.stat(full_path_bytes)
+        except OSError:
+            return "b", 0, link_target_str
+        if stat.S_ISDIR(st.st_mode):
+            return "L", 0, link_target_str
+        return "l", st.st_size, link_target_str
+    if stat.S_ISDIR(mode):
+        return "d", 0, None
+    if stat.S_ISREG(mode):
+        return "f", lst.st_size, None
+    return "o", getattr(lst, "st_size", 0), None
+
+def op_list(req, cancel_event):
+    req_id = req["id"]
+    path = req.get("path")
+    if not isinstance(path, str):
+        send_error(req_id, "EINVAL", "path required")
+        return
+    hidden = bool(req.get("hidden", False))
+    chunk_size = req.get("chunk") or 500
+    try:
+        chunk_size = int(chunk_size)
+        if chunk_size <= 0:
+            chunk_size = 500
+    except (TypeError, ValueError):
+        chunk_size = 500
+    path_bytes = to_bytes(path)
+    collected = []
+    try:
+        with os.scandir(path_bytes) as it:
+            for entry in it:
+                if cancel_event.is_set():
+                    send_error(req_id, "ECANCELED", "cancelled")
+                    return
+                name_str = to_str(entry.name)
+                if not hidden and name_str.startswith("."):
+                    continue
+                try:
+                    lst = entry.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                kind, size, link_target = classify(entry.path, lst)
+                collected.append([name_str, kind, size, int(lst.st_mtime), lst.st_mode, link_target])
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), path)
+        return
+    collected.sort(key=lambda e: e[0])
+    total = len(collected)
+    for i in range(0, total, chunk_size):
+        if cancel_event.is_set():
+            send_error(req_id, "ECANCELED", "cancelled")
+            return
+        emit({"id": req_id, "t": "entries", "c": collected[i:i + chunk_size]})
+    send_done(req_id, total=total)
+
+INOTIFY_LIB = None
+INOTIFY_AVAILABLE = False
+IN_CLOEXEC = 0o2000000
+IN_NONBLOCK = 0o4000
+IN_CREATE = 0x100
+IN_DELETE = 0x200
+IN_DELETE_SELF = 0x400
+IN_MODIFY = 0x2
+IN_MOVE_SELF = 0x800
+IN_MOVED_FROM = 0x40
+IN_MOVED_TO = 0x80
+IN_ATTRIB = 0x4
+IN_CLOSE_WRITE = 0x8
+IN_Q_OVERFLOW = 0x4000
+WATCH_MASK = (IN_CREATE | IN_DELETE | IN_DELETE_SELF | IN_MODIFY | IN_MOVE_SELF |
+              IN_MOVED_FROM | IN_MOVED_TO | IN_ATTRIB | IN_CLOSE_WRITE)
+EVENT_FMT = "iIII"
+EVENT_SIZE = struct.calcsize(EVENT_FMT)
+
+try:
+    INOTIFY_LIB = ctypes.CDLL("libc.so.6", use_errno=True)
+    INOTIFY_LIB.inotify_init1.restype = ctypes.c_int
+    INOTIFY_LIB.inotify_init1.argtypes = [ctypes.c_int]
+    INOTIFY_LIB.inotify_add_watch.restype = ctypes.c_int
+    INOTIFY_LIB.inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+    INOTIFY_LIB.inotify_rm_watch.restype = ctypes.c_int
+    INOTIFY_LIB.inotify_rm_watch.argtypes = [ctypes.c_int, ctypes.c_int]
+except (OSError, AttributeError):
+    INOTIFY_LIB = None
+
+def try_inotify_init():
+    if INOTIFY_LIB is None:
+        return None
+    fd = INOTIFY_LIB.inotify_init1(IN_CLOEXEC | IN_NONBLOCK)
+    if fd < 0:
+        return None
+    return fd
+
+_probe_fd = try_inotify_init()
+INOTIFY_AVAILABLE = _probe_fd is not None
+if _probe_fd is not None:
+    os.close(_probe_fd)
+
+class WatchHandle:
+    def __init__(self, req_id, path_bytes):
+        self.req_id = req_id
+        self.path_bytes = path_bytes
+        self.stop_event = threading.Event()
+        self.thread = None
+        self.fd = -1
+        self.wd = -1
+        self.mode = None
+
+def inotify_loop(handle):
+    pending = set()
+    first_pending_time = None
+    fd = handle.fd
+    while not handle.stop_event.is_set():
+        try:
+            r, _, _ = select.select([fd], [], [], 0.05)
+        except (OSError, ValueError):
+            break
+        if handle.stop_event.is_set():
+            break
+        if r:
+            try:
+                data = os.read(fd, 65536)
+            except OSError:
+                break
+            offset = 0
+            overflow = False
+            while offset + EVENT_SIZE <= len(data):
+                wd, mask, cookie, length = struct.unpack_from(EVENT_FMT, data, offset)
+                name = b""
+                if length:
+                    raw = data[offset + EVENT_SIZE:offset + EVENT_SIZE + length]
+                    name = raw.split(b"\0", 1)[0]
+                offset += EVENT_SIZE + length
+                if mask & IN_Q_OVERFLOW:
+                    overflow = True
+                    continue
+                if name:
+                    pending.add(name)
+                if first_pending_time is None:
+                    first_pending_time = time.monotonic()
+            if overflow:
+                pending.clear()
+                first_pending_time = None
+                emit({"id": handle.req_id, "t": "changed", "path": to_str(handle.path_bytes), "names": []})
+        if pending and first_pending_time is not None and time.monotonic() - first_pending_time >= 0.12:
+            names = sorted(to_str(n) for n in pending)
+            emit({"id": handle.req_id, "t": "changed", "path": to_str(handle.path_bytes), "names": names})
+            pending.clear()
+            first_pending_time = None
+    try:
+        if handle.wd >= 0:
+            INOTIFY_LIB.inotify_rm_watch(handle.fd, handle.wd)
+    except OSError:
+        pass
+    try:
+        os.close(handle.fd)
+    except OSError:
+        pass
+
+def poll_loop(handle):
+    last_snapshot = None
+    while not handle.stop_event.wait(2.0):
+        snap = None
+        try:
+            snap = {}
+            with os.scandir(handle.path_bytes) as it:
+                for e in it:
+                    try:
+                        st = e.stat(follow_symlinks=False)
+                        snap[e.name] = (st.st_mtime, st.st_size)
+                    except OSError:
+                        pass
+        except OSError:
+            snap = None
+        if last_snapshot is not None and snap is not None and snap != last_snapshot:
+            emit({"id": handle.req_id, "t": "changed", "path": to_str(handle.path_bytes), "names": []})
+        if snap is not None:
+            last_snapshot = snap
+
+def start_watch(req_id, path_bytes):
+    handle = WatchHandle(req_id, path_bytes)
+    fd = try_inotify_init() if INOTIFY_AVAILABLE else None
+    if fd is not None:
+        wd = INOTIFY_LIB.inotify_add_watch(fd, path_bytes, WATCH_MASK)
+        if wd >= 0:
+            handle.fd = fd
+            handle.wd = wd
+            handle.mode = "inotify"
+            handle.thread = threading.Thread(target=inotify_loop, args=(handle,), daemon=True)
+        else:
+            os.close(fd)
+    if handle.mode is None:
+        handle.mode = "poll"
+        handle.thread = threading.Thread(target=poll_loop, args=(handle,), daemon=True)
+    handle.thread.start()
+    return handle
+
+def stop_watch(handle, cancelled=False):
+    handle.stop_event.set()
+    if handle.thread:
+        handle.thread.join(timeout=1.0)
+    if cancelled:
+        send_error(handle.req_id, "ECANCELED", "cancelled")
+    else:
+        send_done(handle.req_id)
+
+def op_watch(req):
+    req_id = req["id"]
+    path = req.get("path")
+    if not isinstance(path, str):
+        send_error(req_id, "EINVAL", "path required")
+        return
+    path_bytes = to_bytes(path)
+    try:
+        if not os.path.isdir(path_bytes):
+            send_error(req_id, "ENOTDIR", "not a directory", path)
+            return
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), path)
+        return
+    old = None
+    with WATCH_LOCK:
+        old = WATCHES.get(path)
+        handle = start_watch(req_id, path_bytes)
+        WATCHES[path] = handle
+    if old:
+        stop_watch(old)
+
+def op_unwatch(req):
+    path = req.get("path")
+    with WATCH_LOCK:
+        handle = WATCHES.pop(path, None)
+    if handle:
+        stop_watch(handle)
+    else:
+        send_error(req["id"], "EINVAL", "no such watch", path)
+
+def op_stat(req):
+    req_id = req["id"]
+    paths = req.get("paths") or []
+    items = []
+    for p in paths:
+        item = {"path": p}
+        try:
+            pb = to_bytes(p)
+            lst = os.lstat(pb)
+            kind, size, link_target = classify(pb, lst)
+            name = to_str(os.path.basename(pb))
+            try:
+                owner = pwd.getpwuid(lst.st_uid).pw_name
+            except KeyError:
+                owner = str(lst.st_uid)
+            try:
+                group = grp.getgrgid(lst.st_gid).gr_name
+            except KeyError:
+                group = str(lst.st_gid)
+            mime, _ = mimetypes.guess_type(name)
+            item.update({
+                "name": name, "kind": kind, "size": size,
+                "mtime": int(lst.st_mtime), "atime": int(lst.st_atime),
+                "ctime": int(lst.st_ctime), "mode": lst.st_mode,
+                "uid": lst.st_uid, "gid": lst.st_gid, "owner": owner, "group": group,
+                "nlink": lst.st_nlink, "inode": lst.st_ino, "dev": lst.st_dev,
+                "mime": mime, "linkTarget": link_target,
+            })
+        except OSError as e:
+            item["error"] = errno_code(e)
+        items.append(item)
+    emit({"id": req_id, "t": "stat", "items": items})
+    send_done(req_id)
+
+def op_du(req, cancel_event):
+    req_id = req["id"]
+    path = req.get("path")
+    if not isinstance(path, str):
+        send_error(req_id, "EINVAL", "path required")
+        return
+    path_bytes = to_bytes(path)
+    total_bytes = 0
+    files = 0
+    dirs = 0
+    last_emit = [time.monotonic()]
+
+    def maybe_emit(final=False):
+        now = time.monotonic()
+        if final or now - last_emit[0] >= 0.25:
+            emit({"id": req_id, "t": "du", "bytes": total_bytes, "files": files, "dirs": dirs, "partial": not final})
+            last_emit[0] = now
+
+    try:
+        root_lst = os.lstat(path_bytes)
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), path)
+        return
+    if stat.S_ISDIR(root_lst.st_mode) and not stat.S_ISLNK(root_lst.st_mode):
+        dirs += 1
+    else:
+        total_bytes += root_lst.st_size
+        files += 1
+        maybe_emit(final=True)
+        send_done(req_id)
+        return
+    stack = [path_bytes]
+    while stack:
+        if cancel_event.is_set():
+            send_error(req_id, "ECANCELED", "cancelled")
+            return
+        current = stack.pop()
+        try:
+            with os.scandir(current) as it:
+                for entry in it:
+                    if cancel_event.is_set():
+                        send_error(req_id, "ECANCELED", "cancelled")
+                        return
+                    try:
+                        lst = entry.stat(follow_symlinks=False)
+                    except OSError:
+                        continue
+                    if stat.S_ISDIR(lst.st_mode):
+                        dirs += 1
+                        stack.append(entry.path)
+                    else:
+                        total_bytes += lst.st_size
+                        files += 1
+                    maybe_emit()
+        except OSError:
+            continue
+    maybe_emit(final=True)
+    send_done(req_id)
+
+def copy_file_data(src_bytes, dst_bytes, progress_cb, cancel_event):
+    src_fd = os.open(src_bytes, os.O_RDONLY)
+    try:
+        dst_fd = os.open(dst_bytes, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o666)
+        try:
+            copied = 0
+            use_cfr = hasattr(os, "copy_file_range")
+            while True:
+                if cancel_event.is_set():
+                    raise Cancelled()
+                if use_cfr:
+                    try:
+                        n = os.copy_file_range(src_fd, dst_fd, 1024 * 1024)
+                    except OSError:
+                        use_cfr = False
+                        continue
+                    if n == 0:
+                        break
+                    copied += n
+                else:
+                    buf = os.read(src_fd, 1024 * 1024)
+                    if not buf:
+                        break
+                    os.write(dst_fd, buf)
+                    copied += len(buf)
+                progress_cb(copied)
+            return copied
+        finally:
+            os.close(dst_fd)
+    finally:
+        os.close(src_fd)
+
+def copy_meta(dst_bytes, lst):
+    try:
+        os.chmod(dst_bytes, stat.S_IMODE(lst.st_mode))
+    except OSError:
+        pass
+    try:
+        os.utime(dst_bytes, ns=(lst.st_atime_ns, lst.st_mtime_ns))
+    except OSError:
+        pass
+
+def unique_dest_name(dest_dir_bytes, name_bytes):
+    if not os.path.lexists(os.path.join(dest_dir_bytes, name_bytes)):
+        return name_bytes
+    stem, ext = os.path.splitext(to_str(name_bytes))
+    n = 1
+    while True:
+        candidate_bytes = to_bytes("%s (%d)%s" % (stem, n, ext))
+        if not os.path.lexists(os.path.join(dest_dir_bytes, candidate_bytes)):
+            return candidate_bytes
+        n += 1
+
+def resolve_conflict(req_id, cancel_event, source_str, dest_str, dest_bytes, conflict_mode, job_state):
+    if job_state.get("applyAll"):
+        return job_state["applyAll"]
+    if conflict_mode != "ask":
+        return conflict_mode
+    try:
+        dlst = os.lstat(dest_bytes)
+        dkind, dsize, _ = classify(dest_bytes, dlst)
+        dmtime = int(dlst.st_mtime)
+    except OSError:
+        dkind, dsize, dmtime = "f", 0, 0
+    ev = threading.Event()
+    with CONFLICT_LOCK:
+        PENDING_CONFLICTS[req_id] = {"event": ev, "action": None, "applyAll": False}
+    emit({"id": req_id, "t": "conflict", "source": source_str, "dest": dest_str,
+          "destKind": dkind, "destSize": dsize, "destMtime": dmtime})
+    while True:
+        if cancel_event.is_set():
+            with CONFLICT_LOCK:
+                PENDING_CONFLICTS.pop(req_id, None)
+            return "cancel"
+        if ev.wait(timeout=0.1):
+            break
+    with CONFLICT_LOCK:
+        info = PENDING_CONFLICTS.pop(req_id, None)
+    action = info["action"] if info else "cancel"
+    if info and info.get("applyAll") and action in ("overwrite", "skip", "rename"):
+        job_state["applyAll"] = action
+    return action
+
+def op_resolve(req):
+    req_id = req["id"]
+    action = req.get("action")
+    apply_all = bool(req.get("applyAll", False))
+    with CONFLICT_LOCK:
+        info = PENDING_CONFLICTS.get(req_id)
+        if info:
+            info["action"] = action
+            info["applyAll"] = apply_all
+            info["event"].set()
+
+def op_copy_move(req, cancel_event, is_move):
+    req_id = req["id"]
+    sources = req.get("sources") or []
+    dest = req.get("dest")
+    conflict_mode = req.get("conflict", "ask")
+    if not sources or not isinstance(dest, str):
+        send_error(req_id, "EINVAL", "sources and dest required")
+        return
+    dest_bytes = to_bytes(dest)
+    try:
+        dest_lst = os.lstat(dest_bytes)
+        if not stat.S_ISDIR(dest_lst.st_mode):
+            send_error(req_id, "EINVAL", "dest is not a directory", dest)
+            return
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), dest)
+        return
+
+    total_bytes = 0
+    total_files = 0
+
+    def prescan(p):
+        nonlocal total_bytes, total_files
+        try:
+            lst = os.lstat(p)
+        except OSError:
+            return
+        total_files += 1
+        if stat.S_ISLNK(lst.st_mode):
+            return
+        if stat.S_ISDIR(lst.st_mode):
+            try:
+                with os.scandir(p) as it:
+                    for e in it:
+                        if cancel_event.is_set():
+                            return
+                        prescan(e.path)
+            except OSError:
+                pass
+        else:
+            total_bytes += lst.st_size
+
+    for s in sources:
+        prescan(to_bytes(s))
+    if cancel_event.is_set():
+        send_error(req_id, "ECANCELED", "cancelled")
+        return
+
+    copied = 0
+    skipped = 0
+    errors = []
+    bytes_done = [0]
+    files_done = [0]
+    start_time = time.monotonic()
+    last_progress = [0.0]
+    job_state = {}
+
+    def emit_progress(current_str, force=False):
+        now = time.monotonic()
+        if force or now - last_progress[0] >= 0.1:
+            elapsed = now - start_time
+            rate = bytes_done[0] / elapsed if elapsed > 0 else 0
+            emit({"id": req_id, "t": "progress", "bytes": bytes_done[0], "total": total_bytes,
+                  "files": files_done[0], "filesTotal": total_files, "current": current_str, "rate": rate})
+            last_progress[0] = now
+
+    def copy_one(src_bytes, dst_bytes):
+        nonlocal copied, skipped
+        if cancel_event.is_set():
+            raise Cancelled()
+        try:
+            lst = os.lstat(src_bytes)
+        except OSError as e:
+            errors.append({"path": to_str(src_bytes), "message": e.strerror or str(e)})
+            return
+        src_str = to_str(src_bytes)
+        final_dst = dst_bytes
+        if os.path.lexists(dst_bytes):
+            action = resolve_conflict(req_id, cancel_event, src_str, to_str(dst_bytes), dst_bytes, conflict_mode, job_state)
+            if action == "cancel":
+                raise Cancelled()
+            if action == "skip":
+                skipped += 1
+                return
+            if action == "rename":
+                parent = os.path.dirname(dst_bytes)
+                base = os.path.basename(dst_bytes)
+                final_dst = os.path.join(parent, unique_dest_name(parent, base))
+            elif action == "overwrite":
+                try:
+                    if os.path.isdir(final_dst) and not os.path.islink(final_dst) and not stat.S_ISDIR(lst.st_mode):
+                        shutil.rmtree(final_dst)
+                    elif not (os.path.isdir(final_dst) and not os.path.islink(final_dst)):
+                        os.remove(final_dst)
+                except OSError:
+                    pass
+        emit_progress(src_str)
+        if stat.S_ISLNK(lst.st_mode):
+            try:
+                target = os.readlink(src_bytes)
+                if os.path.lexists(final_dst):
+                    os.remove(final_dst)
+                os.symlink(target, final_dst)
+            except OSError as e:
+                errors.append({"path": src_str, "message": e.strerror or str(e)})
+                return
+            files_done[0] += 1
+            copied += 1
+        elif stat.S_ISDIR(lst.st_mode):
+            try:
+                os.makedirs(final_dst, exist_ok=True)
+            except OSError as e:
+                errors.append({"path": src_str, "message": e.strerror or str(e)})
+                return
+            try:
+                with os.scandir(src_bytes) as it:
+                    children = list(it)
+            except OSError as e:
+                errors.append({"path": src_str, "message": e.strerror or str(e)})
+                children = []
+            for child in children:
+                if cancel_event.is_set():
+                    raise Cancelled()
+                copy_one(child.path, os.path.join(final_dst, child.name))
+            copy_meta(final_dst, lst)
+            files_done[0] += 1
+            copied += 1
+        else:
+            base = bytes_done[0]
+
+            def progress_cb(n):
+                bytes_done[0] = base + n
+                emit_progress(src_str)
+
+            try:
+                copy_file_data(src_bytes, final_dst, progress_cb, cancel_event)
+                copy_meta(final_dst, lst)
+            except Cancelled:
+                raise
+            except OSError as e:
+                errors.append({"path": src_str, "message": e.strerror or str(e)})
+                bytes_done[0] = base
+                return
+            bytes_done[0] = base + lst.st_size
+            files_done[0] += 1
+            copied += 1
+
+    def move_one(src_bytes, dst_bytes):
+        nonlocal copied, skipped
+        if cancel_event.is_set():
+            raise Cancelled()
+        try:
+            lst = os.lstat(src_bytes)
+        except OSError as e:
+            errors.append({"path": to_str(src_bytes), "message": e.strerror or str(e)})
+            return
+        src_str = to_str(src_bytes)
+        final_dst = dst_bytes
+        if os.path.lexists(dst_bytes):
+            action = resolve_conflict(req_id, cancel_event, src_str, to_str(dst_bytes), dst_bytes, conflict_mode, job_state)
+            if action == "cancel":
+                raise Cancelled()
+            if action == "skip":
+                skipped += 1
+                return
+            if action == "rename":
+                parent = os.path.dirname(dst_bytes)
+                base = os.path.basename(dst_bytes)
+                final_dst = os.path.join(parent, unique_dest_name(parent, base))
+            elif action == "overwrite":
+                try:
+                    if os.path.isdir(dst_bytes) and not os.path.islink(dst_bytes):
+                        shutil.rmtree(dst_bytes)
+                    else:
+                        os.remove(dst_bytes)
+                except OSError:
+                    pass
+        emit_progress(src_str)
+        try:
+            os.rename(src_bytes, final_dst)
+            size = 0 if stat.S_ISDIR(lst.st_mode) and not stat.S_ISLNK(lst.st_mode) else lst.st_size
+            bytes_done[0] += size
+            files_done[0] += 1
+            copied += 1
+        except OSError as e:
+            if e.errno == errno.EXDEV:
+                copy_one(src_bytes, final_dst)
+                try:
+                    if stat.S_ISDIR(lst.st_mode) and not stat.S_ISLNK(lst.st_mode):
+                        shutil.rmtree(src_bytes)
+                    else:
+                        os.unlink(src_bytes)
+                except OSError as e2:
+                    errors.append({"path": src_str, "message": e2.strerror or str(e2)})
+            else:
+                errors.append({"path": src_str, "message": e.strerror or str(e)})
+
+    try:
+        for s in sources:
+            if cancel_event.is_set():
+                raise Cancelled()
+            src_bytes = to_bytes(s)
+            name = os.path.basename(src_bytes)
+            dst_bytes = os.path.join(dest_bytes, name)
+            if is_move:
+                move_one(src_bytes, dst_bytes)
+            else:
+                copy_one(src_bytes, dst_bytes)
+    except Cancelled:
+        send_error(req_id, "ECANCELED", "cancelled")
+        return
+    emit_progress("", force=True)
+    send_done(req_id, copied=copied, skipped=skipped, errors=errors)
+
+def xdg_data_home_bytes():
+    v = os.environ.get("XDG_DATA_HOME")
+    if v:
+        return to_bytes(v)
+    return to_bytes(os.path.join(HOME, ".local", "share"))
+
+def home_trash_dirs():
+    base = os.path.join(xdg_data_home_bytes(), b"Trash")
+    files_dir = os.path.join(base, b"files")
+    info_dir = os.path.join(base, b"info")
+    os.makedirs(files_dir, mode=0o700, exist_ok=True)
+    os.makedirs(info_dir, mode=0o700, exist_ok=True)
+    return files_dir, info_dir
+
+def percent_encode(path_bytes):
+    safe = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~/"
+    out = []
+    for b in path_bytes:
+        if b in safe:
+            out.append(chr(b))
+        else:
+            out.append("%%%02X" % b)
+    return "".join(out)
+
+def percent_decode(s):
+    out = bytearray()
+    i = 0
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if c == "%" and i + 2 < n:
+            try:
+                out.append(int(s[i + 1:i + 3], 16))
+                i += 3
+                continue
+            except ValueError:
+                pass
+        out.extend(c.encode("utf-8", "surrogateescape"))
+        i += 1
+    return bytes(out)
+
+def find_mount_point(path_bytes):
+    p = path_bytes
+    if not p:
+        p = b"/"
+    try:
+        dev = os.stat(p).st_dev
+    except OSError:
+        p = os.path.dirname(p) or b"/"
+        try:
+            dev = os.stat(p).st_dev
+        except OSError:
+            return b"/"
+    while True:
+        parent = os.path.dirname(p)
+        if parent == p or parent == b"":
+            return p
+        try:
+            pdev = os.stat(parent).st_dev
+        except OSError:
+            return p
+        if pdev != dev:
+            return p
+        p = parent
+
+def volume_trash_dirs(path_bytes):
+    top = find_mount_point(os.path.dirname(path_bytes) or b"/")
+    uid = os.getuid()
+    vol = os.path.join(top, (".Trash-%d" % uid).encode())
+    files_dir = os.path.join(vol, b"files")
+    info_dir = os.path.join(vol, b"info")
+    os.makedirs(files_dir, mode=0o700, exist_ok=True)
+    os.makedirs(info_dir, mode=0o700, exist_ok=True)
+    return files_dir, info_dir, top
+
+def trash_dirs_for(path_bytes):
+    hf, hi = home_trash_dirs()
+    home_dev = os.stat(os.path.dirname(hf)).st_dev
+    try:
+        src_dev = os.stat(os.path.dirname(path_bytes) or b"/").st_dev
+    except OSError:
+        src_dev = home_dev
+    if src_dev == home_dev:
+        return hf, hi, None
+    vf, vi, top = volume_trash_dirs(path_bytes)
+    return vf, vi, top
+
+def reserve_trash_name(info_dir, base_bytes):
+    stem, ext = os.path.splitext(to_str(base_bytes))
+    n = 0
+    while True:
+        candidate = base_bytes if n == 0 else to_bytes("%s.%d%s" % (stem, n, ext))
+        info_path = os.path.join(info_dir, candidate + b".trashinfo")
+        try:
+            fd = os.open(info_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            return candidate, fd
+        except FileExistsError:
+            n += 1
+
+def move_across(src_bytes, dst_bytes):
+    lst = os.lstat(src_bytes)
+    if stat.S_ISLNK(lst.st_mode):
+        target = os.readlink(src_bytes)
+        os.symlink(target, dst_bytes)
+        os.unlink(src_bytes)
+    elif stat.S_ISDIR(lst.st_mode):
+        shutil.copytree(src_bytes, dst_bytes, symlinks=True, copy_function=shutil.copy2)
+        shutil.rmtree(src_bytes)
+    else:
+        shutil.copy2(src_bytes, dst_bytes)
+        os.unlink(src_bytes)
+
+def op_trash(req):
+    req_id = req["id"]
+    paths = req.get("paths") or []
+    results = []
+    for p in paths:
+        try:
+            src = to_bytes(p)
+            files_dir, info_dir, top = trash_dirs_for(src)
+            base = os.path.basename(src)
+            candidate, fd = reserve_trash_name(info_dir, base)
+            path_for_info = src if top is None else os.path.relpath(src, top)
+            deletion_date = time.strftime("%Y-%m-%dT%H:%M:%S")
+            content = "[Trash Info]\nPath=%s\nDeletionDate=%s\n" % (percent_encode(path_for_info), deletion_date)
+            os.write(fd, content.encode("utf-8"))
+            os.close(fd)
+            dest_path = os.path.join(files_dir, candidate)
+            try:
+                os.rename(src, dest_path)
+            except OSError as e:
+                if e.errno == errno.EXDEV:
+                    move_across(src, dest_path)
+                else:
+                    raise
+            results.append({"path": p, "ok": True})
+        except OSError as e:
+            results.append({"path": p, "ok": False, "message": e.strerror or str(e)})
+    send_done(req_id, results=results)
+
+def op_delete(req):
+    req_id = req["id"]
+    paths = req.get("paths") or []
+    results = []
+    for p in paths:
+        try:
+            b = to_bytes(p)
+            lst = os.lstat(b)
+            if stat.S_ISDIR(lst.st_mode) and not stat.S_ISLNK(lst.st_mode):
+                shutil.rmtree(b)
+            else:
+                os.unlink(b)
+            results.append({"path": p, "ok": True})
+        except OSError as e:
+            results.append({"path": p, "ok": False, "message": e.strerror or str(e)})
+    send_done(req_id, results=results)
+
+def list_trash_roots():
+    roots = [home_trash_dirs()]
+    seen = {os.path.dirname(roots[0][0])}
+    try:
+        with open("/proc/mounts", "rb") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                mnt = parts[1].replace(rb"\040", b" ")
+                uid = os.getuid()
+                cand = os.path.join(mnt, (".Trash-%d" % uid).encode())
+                if cand in seen:
+                    continue
+                seen.add(cand)
+                if os.path.isdir(os.path.join(cand, b"files")):
+                    roots.append((os.path.join(cand, b"files"), os.path.join(cand, b"info")))
+    except OSError:
+        pass
+    return roots
+
+def op_restore(req):
+    req_id = req["id"]
+    items = req.get("items") or []
+    results = []
+    roots = list_trash_roots()
+    for item in items:
+        item_bytes = to_bytes(item)
+        if not item_bytes.endswith(b".trashinfo"):
+            item_bytes = item_bytes + b".trashinfo"
+        found = False
+        for files_dir, info_dir in roots:
+            info_path = os.path.join(info_dir, item_bytes)
+            if not os.path.exists(info_path):
+                continue
+            found = True
+            try:
+                raw = open(info_path, "rb").read().decode("utf-8", "surrogateescape")
+                path_val = None
+                for line in raw.splitlines():
+                    if line.startswith("Path="):
+                        path_val = line[len("Path="):]
+                        break
+                if path_val is None:
+                    results.append({"path": item, "ok": False, "message": "invalid trashinfo"})
+                    break
+                orig_bytes = percent_decode(path_val)
+                if not orig_bytes.startswith(b"/"):
+                    top = find_mount_point(files_dir)
+                    orig_bytes = os.path.join(top, orig_bytes)
+                name_in_trash = item_bytes[:-len(".trashinfo")]
+                src_in_files = os.path.join(files_dir, name_in_trash)
+                parent = os.path.dirname(orig_bytes)
+                if parent:
+                    os.makedirs(parent, exist_ok=True)
+                os.rename(src_in_files, orig_bytes)
+                os.remove(info_path)
+                results.append({"path": to_str(orig_bytes), "ok": True})
+            except OSError as e:
+                results.append({"path": item, "ok": False, "message": e.strerror or str(e)})
+            break
+        if not found:
+            results.append({"path": item, "ok": False, "message": "not found"})
+    send_done(req_id, results=results)
+
+def op_trashinfo(req):
+    req_id = req["id"]
+    roots = list_trash_roots()
+    items = []
+    count = 0
+    total_bytes = 0
+    for files_dir, info_dir in roots:
+        try:
+            names = os.listdir(info_dir)
+        except OSError:
+            continue
+        for n in names:
+            if not n.endswith(b".trashinfo"):
+                continue
+            info_path = os.path.join(info_dir, n)
+            try:
+                raw = open(info_path, "rb").read().decode("utf-8", "surrogateescape")
+            except OSError:
+                continue
+            path_val = None
+            deleted = None
+            for line in raw.splitlines():
+                if line.startswith("Path="):
+                    path_val = line[len("Path="):]
+                elif line.startswith("DeletionDate="):
+                    deleted = line[len("DeletionDate="):]
+            stem = n[:-len(".trashinfo")]
+            file_path = os.path.join(files_dir, stem)
+            try:
+                lst = os.lstat(file_path)
+                kind, size, _ = classify(file_path, lst)
+            except OSError:
+                kind, size = "f", 0
+            if path_val:
+                orig_bytes = percent_decode(path_val)
+                if not orig_bytes.startswith(b"/"):
+                    top = find_mount_point(files_dir)
+                    orig_bytes = os.path.join(top, orig_bytes)
+            else:
+                orig_bytes = stem
+            items.append({
+                "name": to_str(stem), "original": to_str(orig_bytes),
+                "deleted": deleted, "size": size, "kind": kind,
+            })
+            count += 1
+            total_bytes += size
+    emit({"id": req_id, "t": "trash", "count": count, "bytes": total_bytes, "items": items})
+    send_done(req_id)
+
+def op_emptytrash(req):
+    req_id = req["id"]
+    roots = list_trash_roots()
+    for files_dir, info_dir in roots:
+        for d in (files_dir, info_dir):
+            try:
+                names = os.listdir(d)
+            except OSError:
+                continue
+            for n in names:
+                full = os.path.join(d, n)
+                try:
+                    if os.path.isdir(full) and not os.path.islink(full):
+                        shutil.rmtree(full)
+                    else:
+                        os.unlink(full)
+                except OSError:
+                    pass
+    send_done(req_id)
+
+def op_mkdir(req):
+    req_id = req["id"]
+    path = req.get("path")
+    if not isinstance(path, str):
+        send_error(req_id, "EINVAL", "path required")
+        return
+    try:
+        os.makedirs(to_bytes(path), exist_ok=False)
+        send_done(req_id, path=path)
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), path)
+
+def op_mkfile(req):
+    req_id = req["id"]
+    path = req.get("path")
+    if not isinstance(path, str):
+        send_error(req_id, "EINVAL", "path required")
+        return
+    try:
+        fd = os.open(to_bytes(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+        os.close(fd)
+        send_done(req_id, path=path)
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), path)
+
+def op_rename(req):
+    req_id = req["id"]
+    path = req.get("path")
+    new_name = req.get("newName")
+    if not isinstance(path, str):
+        send_error(req_id, "EINVAL", "path required")
+        return
+    if not isinstance(new_name, str) or not new_name or "/" in new_name or new_name in (".", ".."):
+        send_error(req_id, "EINVAL", "invalid newName", path)
+        return
+    try:
+        src = to_bytes(path)
+        dst = os.path.join(os.path.dirname(src), to_bytes(new_name))
+        os.rename(src, dst)
+        send_done(req_id, path=to_str(dst))
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), path)
+
+def op_symlink(req):
+    req_id = req["id"]
+    target = req.get("target")
+    path = req.get("path")
+    if not isinstance(target, str) or not isinstance(path, str):
+        send_error(req_id, "EINVAL", "target and path required")
+        return
+    try:
+        os.symlink(to_bytes(target), to_bytes(path))
+        send_done(req_id, path=path)
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), path)
+
+def op_search(req, cancel_event):
+    req_id = req["id"]
+    root = req.get("root")
+    query = req.get("query", "")
+    mode = req.get("mode", "substring")
+    max_results = req.get("maxResults") or 2000
+    max_depth = req.get("maxDepth")
+    if max_depth is None:
+        max_depth = 64
+    hidden = bool(req.get("hidden", False))
+    if not isinstance(root, str):
+        send_error(req_id, "EINVAL", "root required")
+        return
+    root_bytes = to_bytes(root)
+    try:
+        root_dev = os.stat(root_bytes).st_dev
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), root)
+        return
+    pattern = None
+    if mode == "regex":
+        try:
+            pattern = re.compile(query)
+        except re.error as e:
+            send_error(req_id, "EINVAL", str(e))
+            return
+    query_lower = query.lower()
+    matched = 0
+    scanned = 0
+    stack = [(root_bytes, 0)]
+    while stack:
+        if cancel_event.is_set():
+            send_error(req_id, "ECANCELED", "cancelled")
+            return
+        current, depth = stack.pop()
+        try:
+            with os.scandir(current) as it:
+                for entry in it:
+                    if cancel_event.is_set():
+                        send_error(req_id, "ECANCELED", "cancelled")
+                        return
+                    name_str = to_str(entry.name)
+                    if name_str == ".git":
+                        continue
+                    if not hidden and name_str.startswith("."):
+                        continue
+                    scanned += 1
+                    if mode == "substring":
+                        is_match = query_lower in name_str.lower()
+                    elif mode == "glob":
+                        is_match = fnmatch.fnmatch(name_str.lower(), query_lower)
+                    elif mode == "regex":
+                        is_match = pattern.search(name_str) is not None
+                    else:
+                        is_match = False
+                    if is_match:
+                        try:
+                            lst = entry.stat(follow_symlinks=False)
+                            kind, size, _ = classify(entry.path, lst)
+                            mtime = int(lst.st_mtime)
+                        except OSError:
+                            kind, size, mtime = "o", 0, 0
+                        emit({"id": req_id, "t": "hit", "path": to_str(entry.path), "name": name_str,
+                              "dir": to_str(current), "kind": kind, "size": size, "mtime": mtime})
+                        matched += 1
+                        if matched >= max_results:
+                            send_done(req_id, truncated=True, scanned=scanned)
+                            return
+                    try:
+                        is_dir = entry.is_dir(follow_symlinks=False)
+                        is_symlink = entry.is_symlink()
+                    except OSError:
+                        is_dir = False
+                        is_symlink = False
+                    if is_dir and not is_symlink and depth < max_depth:
+                        try:
+                            st = entry.stat(follow_symlinks=False)
+                            if st.st_dev == root_dev:
+                                stack.append((entry.path, depth + 1))
+                        except OSError:
+                            pass
+        except OSError:
+            continue
+    send_done(req_id, truncated=False, scanned=scanned)
+
+def op_freespace(req):
+    req_id = req["id"]
+    path = req.get("path")
+    if not isinstance(path, str):
+        send_error(req_id, "EINVAL", "path required")
+        return
+    try:
+        b = to_bytes(path)
+        st = os.statvfs(b)
+        total = st.f_frsize * st.f_blocks
+        free = st.f_frsize * st.f_bavail
+        used = total - st.f_frsize * st.f_bfree
+        mount = to_str(find_mount_point(b))
+        emit({"id": req_id, "t": "space", "total": total, "free": free, "used": used, "mount": mount})
+        send_done(req_id)
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), path)
+
+def run_tool(argv):
+    try:
+        proc = subprocess.run(argv, shell=False, capture_output=True, timeout=5)
+    except (FileNotFoundError, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout.decode("utf-8", "replace"))
+    except ValueError:
+        return None
+
+def flatten_lsblk(devices):
+    out = []
+    for d in devices or []:
+        out.append(d)
+        out.extend(flatten_lsblk(d.get("children")))
+    return out
+
+def op_drives(req):
+    req_id = req["id"]
+    drives = []
+    lsblk_data = run_tool(["lsblk", "-J", "-b", "-o", "NAME,PATH,LABEL,SIZE,FSTYPE,MOUNTPOINT,RM"])
+    findmnt_data = run_tool(["findmnt", "-J", "-b"])
+    space_by_mount = {}
+    if findmnt_data:
+        def walk(fs_list):
+            for fs in fs_list or []:
+                tgt = fs.get("target")
+                if tgt:
+                    try:
+                        st = os.statvfs(to_bytes(tgt))
+                        space_by_mount[tgt] = (st.f_frsize * st.f_blocks, st.f_frsize * st.f_bavail)
+                    except OSError:
+                        pass
+                walk(fs.get("children"))
+        walk(findmnt_data.get("filesystems"))
+    if lsblk_data:
+        for dev in flatten_lsblk(lsblk_data.get("blockdevices")):
+            mount = dev.get("mountpoint")
+            total = None
+            free = None
+            if mount and mount in space_by_mount:
+                total, free = space_by_mount[mount]
+            drives.append({
+                "name": dev.get("name"), "path": dev.get("path"), "label": dev.get("label"),
+                "size": dev.get("size"), "fstype": dev.get("fstype"), "mount": mount,
+                "removable": bool(dev.get("rm")), "free": free, "total": total,
+            })
+    emit({"id": req_id, "t": "drives", "drives": drives})
+    send_done(req_id)
+
+XDG_DEFAULTS = {
+    "desktop": "Desktop", "documents": "Documents", "downloads": "Downloads",
+    "music": "Music", "pictures": "Pictures", "videos": "Videos",
+    "templates": "Templates", "publicshare": "Public",
+}
+XDG_KEYS = {
+    "XDG_DESKTOP_DIR": "desktop", "XDG_DOCUMENTS_DIR": "documents",
+    "XDG_DOWNLOAD_DIR": "downloads", "XDG_MUSIC_DIR": "music",
+    "XDG_PICTURES_DIR": "pictures", "XDG_VIDEOS_DIR": "videos",
+    "XDG_TEMPLATES_DIR": "templates", "XDG_PUBLICSHARE_DIR": "publicshare",
+}
+
+def op_dirs(req):
+    req_id = req["id"]
+    result = {}
+    for key, name in XDG_DEFAULTS.items():
+        result[key] = os.path.join(HOME, name)
+    config_file = os.path.join(HOME, ".config", "user-dirs.dirs")
+    try:
+        with open(config_file, "r", encoding="utf-8", errors="surrogateescape") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                if k not in XDG_KEYS:
+                    continue
+                v = v.strip().strip('"')
+                v = v.replace("$HOME", HOME)
+                result[XDG_KEYS[k]] = v
+    except OSError:
+        pass
+    dirs = {}
+    for key, path in result.items():
+        try:
+            if os.path.exists(to_bytes(path)):
+                dirs[key] = path
+        except OSError:
+            pass
+    emit({"id": req_id, "t": "dirs", "dirs": dirs})
+    send_done(req_id)
+
+def op_ping(req):
+    send_done(req["id"], version=VERSION, pid=os.getpid(), inotify=INOTIFY_AVAILABLE)
+
+def op_cancel(req):
+    req_id = req["id"]
+    target = req.get("target")
+    ev = None
+    with INFLIGHT_LOCK:
+        info = INFLIGHT.get(target)
+        if info:
+            ev = info["cancel"]
+    if ev is not None:
+        ev.set()
+    else:
+        handle = None
+        key = None
+        with WATCH_LOCK:
+            for pth, h in WATCHES.items():
+                if h.req_id == target:
+                    handle = h
+                    key = pth
+                    break
+            if key is not None:
+                del WATCHES[key]
+        if handle:
+            stop_watch(handle, cancelled=True)
+    send_done(req_id)
+
+CANCELLABLE_OPS = {
+    "list": op_list,
+    "search": op_search,
+    "du": op_du,
+    "copy": lambda r, c: op_copy_move(r, c, False),
+    "move": lambda r, c: op_copy_move(r, c, True),
+}
+
+SIMPLE_OPS = {
+    "stat": op_stat,
+    "trash": op_trash,
+    "delete": op_delete,
+    "restore": op_restore,
+    "trashinfo": op_trashinfo,
+    "emptytrash": op_emptytrash,
+    "mkdir": op_mkdir,
+    "mkfile": op_mkfile,
+    "rename": op_rename,
+    "symlink": op_symlink,
+    "freespace": op_freespace,
+    "drives": op_drives,
+    "dirs": op_dirs,
+    "ping": op_ping,
+    "watch": op_watch,
+    "unwatch": op_unwatch,
+}
+
+def dispatch(req):
+    req_id = req.get("id")
+    op = req.get("op")
+    try:
+        if op == "cancel":
+            op_cancel(req)
+            return
+        if op == "resolve":
+            op_resolve(req)
+            return
+        if op in CANCELLABLE_OPS:
+            handler = CANCELLABLE_OPS[op]
+            ev = register_inflight(req_id, op)
+            try:
+                handler(req, ev)
+            finally:
+                unregister_inflight(req_id)
+            return
+        if op in SIMPLE_OPS:
+            SIMPLE_OPS[op](req)
+            return
+        send_error(req_id, "EUNSUPPORTED", "unknown op: %s" % op)
+    except Exception as e:
+        try:
+            send_error(req_id, "EINTERNAL", str(e))
+        except Exception:
+            pass
+
+ACTIVE_THREADS_LOCK = threading.Lock()
+ACTIVE_THREADS = []
+
+def run_and_untrack(req, t):
+    try:
+        dispatch(req)
+    finally:
+        with ACTIVE_THREADS_LOCK:
+            if t in ACTIVE_THREADS:
+                ACTIVE_THREADS.remove(t)
+
+def main():
+    try:
+        sys.stdin.reconfigure(encoding="utf-8", errors="strict")
+        sys.stdout.reconfigure(encoding="utf-8", errors="strict")
+    except AttributeError:
+        pass
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            req = json.loads(line)
+        except ValueError:
+            sys.stderr.write("malformed request line\n")
+            sys.stderr.flush()
+            continue
+        if not isinstance(req, dict) or "op" not in req or "id" not in req:
+            if isinstance(req, dict) and "id" in req:
+                send_error(req["id"], "EINVAL", "missing op")
+            continue
+        holder = []
+        t = threading.Thread(target=lambda: run_and_untrack(req, holder[0]), daemon=True)
+        holder.append(t)
+        with ACTIVE_THREADS_LOCK:
+            ACTIVE_THREADS.append(t)
+        t.start()
+    deadline = time.monotonic() + 15.0
+    while time.monotonic() < deadline:
+        with ACTIVE_THREADS_LOCK:
+            remaining = list(ACTIVE_THREADS)
+        if not remaining:
+            break
+        for t in remaining:
+            t.join(timeout=0.1)
+            if time.monotonic() >= deadline:
+                break
+
+if __name__ == "__main__":
+    main()

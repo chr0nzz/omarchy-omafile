@@ -35,7 +35,6 @@ Item {
   property var session: null
 
   signal directoryChanged(string path, var names)
-  signal transfersChanged()
   signal conflictRaised(int jobId, var info)
 
   readonly property int activeTransfers: countActive()
@@ -121,6 +120,17 @@ Item {
   function cancel(id) {
     if (!id) return
     request({ op: "cancel", target: id }, null)
+  }
+
+  function handleHelperExit() {
+    helperReady = false
+    _pending = ({})
+    if (helperRestarts < 8) {
+      helperRestarts++
+      restartTimer.restart()
+    } else {
+      helperError = "File helper stopped unexpectedly"
+    }
   }
 
   function ensureHelper() {
@@ -277,7 +287,6 @@ Item {
     var next = transfers.slice()
     next.push(record)
     transfers = next
-    transfersChanged()
     return id
   }
 
@@ -301,7 +310,6 @@ Item {
     }
     if (!touched) return
     transfers = next
-    transfersChanged()
   }
 
   function cancelTransfer(id) {
@@ -316,7 +324,6 @@ Item {
       if (s === "running" || s === "paused") next.push(transfers[i])
     }
     transfers = next
-    transfersChanged()
   }
 
   function scheduleTransferSweep() {
@@ -483,16 +490,7 @@ Item {
       }
     }
 
-    onExited: function (code, status) {
-      root.helperReady = false
-      root._pending = ({})
-      if (root.helperRestarts < 8) {
-        root.helperRestarts++
-        restartTimer.restart()
-      } else {
-        root.helperError = "helper exited with code " + code
-      }
-    }
+    onExited: root.handleHelperExit()
 
     stdout: SplitParser {
       splitMarker: "\n"
