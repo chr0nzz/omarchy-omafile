@@ -36,6 +36,7 @@ Item {
   property string searchQuery: ""
   property bool searchTruncated: false
   property int _searchId: 0
+  property int _generation: 0
   property int _listId: 0
   property int _watchId: 0
   property string _watchPath: ""
@@ -163,18 +164,23 @@ Item {
     pane.cursorIndex = -1
     pane._pendingChunks = []
 
+    var searchGeneration = ++pane._generation
+
     _searchId = service.searchFiles(pane.path, trimmed, "substring", pane.showHidden,
       function (hit) {
+        if (searchGeneration !== pane._generation) return
         pane._pendingChunks.push(pane.hitToRow(hit))
         if (!rebuildTimer.running) rebuildTimer.start()
       },
       function (msg) {
+        if (searchGeneration !== pane._generation) return
         pane.loading = false
         pane.searchTruncated = msg.truncated === true
         pane.flushChunks()
         pane.statusChanged()
       },
       function (msg) {
+        if (searchGeneration !== pane._generation) return
         pane.loading = false
         if (msg.code !== "ECANCELED")
           pane.errorMessage = String(msg.message || "Search failed")
@@ -208,19 +214,24 @@ Item {
     total = 0
     rebuildTimer.stop()
 
+    var generation = ++pane._generation
+
     _listId = service.listDirectory(pane.path, pane.showHidden,
       function (chunk) {
+        if (generation !== pane._generation) return
         var acc = pane._pendingChunks
         for (var i = 0; i < chunk.length; i++) acc.push(chunk[i])
         if (!rebuildTimer.running) rebuildTimer.start()
       },
       function (msg) {
+        if (generation !== pane._generation) return
         pane.loading = false
         pane.total = Number(msg.total) || pane._pendingChunks.length
         pane.flushChunks()
         pane.statusChanged()
       },
       function (msg) {
+        if (generation !== pane._generation) return
         if (String(msg.code || "") === "ECANCELED") return
         pane.loading = false
         pane.errorMessage = String(msg.message || msg.code || "Cannot open this folder")

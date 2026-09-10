@@ -131,6 +131,7 @@ Item {
   function cancel(id) {
     if (!id) return
     request({ op: "cancel", target: id }, null)
+    releasePending(id)
   }
 
   function handleHelperExit() {
