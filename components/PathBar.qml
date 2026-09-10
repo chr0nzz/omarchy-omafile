@@ -21,6 +21,11 @@ Item {
   signal filterEdited(string text)
   signal searchSubmitted(string text)
   signal dismissed()
+  signal editingFinished()
+
+  onPathChanged: {
+    if (bar.editing) bar.endEdit()
+  }
 
   implicitHeight: Style.space(28)
 
@@ -32,8 +37,10 @@ Item {
   }
 
   function endEdit() {
+    if (!editing) return
     editing = false
     pathInput.focus = false
+    bar.editingFinished()
   }
 
   function openFilter() {
@@ -174,7 +181,7 @@ Item {
           }
 
           onActiveFocusChanged: {
-            if (!activeFocus && bar.editing) bar.endEdit()
+            if (!activeFocus) bar.endEdit()
           }
         }
       }
@@ -271,6 +278,10 @@ Item {
 
             onTextChanged: bar.filterEdited(text)
             onAccepted: bar.searchSubmitted(text)
+
+            onActiveFocusChanged: {
+              if (!activeFocus && text.length === 0 && bar.filterOpen) bar.closeFilter()
+            }
 
             Keys.onEscapePressed: {
               if (text.length > 0) {

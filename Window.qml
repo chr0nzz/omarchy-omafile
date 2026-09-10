@@ -736,6 +736,8 @@ Item {
               root.exitFind()
               keyCatcher.forceActiveFocus()
             }
+
+            onEditingFinished: keyCatcher.forceActiveFocus()
           }
         }
 
@@ -752,7 +754,11 @@ Item {
             service: root.service
             currentPath: root.activePane() ? root.activePane().path : ""
             showDrives: root.service ? root.service.setting("showDrives", true) !== false : true
-            onNavigate: function (target) { root.activePane().navigate(target) }
+            onNavigate: function (target) {
+              pathBar.endEdit()
+              root.activePane().navigate(target)
+              keyCatcher.forceActiveFocus()
+            }
             onOpenInNewTab: function (target) { root.newTab(root.activeSide, target) }
             onRemoveBookmark: function (target) { root.service.togglePinned(target) }
             onHideDrive: function (key) { root.service.toggleHiddenDrive(key) }
@@ -788,7 +794,11 @@ Item {
                 height: parent.height - (tabStripA.visible ? tabStripA.height : 0)
                 service: root.service
                 active: root.activeSide === 0
-                onActivated: root.activeSide = 0
+                onActivated: {
+                  root.activeSide = 0
+                  pathBar.endEdit()
+                  keyCatcher.forceActiveFocus()
+                }
                 onOpenRequested: function (entry) { root.handleOpenRequest(entry) }
                 onNavigated: function (p) { root.rememberSession() }
                 onContextRequested: function (entry, x, y) {
@@ -824,7 +834,11 @@ Item {
                 height: parent.height - (tabStripB.visible ? tabStripB.height : 0)
                 service: root.service
                 active: root.activeSide === 1
-                onActivated: root.activeSide = 1
+                onActivated: {
+                  root.activeSide = 1
+                  pathBar.endEdit()
+                  keyCatcher.forceActiveFocus()
+                }
                 onOpenRequested: function (entry) { root.handleOpenRequest(entry) }
                 onNavigated: function (p) { root.rememberSession() }
                 onContextRequested: function (entry, x, y) {
