@@ -377,7 +377,7 @@ def op_du(req, cancel_event):
         send_error(req_id, errno_code(e), e.strerror or str(e), path)
         return
     if stat.S_ISDIR(root_lst.st_mode) and not stat.S_ISLNK(root_lst.st_mode):
-        dirs += 1
+        pass
     else:
         total_bytes += root_lst.st_size
         files += 1
