@@ -93,7 +93,7 @@ Item {
         if (!mountableDrive(drive)) continue
         if (service && service.driveHidden(String(drive.mount))) continue
         vols.push({
-          key: drive.network === true ? "network" : (drive.removable ? "usb" : "drive"),
+          key: drive.network === true ? "networkdrive" : (drive.removable ? "usb" : "drive"),
           label: driveLabel(drive),
           path: String(drive.mount),
           device: String(drive.path || ""),
@@ -111,7 +111,7 @@ Item {
       var share = mounted[n]
       if (service && service.driveHidden(String(share.mount))) continue
       net.push({
-        key: "network", label: String(share.label || share.mount),
+        key: "networkdrive", label: String(share.label || share.mount),
         path: String(share.mount), mounted: true,
         free: Number(share.free) || 0, total: Number(share.total) || 0
       })
@@ -219,7 +219,7 @@ Item {
                     }
                     if (mouse.button === Qt.RightButton) {
                       if (modelData.key === "drive" || modelData.key === "usb"
-                        || modelData.key === "network")
+                        || modelData.key === "networkdrive")
                         sidebar.hideDrive(modelData.path)
                       else if (modelData.bookmark === true)
                         sidebar.removeBookmark(modelData.path)
@@ -279,7 +279,8 @@ Item {
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: (modelData.key === "drive" || modelData.key === "usb"
-                      || modelData.key === "network")
+                      || modelData.key === "networkdrive")
+                      && modelData.connect !== true && modelData.server !== true
                       && modelData.unhide !== true && placeHover.hovered
                     text: Icons.actionGlyph("hidden")
                     color: hideHover.hovered ? Color.urgent : Util.alpha(Color.foreground, 0.35)

@@ -58,7 +58,8 @@ var placeGlyphs = {
   network: '',
   pinned: '',
   recent: '',
-  search: ''
+  search: '',
+  networkdrive: ''
 };
 
 var actionGlyphs = {

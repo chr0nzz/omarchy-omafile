@@ -110,7 +110,7 @@ Panel {
       var d = list[i]
       if (!mountableDrive(d)) continue
       rows.push({
-        key: d.network === true ? "network" : (d.removable ? "usb" : "drive"),
+        key: d.network === true ? "networkdrive" : (d.removable ? "usb" : "drive"),
         label: (String(d.label || "") && String(d.label) !== "root")
           ? String(d.label) : (Model.basename(String(d.mount)) || String(d.mount)),
         path: String(d.mount),
