@@ -718,7 +718,12 @@ Item {
     }
 
     function reveal(path: string): string {
-      root.openWindow(String(path || ""))
+      var target = String(path || "")
+      if (!target) return "path required"
+      var parent = Model.dirname(target)
+      var name = Model.basename(target)
+      if (root.shell)
+        root.shell.summon(root.pluginId, JSON.stringify({ path: parent, select: name }))
       return "ok"
     }
 

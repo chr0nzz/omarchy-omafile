@@ -42,13 +42,17 @@ jobs:
     env:
       PLUGIN_ID: xyzlab.omafile
       PLUGIN_NAME: Omafile
+      CONFIRM: ${{ inputs.confirm }}
+      CATEGORY: ${{ inputs.category }}
+      TAGS: ${{ inputs.tags }}
+      DRY_RUN: ${{ inputs.dry_run }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Confirm the plugin id
         run: |
-          if [ "${{ inputs.confirm }}" != "$PLUGIN_ID" ]; then
-            echo "Type $PLUGIN_ID to confirm. Got: ${{ inputs.confirm }}"
+          if [ "$CONFIRM" != "$PLUGIN_ID" ]; then
+            echo "Type $PLUGIN_ID to confirm. Got: $CONFIRM"
             exit 1
           fi
 
@@ -80,13 +84,12 @@ jobs:
           esac
           status=0
           for key in schemaVersion id name version author license description kinds entryPoints; do
-            value=$(jq -r --arg k "$key" 'if has($k) then .[$k] else "" end | if type == "object" or type == "array" then "set" else tostring end' manifest.json)
-            if [ -z "$value" ] || [ "$value" = "null" ]; then
+            if [ "$(jq -r --arg k "$key" 'has($k)' manifest.json)" != "true" ]; then
               echo "manifest is missing $key"
               status=1
             fi
           done
-          for entry in $(jq -r '.entryPoints | to_entries[] | .value' manifest.json); do
+          for entry in $(jq -r '.entryPoints[]' manifest.json); do
             if [ ! -f "$entry" ]; then
               echo "entry point $entry does not exist"
               status=1
@@ -150,7 +153,7 @@ jobs:
           count=0
           status=0
           IFS=','
-          for raw in ${{ format('''{0}''', inputs.tags) }}; do
+          for raw in $TAGS; do
             tag=$(echo "$raw" | tr -d '[:space:]')
             [ -z "$tag" ] && continue
             count=$((count + 1))
@@ -170,9 +173,9 @@ jobs:
           echo "Plugin id:   $PLUGIN_ID"
           echo "Repository:  https://github.com/${GITHUB_REPOSITORY}"
           echo "Commit:      $(git rev-parse HEAD)"
-          echo "Category:    ${{ inputs.category }}"
-          echo "Tags:        ${{ inputs.tags }}"
-          echo "Dry run:     ${{ inputs.dry_run }}"
+          echo "Category:    $CATEGORY"
+          echo "Tags:        $TAGS"
+          echo "Dry run:     $DRY_RUN"
 
       - name: Open the marketplace submission issue
         if: ${{ inputs.dry_run == false }}
@@ -185,8 +188,8 @@ jobs:
           fi
           body=$(printf '%s\n' \
             "### Repository URL" "" "https://github.com/${GITHUB_REPOSITORY}" "" \
-            "### Category" "" "${{ inputs.category }}" "" \
-            "### Tags" "" "${{ inputs.tags }}" "" \
+            "### Category" "" "$CATEGORY" "" \
+            "### Tags" "" "$TAGS" "" \
             "### Suggest a missing tag" "" "_No response_" "" \
             "### Maintainer notes" "" "_No response_" "" \
             "### Submission checklist" "" \

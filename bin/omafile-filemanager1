@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+import os
+import subprocess
+import sys
+import urllib.parse
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+BUS_NAME = "org.freedesktop.FileManager1"
+OBJECT_PATH = "/org/freedesktop/FileManager1"
+INTERFACE = """
+<node>
+  <interface name='org.freedesktop.FileManager1'>
+    <method name='ShowFolders'>
+      <arg type='as' name='URIs' direction='in'/>
+      <arg type='s' name='StartupId' direction='in'/>
+    </method>
+    <method name='ShowItems'>
+      <arg type='as' name='URIs' direction='in'/>
+      <arg type='s' name='StartupId' direction='in'/>
+    </method>
+    <method name='ShowItemProperties'>
+      <arg type='as' name='URIs' direction='in'/>
+      <arg type='s' name='StartupId' direction='in'/>
+    </method>
+  </interface>
+</node>
+"""
+
+IDLE_SECONDS = 120
+
+
+def to_path(uri):
+    text = str(uri or "")
+    if not text.startswith("file://"):
+        return ""
+    return urllib.parse.unquote(text[7:])
+
+
+def call_omafile(verb, path):
+    if not path:
+        return
+    try:
+        subprocess.run(
+            ["omarchy-shell", "omafile", verb, path],
+            capture_output=True, timeout=10, shell=False, check=False)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+
+class FileManager1:
+    def __init__(self, loop):
+        self.loop = loop
+        self.node = Gio.DBusNodeInfo.new_for_xml(INTERFACE)
+        self.registration = None
+        self.timeout_id = None
+
+    def arm_idle_exit(self):
+        if self.timeout_id is not None:
+            GLib.source_remove(self.timeout_id)
+        self.timeout_id = GLib.timeout_add_seconds(IDLE_SECONDS, self.quit)
+
+    def quit(self):
+        self.loop.quit()
+        return False
+
+    def on_bus_acquired(self, connection, name):
+        self.registration = connection.register_object(
+            OBJECT_PATH, self.node.interfaces[0], self.handle_call, None, None)
+        self.arm_idle_exit()
+
+    def on_name_lost(self, connection, name):
+        self.loop.quit()
+
+    def handle_call(self, connection, sender, path, interface, method, params, invocation):
+        self.arm_idle_exit()
+        uris = params[0] if params.n_children() > 0 else []
+        paths = [to_path(u) for u in uris]
+        paths = [p for p in paths if p]
+        if method == "ShowFolders":
+            for p in paths:
+                call_omafile("open", p)
+        elif method in ("ShowItems", "ShowItemProperties"):
+            for p in paths:
+                call_omafile("reveal", p)
+        invocation.return_value(None)
+
+
+def main():
+    loop = GLib.MainLoop()
+    service = FileManager1(loop)
+    Gio.bus_own_name(
+        Gio.BusType.SESSION, BUS_NAME,
+        Gio.BusNameOwnerFlags.NONE,
+        service.on_bus_acquired, None, service.on_name_lost)
+    loop.run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

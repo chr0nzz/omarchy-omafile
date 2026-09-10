@@ -173,11 +173,13 @@ Item {
     closingFromHost = false
     var target = ""
     var wantDialog = ""
+    var wantSelect = ""
     if (payloadJson) {
       try {
         var parsed = JSON.parse(String(payloadJson))
         if (parsed && typeof parsed.path === "string") target = parsed.path
         if (parsed && typeof parsed.dialog === "string") wantDialog = parsed.dialog
+        if (parsed && typeof parsed.select === "string") wantSelect = parsed.select
       } catch (e) {
       }
     }
@@ -186,6 +188,12 @@ Item {
     Qt.callLater(function () {
       if (target) activePane().navigate(target)
       keyCatcher.forceActiveFocus()
+      if (wantSelect) {
+        var pane = activePane()
+        selectTimer.pendingName = wantSelect
+        selectTimer.pendingPane = pane
+        selectTimer.restart()
+      }
       if (wantDialog === "shortcuts") showDialog("shortcuts", "Keyboard shortcuts", "", null)
     })
   }
@@ -541,6 +549,20 @@ Item {
     if (event.key === Qt.Key_End) { p.jumpCursor(p.rows.length - 1, shiftKey); return true }
     return false
   }
+  Timer {
+    id: selectTimer
+    interval: 260
+    repeat: false
+    property string pendingName: ""
+    property var pendingPane: null
+    onTriggered: {
+      if (!pendingPane || !pendingName) return
+      pendingPane.focusName(pendingName)
+      pendingName = ""
+      pendingPane = null
+    }
+  }
+
   Timer {
     id: findDebounce
     interval: 320
