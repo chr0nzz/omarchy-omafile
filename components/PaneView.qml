@@ -220,6 +220,7 @@ Item {
         pane.statusChanged()
       },
       function (msg) {
+        if (String(msg.code || "") === "ECANCELED") return
         pane.loading = false
         pane.errorMessage = String(msg.message || msg.code || "Cannot open this folder")
         pane.statusChanged()
@@ -654,7 +655,7 @@ Item {
 
     Text {
       anchors.centerIn: parent
-      visible: pane.errorMessage !== ""
+      visible: pane.errorMessage !== "" && pane.rows.length === 0
       width: parent.width - Style.space(40)
       horizontalAlignment: Text.AlignHCenter
       text: pane.errorMessage
