@@ -41,6 +41,9 @@ Item {
   property string statusText: ""
   property string appFilter: ""
   property bool findMode: false
+  property bool connectAnonymous: false
+  property string connectStatus: ""
+  property bool connectFailed: false
 
   function startPath() {
     return service ? service.startPath() : (home || "/")
@@ -241,6 +244,11 @@ Item {
         } else dialogField.selectAll()
       } else if (dialogMode === "openwith") {
         appField.forceActiveFocus()
+      } else if (dialogMode === "connect") {
+        root.connectStatus = ""
+        root.connectFailed = false
+        serverField.text = root.dialogValue
+        serverField.forceActiveFocus()
       }
     })
   }
@@ -250,6 +258,32 @@ Item {
     dialogPayload = null
     dialogError = ""
     keyCatcher.forceActiveFocus()
+  }
+
+  function submitConnect() {
+    if (!service) return
+    var uri = String(serverField.text || "").trim()
+    if (!uri) {
+      connectStatus = "Enter an address"
+      connectFailed = true
+      return
+    }
+    connectStatus = "Connecting"
+    connectFailed = false
+    service.connectToServer(uri, userField.text, domainField.text, passwordField.text,
+      connectAnonymous,
+      function (m) {
+        root.connectStatus = ""
+        root.connectFailed = false
+        passwordField.text = ""
+        var target = String(m.path || "")
+        root.closeDialog()
+        if (target) root.activePane().navigate(target)
+      },
+      function (m) {
+        root.connectStatus = String(m.message || "Could not connect")
+        root.connectFailed = true
+      })
   }
 
   function submitDialog() {
@@ -533,6 +567,7 @@ Item {
     if (ctrl && event.key === Qt.Key_B) { sidebarVisible = !sidebarVisible; rememberSession(); return true }
     if (ctrl && event.key === Qt.Key_D) { toggleSplit(); return true }
     if (event.key === Qt.Key_F1) { showDialog("shortcuts", "Keyboard shortcuts", "", null); return true }
+    if (ctrl && event.key === Qt.Key_Comma) { showDialog("settings", "Settings", "", null); return true }
 
     if (event.key === Qt.Key_Tab) {
       if (split) { activeSide = otherSide(); return true }
@@ -695,6 +730,13 @@ Item {
 
             Button {
               anchors.verticalCenter: parent.verticalCenter
+              iconText: Icons.actionGlyph("properties")
+              tooltipText: "Settings"
+              onClicked: root.showDialog("settings", "Settings", "", null)
+            }
+
+            Button {
+              anchors.verticalCenter: parent.verticalCenter
               iconText: Icons.actionGlyph("menu")
               tooltipText: "Keyboard shortcuts"
               onClicked: root.showDialog("shortcuts", "Keyboard shortcuts", "", null)
@@ -762,7 +804,8 @@ Item {
             onOpenInNewTab: function (target) { root.newTab(root.activeSide, target) }
             onRemoveBookmark: function (target) { root.service.togglePinned(target) }
             onHideDrive: function (key) { root.service.toggleHiddenDrive(key) }
-            onShowAllDrives: root.service.showAllDrives()
+            onShowAllDrives: root.showDialog("settings", "Settings", "", null)
+            onConnectServer: root.showDialog("connect", "Connect to a server", "", null)
           }
 
           Row {
@@ -1018,7 +1061,7 @@ Item {
 
         Rectangle {
           anchors.centerIn: parent
-          width: root.dialogMode === "shortcuts" ? Style.space(470)
+          width: (root.dialogMode === "shortcuts" || root.dialogMode === "settings") ? Style.space(470)
             : ((root.dialogMode === "openwith" || root.dialogMode === "properties")
               ? Style.space(420) : Style.space(360))
           height: dialogColumn.implicitHeight + Style.space(28)
@@ -1175,6 +1218,147 @@ Item {
               }
             }
 
+            Flickable {
+              width: parent.width
+              height: Math.min(Style.space(440), settingsColumn.implicitHeight)
+              visible: root.dialogMode === "settings"
+              contentHeight: settingsColumn.implicitHeight
+              clip: true
+              boundsBehavior: Flickable.StopAtBounds
+
+              ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+              Column {
+                id: settingsColumn
+                width: parent.width
+                spacing: Style.space(4)
+
+                Repeater {
+                  model: root.dialogMode === "settings" ? root.settingsRows() : []
+
+                  delegate: Toggle {
+                    required property var modelData
+                    width: settingsColumn.width
+                    label: modelData.label
+                    description: modelData.description
+                    checked: root.boolSetting(modelData.key, true)
+                    onClicked: root.applySettingNow(modelData.key, !checked)
+                  }
+                }
+
+                PanelSectionHeader {
+                  width: parent.width
+                  visible: root.hiddenDriveRows().length > 0
+                  text: "Hidden drives"
+                }
+
+                Repeater {
+                  model: root.dialogMode === "settings" ? root.hiddenDriveRows() : []
+
+                  delegate: PlaceRow {
+                    required property var modelData
+                    width: settingsColumn.width
+                    label: modelData.path
+                    glyph: Icons.placeGlyph("drive")
+                    trailing: "show"
+                    onClicked: root.service.toggleHiddenDrive(modelData.path)
+                  }
+                }
+
+                PanelSectionHeader {
+                  width: parent.width
+                  text: "Network"
+                }
+
+                PlaceRow {
+                  width: settingsColumn.width
+                  label: "Connect to a server"
+                  glyph: Icons.placeGlyph("network")
+                  onClicked: root.showDialog("connect", "Connect to a server", "", null)
+                }
+
+                Repeater {
+                  model: root.dialogMode === "settings" && root.service ? root.service.servers : []
+
+                  delegate: PlaceRow {
+                    required property var modelData
+                    width: settingsColumn.width
+                    label: String(modelData)
+                    glyph: Icons.placeGlyph("recent")
+                    trailing: "connect"
+                    onClicked: root.showDialog("connect", "Connect to a server", String(modelData), null)
+                  }
+                }
+              }
+            }
+
+            Column {
+              width: parent.width
+              visible: root.dialogMode === "connect"
+              spacing: Style.space(8)
+
+              Text {
+                width: parent.width
+                text: "Address, for example smb://server/share, sftp://user@host or dav://host/path"
+                color: Util.alpha(Color.popups.text, 0.6)
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.Wrap
+              }
+
+              TextField {
+                id: serverField
+                width: parent.width
+                placeholderText: "smb://server/share"
+                onAccepted: root.submitConnect()
+                Keys.onEscapePressed: root.closeDialog()
+              }
+
+              Toggle {
+                width: parent.width
+                label: "Connect anonymously"
+                description: "Leave the user and password blank"
+                checked: root.connectAnonymous
+                onClicked: root.connectAnonymous = !root.connectAnonymous
+              }
+
+              TextField {
+                id: userField
+                width: parent.width
+                visible: !root.connectAnonymous
+                placeholderText: "User name"
+                Keys.onEscapePressed: root.closeDialog()
+              }
+
+              TextField {
+                id: domainField
+                width: parent.width
+                visible: !root.connectAnonymous
+                placeholderText: "Domain or workgroup, optional"
+                Keys.onEscapePressed: root.closeDialog()
+              }
+
+              TextField {
+                id: passwordField
+                width: parent.width
+                visible: !root.connectAnonymous
+                placeholderText: "Password"
+                password: true
+                onAccepted: root.submitConnect()
+                Keys.onEscapePressed: root.closeDialog()
+              }
+
+              Text {
+                width: parent.width
+                visible: root.connectStatus !== ""
+                text: root.connectStatus
+                color: root.connectFailed ? Color.urgent : Util.alpha(Color.popups.text, 0.7)
+                font.family: Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                wrapMode: Text.Wrap
+              }
+            }
+
             Column {
               width: parent.width
               visible: root.dialogMode === "properties"
@@ -1258,10 +1442,12 @@ Item {
               visible: root.dialogMode !== "conflict"
 
               Button {
-                text: root.isReadOnlyDialog() ? "Close" : "Confirm"
+                text: root.isReadOnlyDialog() ? "Close"
+                  : (root.dialogMode === "connect" ? "Connect" : "Confirm")
                 bordered: true
                 onClicked: {
                   if (root.isReadOnlyDialog()) root.closeDialog()
+                  else if (root.dialogMode === "connect") root.submitConnect()
                   else root.submitDialog()
                 }
               }
@@ -1374,7 +1560,61 @@ Item {
   }
 
   function isReadOnlyDialog() {
-    return dialogMode === "properties" || dialogMode === "openwith" || dialogMode === "shortcuts"
+    return dialogMode === "properties" || dialogMode === "openwith"
+      || dialogMode === "shortcuts" || dialogMode === "settings"
+  }
+
+  function boolSetting(key, fallback) {
+    if (!service) return fallback
+    var v = service.setting(key, fallback)
+    if (typeof v === "boolean") return v
+    var text = String(v).toLowerCase()
+    if (text === "true" || text === "1" || text === "yes" || text === "on") return true
+    if (text === "false" || text === "0" || text === "no" || text === "off") return false
+    return fallback
+  }
+
+  function settingsRows() {
+    return [
+      { key: "showHidden", label: "Show hidden files",
+        description: "Files and folders whose name starts with a dot" },
+      { key: "sortDirsFirst", label: "Folders first",
+        description: "List folders above files whatever the sort order" },
+      { key: "thumbnails", label: "Image previews",
+        description: "Draw the picture instead of a generic icon" },
+      { key: "useTrash", label: "Delete moves to trash",
+        description: "Turn this off to delete permanently every time" },
+      { key: "confirmDelete", label: "Confirm permanent deletes",
+        description: "Ask before anything is destroyed for good" },
+      { key: "showDrives", label: "Show drives",
+        description: "The Drives section in the sidebar" },
+      { key: "showTransferBadge", label: "Transfer progress on the bar icon",
+        description: "A progress ring while a copy or move is running" }
+    ]
+  }
+
+  function applySettingNow(key, value) {
+    if (!service) return
+    service.updateSetting(key, value)
+    if (key === "showHidden") {
+      paneA.showHidden = value
+      if (split) paneB.showHidden = value
+    } else if (key === "sortDirsFirst") {
+      paneA.dirsFirst = value
+      if (split) paneB.dirsFirst = value
+    } else if (key === "thumbnails") {
+      paneA.thumbnails = value
+      if (split) paneB.thumbnails = value
+    }
+    rememberSession()
+  }
+
+  function hiddenDriveRows() {
+    if (!service) return []
+    var out = []
+    var list = service.hiddenDrives
+    for (var i = 0; i < list.length; i++) out.push({ path: String(list[i]) })
+    return out
   }
 
   function conflictMessage() {

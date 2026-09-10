@@ -33,6 +33,7 @@ Item {
   property var recent: []
   property var pinned: []
   property var hiddenDrives: []
+  property var servers: []
   property var session: null
 
   signal directoryChanged(string path, var names)
@@ -379,6 +380,55 @@ Item {
     })
   }
 
+  function updateSetting(key, value) {
+    if (!shell || typeof shell.updateEntryInline !== "function") return false
+    var patch = {}
+    patch[key] = value
+    return shell.updateEntryInline(pluginId, patch)
+  }
+
+  function connectToServer(uri, user, domain, password, anonymous, onDone, onError) {
+    return request({
+      op: "mounturi", uri: uri, user: user || "", domain: domain || "",
+      password: password || "", anonymous: anonymous === true
+    }, {
+      onDone: function (m) {
+        root.rememberServer(uri)
+        root.refreshDrives()
+        if (onDone) onDone(m)
+      },
+      onError: onError
+    })
+  }
+
+  function disconnectServer(path, onDone, onError) {
+    return request({ op: "unmounturi", path: path }, {
+      onDone: function (m) {
+        root.refreshDrives()
+        if (onDone) onDone(m)
+      },
+      onError: onError
+    })
+  }
+
+  function rememberServer(uri) {
+    var value = String(uri || "").trim()
+    if (!value) return
+    var next = [value]
+    for (var i = 0; i < servers.length && next.length < 10; i++)
+      if (servers[i] !== value) next.push(servers[i])
+    servers = next
+    persist()
+  }
+
+  function forgetServer(uri) {
+    var next = []
+    for (var i = 0; i < servers.length; i++)
+      if (String(servers[i]) !== String(uri)) next.push(servers[i])
+    servers = next
+    persist()
+  }
+
   function openExternally(path) {
     Quickshell.execDetached(["gio", "open", path])
   }
@@ -479,6 +529,7 @@ Item {
       recent: recent,
       pinned: pinned,
       hiddenDrives: hiddenDrives,
+      servers: servers,
       session: session
     }
     stateFile.setText(JSON.stringify(payload, null, 2))
@@ -495,6 +546,7 @@ Item {
     if (parsed.recent) recent = parsed.recent
     if (parsed.pinned) pinned = parsed.pinned
     if (parsed.hiddenDrives) hiddenDrives = parsed.hiddenDrives
+    if (parsed.servers) servers = parsed.servers
     if (parsed.session) session = parsed.session
   }
 

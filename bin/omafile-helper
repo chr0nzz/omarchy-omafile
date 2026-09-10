@@ -1208,6 +1208,129 @@ def flatten_lsblk(devices):
         out.extend(flatten_lsblk(d.get("children")))
     return out
 
+RUNTIME_DIR = os.environ.get("XDG_RUNTIME_DIR") or ("/run/user/%d" % os.getuid())
+GVFS_ROOT = os.path.join(RUNTIME_DIR, "gvfs")
+
+
+def unquote_path(value):
+    try:
+        return to_str(percent_decode(value))
+    except Exception:
+        return value
+
+
+def gvfs_label(name):
+    scheme = name.split("-")[0] if "-" in name else name
+    fields = {}
+    if ":" in name:
+        for part in name.split(":", 1)[1].split(","):
+            if "=" in part:
+                key, value = part.split("=", 1)
+                fields[key] = unquote_path(value)
+    share = fields.get("share") or fields.get("volume") or fields.get("path") or ""
+    server = fields.get("server") or fields.get("host") or ""
+    share = share.strip("/")
+    if share and server:
+        return share + " on " + server, scheme
+    if server:
+        return server, scheme
+    return name, scheme
+
+
+def gvfs_mounts():
+    out = []
+    try:
+        entries = sorted(os.listdir(to_bytes(GVFS_ROOT)))
+    except OSError:
+        return out
+    for raw in entries:
+        name = to_str(raw)
+        target = os.path.join(GVFS_ROOT, name)
+        label, scheme = gvfs_label(name)
+        free = None
+        total = None
+        try:
+            st = os.statvfs(to_bytes(target))
+            total = st.f_frsize * st.f_blocks
+            free = st.f_frsize * st.f_bavail
+        except OSError:
+            pass
+        out.append({
+            "name": label, "path": target, "label": label, "size": total,
+            "fstype": scheme, "mount": target, "removable": False,
+            "network": True, "gvfs": True, "free": free, "total": total,
+        })
+    return out
+
+
+def op_netmounts(req):
+    emit({"id": req["id"], "t": "drives", "drives": gvfs_mounts()})
+    send_done(req["id"])
+
+
+def op_mounturi(req, cancel_event):
+    req_id = req["id"]
+    uri = req.get("uri")
+    if not isinstance(uri, str) or not uri.strip():
+        send_error(req_id, "EINVAL", "address required")
+        return
+    uri = uri.strip()
+    anonymous = bool(req.get("anonymous", False))
+    user = str(req.get("user") or "")
+    domain = str(req.get("domain") or "")
+    password = str(req.get("password") or "")
+    before = set(m["mount"] for m in gvfs_mounts())
+    if anonymous:
+        answers = "\n\n\n\n"
+    else:
+        answers = user + "\n" + domain + "\n" + password + "\n"
+    try:
+        proc = subprocess.run(
+            ["gio", "mount", uri],
+            input=answers, capture_output=True, text=True, timeout=40, shell=False)
+    except FileNotFoundError:
+        send_error(req_id, "EUNSUPPORTED", "gio is not installed")
+        return
+    except subprocess.TimeoutExpired:
+        send_error(req_id, "ETIMEDOUT", "the server did not respond")
+        return
+    message = (proc.stderr or proc.stdout or "").strip()
+    after = gvfs_mounts()
+    fresh = [m for m in after if m["mount"] not in before]
+    if proc.returncode != 0 and not fresh:
+        if "already mounted" in message.lower():
+            match = [m for m in after if uri.rstrip("/").endswith(m["label"].split(" on ")[0])]
+            emit({"id": req_id, "t": "done", "path": match[0]["mount"] if match else "",
+                  "mounts": after, "message": "already connected"})
+            return
+        send_error(req_id, "EMOUNT", message or "could not connect")
+        return
+    target = fresh[0]["mount"] if fresh else ""
+    emit({"id": req_id, "t": "done", "path": target, "mounts": after, "message": message})
+
+
+def op_unmounturi(req, cancel_event):
+    req_id = req["id"]
+    target = req.get("path") or req.get("uri")
+    if not isinstance(target, str) or not target.strip():
+        send_error(req_id, "EINVAL", "path required")
+        return
+    try:
+        proc = subprocess.run(
+            ["gio", "mount", "-u", target.strip()],
+            capture_output=True, text=True, timeout=30, shell=False)
+    except FileNotFoundError:
+        send_error(req_id, "EUNSUPPORTED", "gio is not installed")
+        return
+    except subprocess.TimeoutExpired:
+        send_error(req_id, "ETIMEDOUT", "unmount timed out")
+        return
+    if proc.returncode != 0:
+        send_error(req_id, "EMOUNT", (proc.stderr or proc.stdout or "could not disconnect").strip())
+        return
+    emit({"id": req_id, "t": "done", "mounts": gvfs_mounts()})
+
+
 NETWORK_FILESYSTEMS = frozenset([
     "cifs", "smb3", "nfs", "nfs4", "sshfs", "fuse.sshfs", "davfs", "fuse.rclone",
     "fuse.gvfsd-fuse", "9p", "ceph", "glusterfs",
@@ -1285,6 +1408,11 @@ def op_drives(req):
             "free": free, "total": total,
         })
         seen_mounts.add(target)
+    for share in gvfs_mounts():
+        if share["mount"] in seen_mounts:
+            continue
+        drives.append(share)
+        seen_mounts.add(share["mount"])
     emit({"id": req_id, "t": "drives", "drives": drives})
     send_done(req_id)
 
@@ -1365,6 +1493,8 @@ CANCELLABLE_OPS = {
     "du": op_du,
     "copy": lambda r, c: op_copy_move(r, c, False),
     "move": lambda r, c: op_copy_move(r, c, True),
+    "mounturi": op_mounturi,
+    "unmounturi": op_unmounturi,
 }
 
 SIMPLE_OPS = {
@@ -1380,6 +1510,7 @@ SIMPLE_OPS = {
     "symlink": op_symlink,
     "freespace": op_freespace,
     "drives": op_drives,
+    "netmounts": op_netmounts,
     "dirs": op_dirs,
     "ping": op_ping,
     "watch": op_watch,

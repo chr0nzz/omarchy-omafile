@@ -20,6 +20,7 @@ Item {
   signal removeBookmark(string target)
   signal hideDrive(string key)
   signal showAllDrives()
+  signal connectServer()
 
   function usablePlace(value, homePath) {
     var p = String(value || "")
@@ -84,9 +85,6 @@ Item {
           total: Number(drive.total) || 0
         })
       }
-      var hiddenCount = service && service.hiddenDrives ? service.hiddenDrives.length : 0
-      if (hiddenCount > 0)
-        vols.push({ key: "drive", label: "Show " + hiddenCount + " hidden", path: "", unhide: true })
       if (vols.length > 0) out.push({ title: "Drives", rows: vols })
     }
     return out
@@ -250,6 +248,44 @@ Item {
         Item {
           width: column.width
           height: Style.space(10)
+        }
+
+        Rectangle {
+          width: column.width - Style.space(8)
+          x: Style.space(4)
+          height: Style.space(24)
+          radius: Style.cornerRadius
+          color: connectHover.hovered ? Util.alpha(Color.foreground, 0.08) : "transparent"
+
+          HoverHandler { id: connectHover }
+
+          MouseArea {
+            anchors.fill: parent
+            onClicked: sidebar.connectServer()
+          }
+
+          Row {
+            anchors.fill: parent
+            anchors.leftMargin: Style.space(8)
+            anchors.rightMargin: Style.space(8)
+            spacing: Style.space(8)
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: Icons.placeGlyph("network")
+              color: Util.alpha(Color.foreground, 0.6)
+              font.family: Style.font.family
+              font.pixelSize: Style.font.iconSmall
+            }
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Connect to a server"
+              color: Util.alpha(Color.foreground, 0.75)
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+            }
+          }
         }
 
         Rectangle {
