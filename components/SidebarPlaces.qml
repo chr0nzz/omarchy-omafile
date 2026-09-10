@@ -31,11 +31,27 @@ Item {
     return p
   }
 
+  function redundantMount(mount) {
+    var m = String(mount || "")
+    if (!m) return true
+    if (m === "/" || m === "/home") return true
+    if (m === home) return true
+    return false
+  }
+
+  function driveLabel(drive) {
+    var mount = String(drive.mount || "")
+    var name = String(drive.label || "")
+    if (!name || name === "root") return Model.basename(mount) || mount
+    return name
+  }
+
   function mountableDrive(drive) {
     if (!drive || !drive.mount) return false
     var mount = String(drive.mount)
     if (mount.charAt(0) === "[") return false
     if (String(drive.fstype || "") === "swap") return false
+    if (redundantMount(mount)) return false
     return true
   }
 
@@ -78,7 +94,7 @@ Item {
         if (service && service.driveHidden(String(drive.mount))) continue
         vols.push({
           key: drive.network === true ? "network" : (drive.removable ? "usb" : "drive"),
-          label: String(drive.label || drive.name || drive.mount),
+          label: driveLabel(drive),
           path: String(drive.mount),
           device: String(drive.path || ""),
           removable: drive.removable === true,

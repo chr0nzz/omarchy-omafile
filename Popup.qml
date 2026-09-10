@@ -71,6 +71,7 @@ Panel {
     var mount = String(drive.mount)
     if (mount.charAt(0) === "[") return false
     if (String(drive.fstype || "") === "swap") return false
+    if (mount === "/" || mount === "/home" || mount === home) return false
     return true
   }
 
@@ -110,7 +111,8 @@ Panel {
       if (!mountableDrive(d)) continue
       rows.push({
         key: d.network === true ? "network" : (d.removable ? "usb" : "drive"),
-        label: String(d.label || d.name || d.mount),
+        label: (String(d.label || "") && String(d.label) !== "root")
+          ? String(d.label) : (Model.basename(String(d.mount)) || String(d.mount)),
         path: String(d.mount),
         device: String(d.path || ""),
         removable: d.removable === true,
