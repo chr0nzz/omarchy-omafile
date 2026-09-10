@@ -13,6 +13,8 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * Recursive file search across directories
 * Image previews in both list and grid view
 * Bookmarks for the folders you use most
+* Connect to SMB, SFTP, WebDAV and other servers
+* Settings inside the window, no config file editing
 * Bar widget with places, drives, transfers, and trash overview
 * Keyboard-first workflow with standard shortcuts
 
@@ -22,6 +24,7 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * Python 3 (included with Omarchy)
 * util-linux `lsblk` and `findmnt` (included with Arch)
 * Optional: `udisksctl` for ejecting removable drives
+* Optional: `gvfs` and `gvfs-smb` for connecting to network servers
 
 ## Install
 
@@ -68,6 +71,10 @@ Press Ctrl+H to toggle hidden files. Press Ctrl+F to search recursively from the
 Press Ctrl+D to split the window into two panes and Ctrl+B to hide the sidebar. The toolbar has the same split toggle, next to the view and hidden-file buttons.
 
 Press F1, or the last toolbar button, for the full list of keyboard shortcuts.
+
+Open Settings from the toolbar or with Ctrl+Comma to turn hidden files, folders-first ordering, image previews, trash behaviour and the sidebar drive list on or off.
+
+Choose Connect to a server in the sidebar to mount an SMB share, an SFTP host or a WebDAV server. Connections use GVFS and need no root. Install `gvfs-smb` for Windows shares if it is missing. Hover a drive in the sidebar and click the eye to hide it; hidden drives come back from Settings.
 
 Right click a folder and choose Bookmark this folder to pin it to the sidebar. Remove a bookmark with the cross beside it.
 
