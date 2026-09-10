@@ -1,0 +1,68 @@
+name: Bug report
+description: Something in Omafile does not work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. omarchy-shell omafile open ~/Downloads
+        2. Split the window with Ctrl+D
+        3. Press F5
+    validations:
+      required: true
+  - type: input
+    id: omafile
+    attributes:
+      label: Omafile version
+      description: version in manifest.json, or the commit hash
+    validations:
+      required: true
+  - type: input
+    id: omarchy
+    attributes:
+      label: Omarchy version
+      placeholder: omarchy version
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: How does Omafile open
+      options:
+        - window
+        - popup
+    validations:
+      required: true
+  - type: dropdown
+    id: location
+    attributes:
+      label: Where were you
+      options:
+        - A normal folder
+        - Recent
+        - A network share
+        - A removable drive
+        - The trash
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: Output of omarchy-shell omafile status
+      description: Remove anything you do not want public
+      render: json
+  - type: textarea
+    id: logs
+    attributes:
+      label: Shell log
+      description: Output of quickshell log -i <instance> -t 100 around the time of the bug
+      render: shell

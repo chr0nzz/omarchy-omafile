@@ -16,8 +16,6 @@ Item {
   readonly property string popupMode: service
     ? String(service.setting("windowMode", "window")) : "window"
   readonly property bool asPopup: popupMode === "popup"
-  readonly property color solidBackground: Qt.rgba(
-    Color.background.r, Color.background.g, Color.background.b, 1)
 
   property bool shown: false
   property bool closingFromHost: false
@@ -73,18 +71,13 @@ Item {
     id: window
     visible: host.shown && !host.asPopup
     title: "Omafile"
-    color: host.solidBackground
+    color: Color.background
     implicitWidth: 1100
     implicitHeight: 720
     minimumSize: Qt.size(640, 420)
 
     onVisibleChanged: {
       if (!visible && !host.closingFromHost && !host.asPopup) host.requestClose()
-    }
-
-    Rectangle {
-      anchors.fill: parent
-      color: host.solidBackground
     }
 
     Loader {
@@ -126,7 +119,7 @@ Item {
       anchors.centerIn: parent
       width: Math.min(parent.width - Style.space(80), Style.space(1100))
       height: Math.min(parent.height - Style.space(80), Style.space(760))
-      color: host.solidBackground
+      color: Color.background
       radius: Style.cornerRadius
       border.width: Math.max(1, Style.space(1))
       border.color: Color.popups.border

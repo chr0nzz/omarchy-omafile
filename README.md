@@ -39,7 +39,7 @@ Plugins run unsandboxed inside the shell process and have full access to your ho
 Add to `~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind({ "SUPER", "E" }, "Omafile", "exec", "omarchy-shell shell toggle xyzlab.omafile '{}'")
+o.bind("SUPER + E", "Omafile", "omarchy-shell shell toggle xyzlab.omafile '{}'")
 ```
 
 Add to `~/.config/hypr/windows.lua`:
@@ -48,7 +48,7 @@ Add to `~/.config/hypr/windows.lua`:
 o.window({ class = "^org.quickshell$", title = "^Omafile$" }, { float = true, size = { 1100, 720 }, center = true })
 ```
 
-Omarchy makes every window slightly transparent, so the wallpaper shows faintly through empty space. To keep Omafile fully opaque, add this alongside the rule above:
+Omarchy makes every window slightly transparent, so your wallpaper shows faintly through Omafile the same way it does through every other app. If you would rather Omafile were solid, opt it out of that rule:
 
 ```lua
 o.window({ class = "^org.quickshell$", title = "^Omafile$" }, { tag = "-default-opacity", opacity = "1 1" })

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/chr0nzz/omarchy-omafile/security/advisories/new
+    about: Report privately, never as a public issue
+  - name: Network share will not mount
+    url: https://gitlab.gnome.org/GNOME/gvfs/-/issues
+    about: Mounting is handled by GVFS. Server and protocol problems belong there
+  - name: Omarchy itself
+    url: https://github.com/basecamp/omarchy/issues
+    about: Shell, bar, or compositor problems that happen without Omafile installed

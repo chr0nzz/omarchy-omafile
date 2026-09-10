@@ -1,0 +1,198 @@
+name: Submit to marketplace
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type the plugin id to confirm
+        required: true
+        type: string
+      category:
+        description: Marketplace category
+        required: true
+        default: System
+        type: choice
+        options:
+          - System
+          - Productivity
+          - Desktop
+          - Developer Tools
+          - Appearance
+          - Hardware
+          - Widgets
+          - Other
+      tags:
+        description: One to three tags, comma separated
+        required: true
+        default: system, quickshell, bar
+        type: string
+      dry_run:
+        description: Run every check but do not open the issue
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    name: Check the listing is complete, then submit
+    runs-on: ubuntu-latest
+    env:
+      PLUGIN_ID: xyzlab.omafile
+      PLUGIN_NAME: Omafile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm the plugin id
+        run: |
+          if [ "${{ inputs.confirm }}" != "$PLUGIN_ID" ]; then
+            echo "Type $PLUGIN_ID to confirm. Got: ${{ inputs.confirm }}"
+            exit 1
+          fi
+
+      - name: Every listed file must exist
+        run: |
+          status=0
+          for f in manifest.json README.md LICENSE preview.png PROTOCOL.md \
+                   CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md \
+                   .github/PULL_REQUEST_TEMPLATE.md \
+                   .github/ISSUE_TEMPLATE/bug_report.yml \
+                   .github/ISSUE_TEMPLATE/feature_request.yml \
+                   .github/ISSUE_TEMPLATE/config.yml; do
+            if [ ! -f "$f" ]; then
+              echo "missing $f"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: The manifest must be complete and correctly namespaced
+        run: |
+          id=$(jq -r .id manifest.json)
+          if [ "$id" != "$PLUGIN_ID" ]; then
+            echo "manifest id is $id but this workflow submits $PLUGIN_ID"
+            exit 1
+          fi
+          case "$id" in
+            omarchy.*) echo "the omarchy namespace is reserved"; exit 1 ;;
+          esac
+          status=0
+          for key in schemaVersion id name version author license description kinds entryPoints; do
+            value=$(jq -r --arg k "$key" 'if has($k) then .[$k] else "" end | if type == "object" or type == "array" then "set" else tostring end' manifest.json)
+            if [ -z "$value" ] || [ "$value" = "null" ]; then
+              echo "manifest is missing $key"
+              status=1
+            fi
+          done
+          for entry in $(jq -r '.entryPoints | to_entries[] | .value' manifest.json); do
+            if [ ! -f "$entry" ]; then
+              echo "entry point $entry does not exist"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: The readme must document install and removal
+        run: |
+          status=0
+          grep -q "omarchy plugin add" README.md || { echo "README has no install command"; status=1; }
+          grep -q "omarchy plugin remove" README.md || { echo "README has no removal command"; status=1; }
+          exit $status
+
+      - name: No symlinks anywhere
+        run: |
+          if git ls-files -s | awk '$1 == "120000" { print $4 }' | grep .; then
+            echo "the marketplace rejects symlinks"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tests must pass
+        run: |
+          node --test tests/*.test.js
+          python3 -m unittest discover -s tests -p "*_test.py"
+
+      - name: House rules
+        run: |
+          status=0
+          if git ls-files '*.qml' '*.js' | xargs -r grep -nE '^[[:space:]]*(//|/\*)'; then
+            echo "Code comments found in QML or JavaScript files"
+            status=1
+          fi
+          if git ls-files 'bin/*' '*.py' | xargs -r grep -HnE '^[[:space:]]*#' | grep -v ':1:#!'; then
+            echo "Code comments found in Python files"
+            status=1
+          fi
+          if git ls-files | xargs -r grep -lI "$(printf '\342\200\224')"; then
+            echo "Em dashes found in tracked files"
+            status=1
+          fi
+          exit $status
+
+      - name: The repository must be public
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          visibility=$(gh repo view "$GITHUB_REPOSITORY" --json visibility -q .visibility)
+          if [ "$visibility" != "PUBLIC" ]; then
+            echo "the repository is $visibility. The marketplace can only list a public repository"
+            exit 1
+          fi
+
+      - name: Tags must be allowed and no more than three
+        run: |
+          allowed="ai bar education games hyprland kids launcher media power-management quickshell security system workspaces"
+          count=0
+          status=0
+          IFS=','
+          for raw in ${{ format('''{0}''', inputs.tags) }}; do
+            tag=$(echo "$raw" | tr -d '[:space:]')
+            [ -z "$tag" ] && continue
+            count=$((count + 1))
+            case " $allowed " in
+              *" $tag "*) ;;
+              *) echo "tag $tag is not in the allowed list"; status=1 ;;
+            esac
+          done
+          if [ "$count" -lt 1 ] || [ "$count" -gt 3 ]; then
+            echo "choose one to three tags, got $count"
+            status=1
+          fi
+          exit $status
+
+      - name: Report what would be submitted
+        run: |
+          echo "Plugin id:   $PLUGIN_ID"
+          echo "Repository:  https://github.com/${GITHUB_REPOSITORY}"
+          echo "Commit:      $(git rev-parse HEAD)"
+          echo "Category:    ${{ inputs.category }}"
+          echo "Tags:        ${{ inputs.tags }}"
+          echo "Dry run:     ${{ inputs.dry_run }}"
+
+      - name: Open the marketplace submission issue
+        if: ${{ inputs.dry_run == false }}
+        env:
+          GH_TOKEN: ${{ secrets.MARKETPLACE_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "No MARKETPLACE_TOKEN secret. Add a classic personal access token with the public_repo scope."
+            exit 1
+          fi
+          body=$(printf '%s\n' \
+            "### Repository URL" "" "https://github.com/${GITHUB_REPOSITORY}" "" \
+            "### Category" "" "${{ inputs.category }}" "" \
+            "### Tags" "" "${{ inputs.tags }}" "" \
+            "### Suggest a missing tag" "" "_No response_" "" \
+            "### Maintainer notes" "" "_No response_" "" \
+            "### Submission checklist" "" \
+            "- [x] The repository is public and contains installation and removal instructions." \
+            "- [x] I have documented the plugin license and any external dependencies." \
+            "- [x] I confirm that I own or have permission to submit this plugin and its preview assets." \
+            "- [x] The plugin does not overwrite user configuration without explicit consent." \
+            "- [x] I understand that approval is for listing and is not a security review.")
+          gh issue create -R omacom/omarchy-plugin-marketplace --title "[Plugin]: ${PLUGIN_NAME}" --body "$body"

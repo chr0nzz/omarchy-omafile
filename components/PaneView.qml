@@ -475,8 +475,7 @@ Item {
   }
 
   readonly property color fg: Color.foreground
-  readonly property color bg: Qt.rgba(
-    Color.background.r, Color.background.g, Color.background.b, 1)
+  readonly property color bg: Color.background
   readonly property color accent: Color.accent
   readonly property color muted: Color.muted
 

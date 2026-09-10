@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release and request verification
+    runs-on: ubuntu-latest
+    env:
+      HAS_MARKETPLACE_TOKEN: ${{ secrets.MARKETPLACE_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches every version string
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(jq -r .version manifest.json)
+          pkg=$(jq -r .version package.json)
+          fail=0
+          for pair in "manifest.json:$manifest" "package.json:$pkg"; do
+            name="${pair%%:*}"
+            value="${pair#*:}"
+            if [ "$value" != "$tag" ]; then
+              echo "$name says $value but the tag is $tag"
+              fail=1
+            fi
+          done
+          test "$fail" -eq 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify before releasing
+        run: |
+          node --test tests/*.test.js
+          python3 -m unittest discover -s tests -p "*_test.py" -v
+
+      - name: House rules
+        run: |
+          status=0
+          if git ls-files '*.qml' '*.js' | xargs -r grep -nE '^[[:space:]]*(//|/\*)'; then
+            echo "Code comments found in QML or JavaScript files"
+            status=1
+          fi
+          if git ls-files 'bin/*' '*.py' | xargs -r grep -HnE '^[[:space:]]*#' | grep -v ':1:#!'; then
+            echo "Code comments found in Python files"
+            status=1
+          fi
+          if git ls-files | xargs -r grep -lI "$(printf '\342\200\224')"; then
+            echo "Em dashes found in tracked files"
+            status=1
+          fi
+          exit $status
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+
+      - name: Open the marketplace verification issue
+        if: env.HAS_MARKETPLACE_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.MARKETPLACE_TOKEN }}
+        run: |
+          sha=$(git rev-parse "${GITHUB_REF_NAME}^{commit}")
+          body=$(printf '%s\n' \
+            "### Verification action" "" "Verify and publish a newer upstream commit" "" \
+            "### Plugin ID" "" "xyzlab.omafile" "" \
+            "### Repository URL" "" "https://github.com/${GITHUB_REPOSITORY}" "" \
+            "### Target commit" "" "$sha" "" \
+            "### Verification acknowledgment" "" \
+            "- [x] I understand that only the exact target commit can become a verified marketplace snapshot and that verification is not a security audit." "" \
+            "### Standard installation acknowledgment" "" \
+            "- [ ] I confirm that this listed root plugin supports the standard Omarchy installation path and does not require manual setup.")
+          gh issue create -R omacom/omarchy-plugin-marketplace --title "[Verify]: Omafile ${GITHUB_REF_NAME}" --body "$body"
+
+      - name: Say what to do without a token
+        if: env.HAS_MARKETPLACE_TOKEN != 'true'
+        run: |
+          echo "No MARKETPLACE_TOKEN secret, so no verification issue was opened."
+          echo "Add a classic personal access token with the public_repo scope as MARKETPLACE_TOKEN,"
+          echo "or open the verification issue by hand from the Plugin verification form."

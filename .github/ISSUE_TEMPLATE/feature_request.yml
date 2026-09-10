@@ -1,0 +1,31 @@
+name: Feature request
+description: Something Omafile should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you cannot do today, or what is awkward
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What Omafile should do. Include the setting, key, or IPC command if you have one in mind
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways you considered, including scripts around the IPC commands
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This needs no new runtime dependency beyond the Python standard library and the tools Omarchy already ships
+        - label: This does not need sudo, pkexec, or any privileged helper
+        - label: I am willing to open a pull request for this
