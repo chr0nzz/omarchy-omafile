@@ -58,6 +58,14 @@ Panel {
   property real freeBytes: 0
   property real totalBytes: 0
 
+  function usablePlace(value, homePath) {
+    var p = String(value || "")
+    if (!p) return ""
+    if (p.length > 1 && p.charAt(p.length - 1) === "/") p = p.substring(0, p.length - 1)
+    if (!p || p === homePath) return ""
+    return p
+  }
+
   function placeRows() {
     var dirs = service ? service.userDirs : ({})
     var rows = []
@@ -69,7 +77,8 @@ Panel {
     }
     for (var i = 0; i < order.length; i++) {
       var k = order[i]
-      if (dirs && dirs[k]) rows.push({ key: k, label: labels[k], path: String(dirs[k]) })
+      var resolved = usablePlace(dirs ? dirs[k] : "", home)
+      if (resolved) rows.push({ key: k, label: labels[k], path: resolved })
     }
     return rows
   }

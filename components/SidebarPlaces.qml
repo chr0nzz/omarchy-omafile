@@ -16,6 +16,14 @@ Item {
   signal navigate(string target)
   signal openInNewTab(string target)
 
+  function usablePlace(value, homePath) {
+    var p = String(value || "")
+    if (!p) return ""
+    if (p.length > 1 && p.charAt(p.length - 1) === "/") p = p.substring(0, p.length - 1)
+    if (!p || p === homePath) return ""
+    return p
+  }
+
   function sections() {
     var out = []
     var dirs = service ? service.userDirs : ({})
@@ -28,7 +36,8 @@ Item {
     }
     for (var i = 0; i < order.length; i++) {
       var k = order[i]
-      if (dirs && dirs[k]) places.push({ key: k, label: labels[k], path: String(dirs[k]) })
+      var resolved = usablePlace(dirs ? dirs[k] : "", home)
+      if (resolved) places.push({ key: k, label: labels[k], path: resolved })
     }
     places.push({ key: "root", label: "Filesystem", path: "/" })
     out.push({ title: "Places", rows: places })
