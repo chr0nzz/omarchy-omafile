@@ -117,6 +117,15 @@ Item {
     return id
   }
 
+  function sendRaw(payload) {
+    var line = JSON.stringify(payload) + "\n"
+    if (helperReady && helper.running) helper.write(line)
+    else {
+      _queue.push(line)
+      ensureHelper()
+    }
+  }
+
   function cancel(id) {
     if (!id) return
     request({ op: "cancel", target: id }, null)
@@ -291,7 +300,7 @@ Item {
   }
 
   function resolveConflict(jobId, action, applyAll) {
-    request({ op: "resolve", target: jobId, action: action, applyAll: applyAll === true }, null)
+    sendRaw({ id: jobId, op: "resolve", action: action, applyAll: applyAll === true })
     updateTransfer(jobId, { state: action === "cancel" ? "cancelled" : "running" })
   }
 
