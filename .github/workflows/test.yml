@@ -1,0 +1,41 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/
+      - run: python3 -m unittest discover -s tests -v
+      - name: House rules
+        run: |
+          set -e
+          echo "Checking for code comments in QML and JS files..."
+          if git ls-files '*.qml' '*.js' | xargs -r grep -n '^[[:space:]]*(//|/*)' || [ $? -eq 1 ]; then
+            if [ $? -eq 0 ]; then
+              echo "Code comments found in QML/JS files"
+              exit 1
+            fi
+          fi
+          echo "Checking for code comments in Python and bin files..."
+          if git ls-files 'bin/*' '*.py' | xargs -r grep -n '^[[:space:]]*#' | grep -v '^[^:]*:1:#!' || [ $? -eq 1 ]; then
+            if [ $? -eq 0 ]; then
+              echo "Code comments found in Python/bin files"
+              exit 1
+            fi
+          fi
+          echo "Checking for em dashes..."
+          em_dash=$(printf '\xe2\x80\x94')
+          if git ls-files | xargs -r grep -l "$em_dash" || [ $? -eq 1 ]; then
+            if [ $? -eq 0 ]; then
+              echo "Em dashes found in tracked files"
+              exit 1
+            fi
+          fi

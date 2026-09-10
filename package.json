@@ -1,0 +1,10 @@
+{
+  "name": "omarchy-omafile",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "A lightweight, fast file manager plugin for Omarchy running in the shell.",
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}
