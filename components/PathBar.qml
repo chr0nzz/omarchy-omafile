@@ -46,6 +46,20 @@ Item {
     bar.editingFinished()
   }
 
+  function beginEditWith(seed) {
+    editing = true
+    pathInput.text = String(seed || "")
+    pathInput.forceActiveFocus()
+    pathInput.cursorPosition = pathInput.text.length
+  }
+
+  function seedFilter(text) {
+    bar.filterOpen = true
+    filterInput.text = String(text || "")
+    filterInput.forceActiveFocus()
+    filterInput.cursorPosition = filterInput.text.length
+  }
+
   function openFilter() {
     bar.filterOpen = true
     filterInput.forceActiveFocus()

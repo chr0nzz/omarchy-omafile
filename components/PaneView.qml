@@ -367,6 +367,25 @@ Item {
     anchorIndex = index
   }
 
+  function toggleCursorSelection() {
+    if (cursorIndex < 0 || cursorIndex >= rows.length) return
+    var name = rows[cursorIndex][0]
+    var next = ({})
+    for (var k in selection) next[k] = selection[k]
+    next[name] = !next[name]
+    selection = next
+    anchorIndex = cursorIndex
+  }
+
+  function invertSelection() {
+    var next = ({})
+    for (var i = 0; i < rows.length; i++) {
+      var name = rows[i][0]
+      if (!selection[name]) next[name] = true
+    }
+    selection = next
+  }
+
   function selectAll() {
     var all = ({})
     for (var i = 0; i < rows.length; i++) all[rows[i][0]] = true
@@ -732,6 +751,8 @@ Item {
           color: pane.selection[modelData[0]]
             ? Util.alpha(pane.accent, Style.selectedFillAlpha)
             : (cellHover.hovered ? Util.alpha(pane.fg, Style.hoverFillAlpha) : "transparent")
+          border.width: pane.cursorIndex === index && pane.active ? 1 : 0
+          border.color: Util.alpha(pane.accent, 0.8)
 
           HoverHandler { id: cellHover }
 

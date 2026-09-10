@@ -875,7 +875,7 @@ def op_trash(req):
                     move_across(src, dest_path)
                 else:
                     raise
-            results.append({"path": p, "ok": True})
+            results.append({"path": p, "ok": True, "trashinfo": to_str(candidate)})
         except OSError as e:
             results.append({"path": p, "ok": False, "message": e.strerror or str(e)})
     send_done(req_id, results=results)

@@ -253,15 +253,36 @@ Item {
   }
 
   function makeDirectory(path, onDone, onError) {
-    return request({ op: "mkdir", path: path }, { onDone: onDone, onError: onError })
+    return request({ op: "mkdir", path: path }, {
+      onDone: function (m) {
+        root.recordUndo({ kind: "create", path: path, isDir: true, label: "New folder" })
+        if (onDone) onDone(m)
+      },
+      onError: onError
+    })
   }
 
   function makeFile(path, onDone, onError) {
-    return request({ op: "mkfile", path: path }, { onDone: onDone, onError: onError })
+    return request({ op: "mkfile", path: path }, {
+      onDone: function (m) {
+        root.recordUndo({ kind: "create", path: path, isDir: false, label: "New file" })
+        if (onDone) onDone(m)
+      },
+      onError: onError
+    })
   }
 
   function renamePath(path, newName, onDone, onError) {
-    return request({ op: "rename", path: path, newName: newName }, { onDone: onDone, onError: onError })
+    return request({ op: "rename", path: path, newName: newName }, {
+      onDone: function (m) {
+        root.recordUndo({
+          kind: "rename", from: path, to: Model.joinPath(Model.dirname(path), newName),
+          label: "Rename to " + newName
+        })
+        if (onDone) onDone(m)
+      },
+      onError: onError
+    })
   }
 
   function listRecent(onChunk, onDone, onError) {
@@ -315,6 +336,15 @@ Item {
           state: "done", errors: m.errors || [],
           copied: Number(m.copied) || 0, skipped: Number(m.skipped) || 0
         })
+        if ((Number(m.copied) || 0) > 0) {
+          var created = []
+          for (var i = 0; i < sources.length; i++)
+            created.push(Model.joinPath(dest, Model.basename(sources[i])))
+          root.recordUndo({
+            kind: op, sources: sources.slice(), dest: dest, created: created,
+            label: (op === "move" ? "Move " : "Copy ") + Model.formatCount(sources.length, "item", "items")
+          })
+        }
         scheduleTransferSweep()
         refreshTrash()
       },
@@ -370,9 +400,105 @@ Item {
     sweepTimer.restart()
   }
 
+  function recordUndo(entry) {
+    var next = undoStack.slice()
+    next.push(entry)
+    if (next.length > 40) next.shift()
+    undoStack = next
+    redoStack = []
+  }
+
+  function popUndo() {
+    if (undoStack.length === 0) return null
+    var next = undoStack.slice()
+    var entry = next.pop()
+    undoStack = next
+    return entry
+  }
+
+  function pushRedo(entry) {
+    var next = redoStack.slice()
+    next.push(entry)
+    redoStack = next
+  }
+
+  function popRedo() {
+    if (redoStack.length === 0) return null
+    var next = redoStack.slice()
+    var entry = next.pop()
+    redoStack = next
+    return entry
+  }
+
+  function undo(onDone, onError) {
+    var entry = popUndo()
+    if (!entry) {
+      if (onError) onError({ message: "Nothing to undo" })
+      return
+    }
+    applyReverse(entry, function () {
+      root.pushRedo(entry)
+      if (onDone) onDone(entry)
+    }, onError)
+  }
+
+  function redo(onDone, onError) {
+    var entry = popRedo()
+    if (!entry) {
+      if (onError) onError({ message: "Nothing to redo" })
+      return
+    }
+    applyForward(entry, function () {
+      var next = undoStack.slice()
+      next.push(entry)
+      undoStack = next
+      if (onDone) onDone(entry)
+    }, onError)
+  }
+
+  function applyReverse(entry, onDone, onError) {
+    if (entry.kind === "trash")
+      request({ op: "restore", items: entry.trashinfo }, { onDone: function (m) { refreshTrash(); onDone(m) }, onError: onError })
+    else if (entry.kind === "rename")
+      request({ op: "rename", path: entry.to, newName: Model.basename(entry.from) }, { onDone: onDone, onError: onError })
+    else if (entry.kind === "move")
+      request({ op: "move", sources: entry.created, dest: Model.dirname(entry.sources[0]), conflict: "rename" }, { onDone: onDone, onError: onError })
+    else if (entry.kind === "copy")
+      request({ op: "trash", paths: entry.created }, { onDone: function (m) { refreshTrash(); onDone(m) }, onError: onError })
+    else if (entry.kind === "create")
+      request({ op: "trash", paths: [entry.path] }, { onDone: function (m) { refreshTrash(); onDone(m) }, onError: onError })
+    else if (onError) onError({ message: "Cannot undo that" })
+  }
+
+  function applyForward(entry, onDone, onError) {
+    if (entry.kind === "trash")
+      request({ op: "trash", paths: entry.paths }, { onDone: function (m) { refreshTrash(); onDone(m) }, onError: onError })
+    else if (entry.kind === "rename")
+      request({ op: "rename", path: entry.from, newName: Model.basename(entry.to) }, { onDone: onDone, onError: onError })
+    else if (entry.kind === "move")
+      request({ op: "move", sources: entry.sources, dest: entry.dest, conflict: "rename" }, { onDone: onDone, onError: onError })
+    else if (entry.kind === "copy")
+      request({ op: "copy", sources: entry.sources, dest: entry.dest, conflict: "rename" }, { onDone: onDone, onError: onError })
+    else if (entry.kind === "create")
+      request({ op: entry.isDir ? "mkdir" : "mkfile", path: entry.path }, { onDone: onDone, onError: onError })
+    else if (onError) onError({ message: "Cannot redo that" })
+  }
+
   function trashPaths(paths, onDone, onError) {
     return request({ op: "trash", paths: paths }, {
-      onDone: function (m) { refreshTrash(); if (onDone) onDone(m) },
+      onDone: function (m) {
+        var names = []
+        var results = m.results || []
+        for (var i = 0; i < results.length; i++)
+          if (results[i].ok && results[i].trashinfo) names.push(results[i].trashinfo)
+        if (names.length > 0)
+          root.recordUndo({
+            kind: "trash", paths: paths.slice(), trashinfo: names,
+            label: Model.formatCount(names.length, "item moved to trash", "items moved to trash")
+          })
+        refreshTrash()
+        if (onDone) onDone(m)
+      },
       onError: onError
     })
   }
@@ -410,6 +536,13 @@ Item {
   }
 
   property var localSettings: ({})
+  property var undoStack: []
+  property var redoStack: []
+
+  readonly property bool canUndo: undoStack.length > 0
+  readonly property bool canRedo: redoStack.length > 0
+  readonly property string undoLabel: canUndo ? String(undoStack[undoStack.length - 1].label || "") : ""
+  readonly property string redoLabel: canRedo ? String(redoStack[redoStack.length - 1].label || "") : ""
 
   readonly property string windowMode: String(settingNow("windowMode", "window"))
 

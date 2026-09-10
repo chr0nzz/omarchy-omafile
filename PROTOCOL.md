@@ -146,7 +146,9 @@ timestamps and uses `os.copy_file_range` with a `shutil.copyfileobj` fallback.
 with `files/` and `info/`, a `DeletionDate` in local time, `%`-encoded paths in
 `Path=`, and de-duplicated names. Files on another filesystem go to that volume's
 `.Trash-$uid/`. `delete` is permanent and the plugin only sends it after an explicit
-confirmation. Both reply `{"t": "done", "results": [{"path": P, "ok": true}]}`.
+confirmation. Both reply `{"t": "done", "results": [{"path": P, "ok": true}]}`. A successful `trash`
+result also carries `trashinfo`, the name of the `.trashinfo` entry it created, so the
+caller can hand that exact name back to `restore` and undo the deletion.
 
 ### trashinfo, emptytrash
 

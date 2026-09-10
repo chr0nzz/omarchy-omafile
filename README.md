@@ -5,7 +5,7 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 ## Features
 
 * Real resizable window with tabs for multiple locations
-* Dual pane layout with F5 copy and F6 move between panes
+* Dual pane layout with one-key copy and move between panes
 * List and grid view modes
 * Live directory watching: external changes appear immediately
 * Background copy and move with persistent progress tracking
@@ -16,7 +16,8 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * Connect to SMB, SFTP, WebDAV and other servers
 * Settings inside the window, no config file editing
 * Bar widget with places, drives, transfers, and trash overview
-* Keyboard-first workflow with standard shortcuts
+* Full keyboard control, following GNOME Files conventions
+* Undo and redo for trash, rename, move, copy and new items
 
 ## Requirements
 
@@ -59,25 +60,13 @@ o.window({ class = "^org.quickshell$", title = "^Omafile$" }, { tag = "-default-
 
 Press Super+E to toggle the Omafile window. Opening it again while it is already open brings it to the front rather than doing nothing.
 
-Navigate directories with Enter or double-click. Backspace or Alt+Left go up or back; Alt+Right goes forward.
+Navigate directories with Enter or double-click. Backspace or Alt+Up go to the parent folder; Alt+Left and Alt+Right go back and forward.
 
-Click any part of the address bar to type a path, or press Ctrl+L. Click a breadcrumb to jump to that folder.
+Click any part of the address bar to type a path, or press Ctrl+L. Click a breadcrumb to jump to that folder. Typing `/` or `~` opens the address bar with that character already in it.
 
 The magnifier at the end of the address bar filters the current folder. Press Ctrl+F instead to search the folder and everything inside it. Escape clears the text, then closes the filter.
 
-Use Ctrl+T to open a new tab and Ctrl+W to close it. Press Tab to switch between the left and right panes.
-
-Copy items between panes with F5 or move them with F6.
-
-Press F7 to create a new folder. Press F2 to rename a file or folder.
-
-Press Delete to move items to trash or Shift+Delete to delete permanently. Cut with Ctrl+X, copy with Ctrl+C, and paste with Ctrl+V. Select all files with Ctrl+A.
-
-Press Ctrl+H to toggle hidden files. Press Ctrl+F to search recursively from the current directory, and Escape to leave the results and return to the folder.
-
-Press Ctrl+D to split the window into two panes and Ctrl+B to hide the sidebar. The toolbar has the same split toggle, next to the view and hidden-file buttons.
-
-Press F1, or the last toolbar button, for the full list of keyboard shortcuts.
+Everything Omafile does is reachable from the keyboard. Press F1, or the last toolbar button, for the list inside the window; the same list is in the Keyboard section below.
 
 Open Settings from the toolbar or with Ctrl+Comma to turn hidden files, folders-first ordering, image previews, trash behaviour and the sidebar drive list on or off.
 
@@ -100,9 +89,104 @@ Right click a folder and choose Bookmark this folder to pin it to the sidebar. R
 
 Recent in Places lists the files you opened most recently, newest first, drawn from the same history the rest of the desktop uses. Opening one takes you straight to the file; there is no folder to go up to, so use a place or a bookmark to leave.
 
-When a copy or move finds a file of the same name, Omafile asks what to do. Choose with the mouse, or press R to replace, K to keep both, S to skip and A to skip every remaining conflict. Escape skips the file.
+When a copy or move finds a file of the same name, Omafile asks what to do. Choose with the mouse, or with the keys listed under Keyboard.
 
 Press Escape to close the window.
+
+## Keyboard
+
+Omafile follows GNOME Files conventions, so shortcuts you already know work here.
+
+### Navigation
+
+| Keys | Action |
+|------|--------|
+| `Enter` | Open the selected item |
+| `Backspace` / `Alt+Up` | Go to the parent folder |
+| `Alt+Left` / `Alt+Right` | Back and forward |
+| `Alt+Home` | Go to your home folder |
+| `Ctrl+L` | Type a path |
+| `/` or `~` | Type a path, starting from root or home |
+| `Home` / `End` | First and last item |
+| `F5` / `Ctrl+R` | Refresh |
+
+### Moving around without a mouse
+
+Focus starts in the file list. Tab moves it to the sidebar, or to the other pane when the window is split. Escape or Right returns focus to the file list.
+
+| Keys | Action |
+|------|--------|
+| `Tab` | Sidebar, or the other pane when split |
+| `Shift+Tab` | Jump to the sidebar |
+| `Arrows`, `Enter` | Move and open, once in the sidebar |
+| `Ctrl+Enter` | Open a sidebar place in a new tab |
+| `Delete` | Remove a bookmark or hide a drive, in the sidebar |
+| `Escape` | Leave the sidebar |
+| `Shift+F10` / `Menu` | Open the context menu on the current item |
+
+The context menu is a real focus target: arrows move through it, Enter or Space runs the highlighted entry, Escape closes it. Anything Omafile can do to a file is in there, so no action needs the mouse.
+
+### Selection
+
+| Keys | Action |
+|------|--------|
+| `Ctrl+Click` | Add one item to the selection |
+| `Ctrl+Space` | Add the item under the cursor |
+| `Shift+Click`, `Shift+Arrows` | Select a range |
+| `Ctrl+A` | Select everything |
+| `Ctrl+Shift+I` | Invert the selection |
+| `Escape` | Clear the selection |
+
+### Files
+
+| Keys | Action |
+|------|--------|
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy, cut and paste |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo and redo |
+| `F2` | Rename |
+| `Ctrl+Shift+N` | New folder |
+| `Ctrl+N` | New file |
+| `Delete` | Move to trash |
+| `Shift+Delete` | Delete permanently |
+| `Ctrl+I` / `Alt+Enter` | Properties |
+| `Ctrl+D` | Bookmark this folder |
+
+Undo covers trash, rename, move, copy and new file or folder. Undoing a trash puts the items back where they were, and undoing a copy trashes what the copy created.
+
+### Panes and tabs
+
+| Keys | Action |
+|------|--------|
+| `Ctrl+T` / `Ctrl+W` | New tab and close tab |
+| `Ctrl+PageUp` / `Ctrl+PageDown` | Previous and next tab |
+| `Ctrl+Enter` | Open the folder under the cursor in a new tab |
+| `F6` | Split into two panes |
+| `Tab` | Switch the active pane, while split |
+| `Ctrl+Shift+C` / `Ctrl+Shift+M` | Copy and move to the other pane |
+
+### View
+
+| Keys | Action |
+|------|--------|
+| `Ctrl+1` / `Ctrl+2` | List and grid |
+| `Ctrl+H` | Show hidden files |
+| `Ctrl+B` | Show or hide the sidebar |
+| `Ctrl+F`, or just type | Search in this folder |
+| `Ctrl+Comma` | Settings |
+| `F1` | The shortcut list |
+| `Ctrl+Q` / `Escape` | Close the window |
+
+Typing an ordinary character opens the search box with that character already typed, the way GNOME Files does.
+
+### When a file already exists
+
+| Keys | Action |
+|------|--------|
+| `R` / `K` / `S` / `A` | Replace, keep both, skip, skip all |
+
+Escape skips the file.
+
+Super+C, Super+V and Super+X are Omarchy's universal clipboard shortcuts. Omarchy translates them to Ctrl+C, Ctrl+V and Ctrl+X before they reach the window, so they copy, paste and cut files in Omafile too.
 
 ## Settings
 

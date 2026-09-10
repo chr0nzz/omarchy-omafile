@@ -30,6 +30,10 @@ Item {
   property string dialogError: ""
   property var dialogPayload: null
   property bool menuOpen: false
+  property int menuCursor: -1
+  property var menuActions: []
+  property string focusZone: "pane"
+  property int appCursor: 0
   property real menuX: 0
   property real menuY: 0
   property var menuEntry: null
@@ -469,6 +473,140 @@ Item {
       p.stopSearch()
     }
   }
+  function enterSidebar() {
+    if (!sidebarVisible) { sidebarVisible = true; rememberSession() }
+    sidebar.keyboardActive = true
+    focusZone = "sidebar"
+  }
+
+  function leaveSidebar() {
+    sidebar.keyboardActive = false
+    focusZone = "pane"
+    keyCatcher.forceActiveFocus()
+  }
+
+  function setView(mode) {
+    var p = activePane()
+    if (!p) return
+    p.view = mode
+    rememberSession()
+  }
+
+  function cycleTab(delta) {
+    var list = tabsFor(activeSide)
+    if (list.length < 2) return
+    var index = activeIndexFor(activeSide) + delta
+    if (index < 0) index = list.length - 1
+    if (index >= list.length) index = 0
+    selectTab(activeSide, index)
+  }
+
+  function openCursorInNewTab() {
+    var entry = activePane().cursorEntry()
+    if (entry && entry.isDir) newTab(activeSide, entry.path)
+  }
+
+  function toggleBookmarkHere() {
+    if (!service) return
+    var p = activePane()
+    var entry = p.cursorEntry()
+    var target = (entry && entry.isDir) ? entry.path : p.path
+    service.togglePinned(target)
+    statusText = isBookmarked(target) ? "Bookmarked" : "Bookmark removed"
+  }
+
+  function doUndo() {
+    if (!service) return
+    service.undo(function (entry) {
+      root.statusText = "Undone: " + String(entry.label || "")
+      root.refreshPanes()
+    }, function (m) {
+      root.statusText = String(m.message || "Nothing to undo")
+    })
+  }
+
+  function doRedo() {
+    if (!service) return
+    service.redo(function (entry) {
+      root.statusText = "Redone: " + String(entry.label || "")
+      root.refreshPanes()
+    }, function (m) {
+      root.statusText = String(m.message || "Nothing to redo")
+    })
+  }
+
+  function refreshPanes() {
+    paneA.refresh()
+    if (split) paneB.refresh()
+  }
+
+  function openMenuAtCursor() {
+    var p = activePane()
+    var entry = p.cursorEntry()
+    menuEntry = entry
+    menuActions = contextActions(entry)
+    menuCursor = firstMenuIndex()
+    var row = Math.max(0, p.cursorIndex)
+    menuX = (sidebarVisible ? sidebar.width : 0) + Style.space(60)
+      + (activeSide === 1 ? sideA.width : 0)
+    menuY = toolbar.height + Style.space(40) + Math.min(row, 18) * Style.space(22)
+    menuOpen = true
+  }
+
+  function closeMenu() {
+    menuOpen = false
+    menuCursor = -1
+    keyCatcher.forceActiveFocus()
+  }
+
+  function firstMenuIndex() {
+    for (var i = 0; i < menuActions.length; i++)
+      if (menuActions[i].label !== "" && !menuActions[i].disabled) return i
+    return -1
+  }
+
+  function lastMenuIndex() {
+    for (var i = menuActions.length - 1; i >= 0; i--)
+      if (menuActions[i].label !== "" && !menuActions[i].disabled) return i
+    return -1
+  }
+
+  function moveMenuCursor(delta) {
+    if (menuActions.length === 0) return
+    var index = menuCursor
+    for (var step = 0; step < menuActions.length; step++) {
+      index = index + delta
+      if (index < 0) index = menuActions.length - 1
+      if (index >= menuActions.length) index = 0
+      var item = menuActions[index]
+      if (item.label !== "" && !item.disabled) { menuCursor = index; return }
+    }
+  }
+
+  function activateMenuCursor() {
+    if (menuCursor < 0 || menuCursor >= menuActions.length) return
+    var item = menuActions[menuCursor]
+    if (!item || item.label === "" || item.disabled) return
+    menuCursor = -1
+    runAction(item.key)
+    keyCatcher.forceActiveFocus()
+  }
+
+  function moveAppCursor(delta) {
+    var list = filteredApps()
+    if (list.length === 0) return
+    appCursor = Math.max(0, Math.min(list.length - 1, appCursor + delta))
+  }
+
+  function chooseApp() {
+    var list = filteredApps()
+    if (appCursor < 0 || appCursor >= list.length) return
+    var app = list[appCursor]
+    var entry = dialogPayload
+    closeDialog()
+    if (entry && service) service.openWith(app.execString, entry.path)
+  }
+
   function handleKey(event) {
     if (confirm.opened) return confirm.handleKey(event)
     if (dialogMode === "conflict") {
@@ -479,38 +617,97 @@ Item {
       if (event.key === Qt.Key_A) { resolveConflict("skip", true); return true }
       return true
     }
-    if (dialogMode !== "") {
-      if (event.key === Qt.Key_Escape) {
-        closeDialog()
-        return true
-      }
-      return false
+    if (dialogMode !== "") return handleDialogKey(event)
+    if (menuOpen) return handleMenuKey(event)
+    if (focusZone === "sidebar") return handleSidebarKey(event)
+    return handlePaneKey(event)
+  }
+
+  function handleDialogKey(event) {
+    if (event.key === Qt.Key_Escape) {
+      closeDialog()
+      return true
     }
-    if (menuOpen) {
-      if (event.key === Qt.Key_Escape) {
-        menuOpen = false
-        return true
-      }
-      return false
+    if (dialogMode === "openwith") {
+      if (event.key === Qt.Key_Down) { moveAppCursor(1); return true }
+      if (event.key === Qt.Key_Up) { moveAppCursor(-1); return true }
+      if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { chooseApp(); return true }
     }
+    if (dialogMode === "settings" || dialogMode === "shortcuts" || dialogMode === "properties") {
+      if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { closeDialog(); return true }
+    }
+    return false
+  }
+
+  function handleMenuKey(event) {
+    if (event.key === Qt.Key_Escape) { closeMenu(); return true }
+    if (event.key === Qt.Key_Down) { moveMenuCursor(1); return true }
+    if (event.key === Qt.Key_Up) { moveMenuCursor(-1); return true }
+    if (event.key === Qt.Key_Home) { menuCursor = firstMenuIndex(); return true }
+    if (event.key === Qt.Key_End) { menuCursor = lastMenuIndex(); return true }
+    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+      activateMenuCursor()
+      return true
+    }
+    return true
+  }
+
+  function handleSidebarKey(event) {
+    var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+    if (event.key === Qt.Key_Escape) { leaveSidebar(); return true }
+    if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) { leaveSidebar(); return true }
+    if (event.key === Qt.Key_Right) { leaveSidebar(); return true }
+    if (event.key === Qt.Key_Down) { sidebar.moveCursor(1); return true }
+    if (event.key === Qt.Key_Up) { sidebar.moveCursor(-1); return true }
+    if (event.key === Qt.Key_Home) { sidebar.cursorIndex = 0; return true }
+    if (event.key === Qt.Key_End) { sidebar.cursorIndex = sidebar.flatRows.length - 1; return true }
+    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+      sidebar.activateCursor(ctrl)
+      if (!ctrl) leaveSidebar()
+      return true
+    }
+    if (event.key === Qt.Key_Delete) { sidebar.removeCursor(); return true }
+    if (ctrl && event.key === Qt.Key_B) { sidebarVisible = false; leaveSidebar(); return true }
+    return true
+  }
+
+  function handlePaneKey(event) {
     var p = activePane()
     var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
     var shiftKey = (event.modifiers & Qt.ShiftModifier) !== 0
     var alt = (event.modifiers & Qt.AltModifier) !== 0
+
     if (event.key === Qt.Key_Escape) {
-      if (p.searching || findMode) {
-        exitFind()
-        return true
-      }
-      if (p.filter !== "" || pathBar.filterOpen) {
-        pathBar.closeFilter()
-        return true
-      }
+      if (p.searching || findMode) { exitFind(); return true }
+      if (p.filter !== "" || pathBar.filterOpen) { pathBar.closeFilter(); return true }
+      if (p.selectedCount > 0) { p.clearSelection(); return true }
       requestClose()
       return true
     }
+
+    if (event.key === Qt.Key_Tab && !ctrl) {
+      if (shiftKey) { enterSidebar(); return true }
+      if (split) { activeSide = otherSide(); return true }
+      enterSidebar()
+      return true
+    }
+    if (event.key === Qt.Key_Backtab) { enterSidebar(); return true }
+
+    if (event.key === Qt.Key_Menu || (shiftKey && event.key === Qt.Key_F10)) {
+      openMenuAtCursor()
+      return true
+    }
+
+    if (ctrl && shiftKey && event.key === Qt.Key_N) { showDialog("newfolder", "New folder", "untitled folder", null); return true }
+    if (ctrl && shiftKey && event.key === Qt.Key_C) { transferToOtherPane("copy"); return true }
+    if (ctrl && shiftKey && event.key === Qt.Key_M) { transferToOtherPane("move"); return true }
+    if (ctrl && shiftKey && event.key === Qt.Key_I) { p.invertSelection(); return true }
+    if (ctrl && shiftKey && event.key === Qt.Key_Z) { doRedo(); return true }
+
+    if (ctrl && event.key === Qt.Key_N) { showDialog("newfile", "New file", "untitled", null); return true }
     if (ctrl && event.key === Qt.Key_T) { newTab(activeSide, null); return true }
     if (ctrl && event.key === Qt.Key_W) { closeTab(activeSide, activeIndexFor(activeSide)); return true }
+    if (ctrl && event.key === Qt.Key_Q) { requestClose(); return true }
     if (ctrl && event.key === Qt.Key_L) { pathBar.beginEdit(); return true }
     if (ctrl && event.key === Qt.Key_H) { p.showHidden = !p.showHidden; rememberSession(); return true }
     if (ctrl && event.key === Qt.Key_A) { p.selectAll(); return true }
@@ -520,26 +717,38 @@ Item {
     if (ctrl && event.key === Qt.Key_F) { root.enterFind(); return true }
     if (ctrl && event.key === Qt.Key_R) { p.refresh(); return true }
     if (ctrl && event.key === Qt.Key_B) { sidebarVisible = !sidebarVisible; rememberSession(); return true }
-    if (ctrl && event.key === Qt.Key_D) { toggleSplit(); return true }
-    if (event.key === Qt.Key_F1) { showDialog("shortcuts", "Keyboard shortcuts", "", null); return true }
+    if (ctrl && event.key === Qt.Key_D) { toggleBookmarkHere(); return true }
+    if (ctrl && event.key === Qt.Key_Z) { doUndo(); return true }
+    if (ctrl && event.key === Qt.Key_I) { showProperties(p.cursorEntry()); return true }
+    if (ctrl && event.key === Qt.Key_Space) { p.toggleCursorSelection(); return true }
     if (ctrl && event.key === Qt.Key_Comma) { showDialog("settings", "Settings", "", null); return true }
-    if (event.key === Qt.Key_Tab) {
-      if (split) { activeSide = otherSide(); return true }
-      return true
-    }
+    if (ctrl && event.key === Qt.Key_1) { setView("list"); return true }
+    if (ctrl && event.key === Qt.Key_2) { setView("grid"); return true }
+    if (ctrl && event.key === Qt.Key_PageDown) { cycleTab(1); return true }
+    if (ctrl && event.key === Qt.Key_PageUp) { cycleTab(-1); return true }
+    if (ctrl && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) { openCursorInNewTab(); return true }
+
+    if (event.key === Qt.Key_F1) { showDialog("shortcuts", "Keyboard shortcuts", "", null); return true }
     if (event.key === Qt.Key_F2) { doRename(); return true }
-    if (event.key === Qt.Key_F5) { transferToOtherPane("copy"); return true }
-    if (event.key === Qt.Key_F6) { transferToOtherPane("move"); return true }
-    if (event.key === Qt.Key_F7) { showDialog("newfolder", "New folder", "untitled folder", null); return true }
+    if (event.key === Qt.Key_F5) { p.refresh(); return true }
+    if (event.key === Qt.Key_F6) { toggleSplit(); return true }
+
+    if (alt && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) { showProperties(p.cursorEntry()); return true }
+    if (alt && event.key === Qt.Key_Left) { p.goBack(); return true }
+    if (alt && event.key === Qt.Key_Right) { p.goForward(); return true }
+    if (alt && event.key === Qt.Key_Up) { p.goUp(); return true }
+    if (alt && event.key === Qt.Key_Home) { p.navigate(home); return true }
+
     if (event.key === Qt.Key_Delete) {
       if (shiftKey) askDelete(null)
       else doTrash()
       return true
     }
     if (event.key === Qt.Key_Backspace) { if (!p.virtualView) p.goUp(); return true }
-    if (alt && event.key === Qt.Key_Left) { p.goBack(); return true }
-    if (alt && event.key === Qt.Key_Right) { p.goForward(); return true }
-    if (alt && event.key === Qt.Key_Up) { p.goUp(); return true }
+
+    if (event.key === Qt.Key_Slash) { pathBar.beginEditWith("/"); return true }
+    if (event.key === Qt.Key_AsciiTilde) { pathBar.beginEditWith("~"); return true }
+
     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { p.activateCursor(); return true }
     if (event.key === Qt.Key_Down) { p.moveCursor(1, shiftKey); return true }
     if (event.key === Qt.Key_Up) { p.moveCursor(-1, shiftKey); return true }
@@ -547,6 +756,12 @@ Item {
     if (event.key === Qt.Key_PageUp) { p.moveCursor(-12, shiftKey); return true }
     if (event.key === Qt.Key_Home) { p.jumpCursor(0, shiftKey); return true }
     if (event.key === Qt.Key_End) { p.jumpCursor(p.rows.length - 1, shiftKey); return true }
+
+    if (!ctrl && !alt && event.text && event.text.length === 1 && event.text >= " ") {
+      root.enterFind()
+      pathBar.seedFilter(event.text)
+      return true
+    }
     return false
   }
   Timer {
@@ -800,6 +1015,8 @@ Item {
               onNavigated: function (p) { root.rememberSession() }
               onContextRequested: function (entry, x, y) {
                 root.menuEntry = entry
+                root.menuActions = root.contextActions(entry)
+                root.menuCursor = -1
                 root.menuX = x + (root.sidebarVisible ? sidebar.width : 0)
                 root.menuY = y + toolbar.height + (tabStripA.visible ? tabStripA.height : 0)
                 root.menuOpen = true
@@ -840,6 +1057,8 @@ Item {
               onNavigated: function (p) { root.rememberSession() }
               onContextRequested: function (entry, x, y) {
                 root.menuEntry = entry
+                root.menuActions = root.contextActions(entry)
+                root.menuCursor = -1
                 root.menuX = x + (root.sidebarVisible ? sidebar.width : 0) + sideA.width
                 root.menuY = y + toolbar.height + (tabStripB.visible ? tabStripB.height : 0)
                 root.menuOpen = true
@@ -939,10 +1158,11 @@ Item {
         spacing: 0
 
         Repeater {
-          model: root.menuOpen ? root.contextActions(root.menuEntry) : []
+          model: root.menuOpen ? root.menuActions : []
 
           delegate: Item {
             required property var modelData
+            required property int index
             width: menuColumn.width
             height: modelData.label === "" ? Style.space(7) : Style.space(24)
 
@@ -958,7 +1178,7 @@ Item {
               anchors.fill: parent
               visible: modelData.label !== ""
               radius: Style.cornerRadius
-              color: itemHover.hovered && !modelData.disabled
+              color: (itemHover.hovered || root.menuCursor === index) && !modelData.disabled
                 ? Color.menu.selectedBackground : "transparent"
 
               HoverHandler { id: itemHover }
@@ -982,7 +1202,8 @@ Item {
                   text: modelData.label
                   color: modelData.disabled
                     ? Util.alpha(Color.menu.text, 0.35)
-                    : (itemHover.hovered ? Color.menu.selectedText : Color.menu.text)
+                    : ((itemHover.hovered || root.menuCursor === index)
+                      ? Color.menu.selectedText : Color.menu.text)
                   font.family: Style.font.family
                   font.pixelSize: Style.font.bodySmall
                 }
@@ -1470,32 +1691,53 @@ Item {
     return [
       { section: "Navigation" },
       { keys: "Enter", label: "Open the selected item" },
-      { keys: "Backspace", label: "Go to the parent folder" },
+      { keys: "Backspace / Alt+Up", label: "Go to the parent folder" },
       { keys: "Alt+Left / Alt+Right", label: "Back and forward" },
+      { keys: "Alt+Home", label: "Go to your home folder" },
       { keys: "Ctrl+L", label: "Type a path" },
+      { keys: "/  or  ~", label: "Type a path, starting from root or home" },
       { keys: "Home / End", label: "First and last item" },
+      { keys: "F5 / Ctrl+R", label: "Refresh" },
+      { section: "Moving around without a mouse" },
+      { keys: "Tab", label: "Sidebar, or the other pane when split" },
+      { keys: "Shift+Tab", label: "Jump to the sidebar" },
+      { keys: "Arrows, Enter", label: "Move and open, once in the sidebar" },
+      { keys: "Ctrl+Enter", label: "Open a sidebar place in a new tab" },
+      { keys: "Delete", label: "Remove a bookmark or hide a drive, in the sidebar" },
+      { keys: "Escape", label: "Leave the sidebar" },
+      { keys: "Shift+F10 / Menu", label: "Open the context menu on the current item" },
       { section: "Selection" },
       { keys: "Ctrl+Click", label: "Add one item to the selection" },
-      { keys: "Shift+Click", label: "Select a range" },
+      { keys: "Ctrl+Space", label: "Add the item under the cursor" },
+      { keys: "Shift+Click, Shift+Arrows", label: "Select a range" },
       { keys: "Ctrl+A", label: "Select everything" },
+      { keys: "Ctrl+Shift+I", label: "Invert the selection" },
+      { keys: "Escape", label: "Clear the selection" },
       { section: "Files" },
       { keys: "Ctrl+C / Ctrl+X / Ctrl+V", label: "Copy, cut and paste" },
+      { keys: "Ctrl+Z / Ctrl+Shift+Z", label: "Undo and redo" },
       { keys: "F2", label: "Rename" },
-      { keys: "F7", label: "New folder" },
+      { keys: "Ctrl+Shift+N", label: "New folder" },
+      { keys: "Ctrl+N", label: "New file" },
       { keys: "Delete", label: "Move to trash" },
       { keys: "Shift+Delete", label: "Delete permanently" },
+      { keys: "Ctrl+I / Alt+Enter", label: "Properties" },
+      { keys: "Ctrl+D", label: "Bookmark this folder" },
       { section: "Panes and tabs" },
       { keys: "Ctrl+T / Ctrl+W", label: "New tab and close tab" },
-      { keys: "Ctrl+D", label: "Split into two panes" },
-      { keys: "Tab", label: "Switch the active pane" },
-      { keys: "F5 / F6", label: "Copy and move to the other pane" },
+      { keys: "Ctrl+PageUp / PageDown", label: "Previous and next tab" },
+      { keys: "Ctrl+Enter", label: "Open the folder under the cursor in a new tab" },
+      { keys: "F6", label: "Split into two panes" },
+      { keys: "Tab", label: "Switch the active pane, while split" },
+      { keys: "Ctrl+Shift+C / Ctrl+Shift+M", label: "Copy and move to the other pane" },
       { section: "View" },
+      { keys: "Ctrl+1 / Ctrl+2", label: "List and grid" },
       { keys: "Ctrl+H", label: "Show hidden files" },
-      { keys: "Ctrl+F", label: "Search in this folder" },
       { keys: "Ctrl+B", label: "Show or hide the sidebar" },
-      { keys: "Ctrl+R", label: "Refresh" },
+      { keys: "Ctrl+F, or just type", label: "Search in this folder" },
+      { keys: "Ctrl+Comma", label: "Settings" },
       { keys: "F1", label: "This list" },
-      { keys: "Escape", label: "Leave search, then close the window" },
+      { keys: "Ctrl+Q / Escape", label: "Close the window" },
       { section: "When a file already exists" },
       { keys: "R / K / S / A", label: "Replace, keep both, skip, skip all" }
     ]

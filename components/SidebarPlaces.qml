@@ -14,6 +14,66 @@ Item {
   readonly property string home: Quickshell.env("HOME") || ""
 
   property bool showDrives: true
+  property bool keyboardActive: false
+  property int cursorIndex: 0
+
+  readonly property var flatRows: buildFlatRows()
+
+  readonly property string cursorKey: {
+    if (cursorIndex < 0 || cursorIndex >= flatRows.length) return ""
+    return rowKey(flatRows[cursorIndex])
+  }
+
+  function rowKey(row) {
+    if (!row) return ""
+    return String(row.key || "") + "|" + String(row.path || "") + "|" + String(row.uri || "")
+  }
+
+  function buildFlatRows() {
+    var out = []
+    var groups = sections()
+    for (var g = 0; g < groups.length; g++) {
+      var rows = groups[g].rows
+      for (var r = 0; r < rows.length; r++) out.push(rows[r])
+    }
+    out.push({ key: "trash", label: "Trash", path: trashPath(), trash: true })
+    return out
+  }
+
+  function trashPath() {
+    return (Quickshell.env("XDG_DATA_HOME") || home + "/.local/share") + "/Trash/files"
+  }
+
+  function moveCursor(delta) {
+    var count = flatRows.length
+    if (count === 0) return
+    cursorIndex = Math.max(0, Math.min(count - 1, cursorIndex + delta))
+  }
+
+  function cursorRow() {
+    if (cursorIndex < 0 || cursorIndex >= flatRows.length) return null
+    return flatRows[cursorIndex]
+  }
+
+  function activateCursor(inNewTab) {
+    var row = cursorRow()
+    if (!row) return
+    if (row.connect === true) { sidebar.connectServer(""); return }
+    if (row.server === true) { sidebar.connectServer(String(row.uri || "")); return }
+    if (!row.path) return
+    if (inNewTab) sidebar.openInNewTab(row.path)
+    else sidebar.navigate(row.path)
+  }
+
+  function removeCursor() {
+    var row = cursorRow()
+    if (!row) return
+    if (row.bookmark === true) sidebar.removeBookmark(row.path)
+    else if (row.key === "drive" || row.key === "usb" || row.key === "networkdrive")
+      sidebar.hideDrive(row.path)
+  }
+
+
 
   signal navigate(string target)
   signal openInNewTab(string target)
@@ -188,6 +248,8 @@ Item {
 
               delegate: Rectangle {
                 required property var modelData
+                readonly property bool cursored: sidebar.keyboardActive
+                  && sidebar.rowKey(modelData) === sidebar.cursorKey
                 width: column.width - Style.space(8)
                 x: Style.space(4)
                 height: Style.space(24)
@@ -195,6 +257,8 @@ Item {
                 color: sidebar.currentPath === modelData.path
                   ? Util.alpha(Color.accent, 0.18)
                   : (placeHover.hovered ? Util.alpha(Color.foreground, 0.08) : "transparent")
+                border.width: cursored ? Math.max(1, Style.space(1)) : 0
+                border.color: Util.alpha(Color.accent, 0.9)
 
                 HoverHandler { id: placeHover }
 
@@ -325,11 +389,15 @@ Item {
         }
 
         Rectangle {
+          readonly property bool cursored: sidebar.keyboardActive
+            && sidebar.cursorKey === sidebar.rowKey({ key: "trash", path: sidebar.trashPath() })
           width: column.width - Style.space(8)
           x: Style.space(4)
           height: Style.space(24)
           radius: Style.cornerRadius
           color: trashHover.hovered ? Util.alpha(Color.foreground, 0.08) : "transparent"
+          border.width: cursored ? Math.max(1, Style.space(1)) : 0
+          border.color: Util.alpha(Color.accent, 0.9)
 
           HoverHandler { id: trashHover }
 
