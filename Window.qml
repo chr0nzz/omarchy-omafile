@@ -40,6 +40,7 @@ Item {
 
   property string statusText: ""
   property string appFilter: ""
+  property bool findMode: false
 
   function startPath() {
     return service ? service.startPath() : (home || "/")
@@ -434,6 +435,24 @@ Item {
     }
   }
 
+  function enterFind() {
+    var p = activePane()
+    if (p) p.filter = ""
+    findMode = true
+    searchField.text = ""
+    searchField.forceActiveFocus()
+  }
+
+  function exitFind() {
+    findDebounce.stop()
+    findMode = false
+    var p = activePane()
+    if (p) {
+      p.filter = ""
+      p.stopSearch()
+    }
+  }
+
   function handleKey(event) {
     if (confirm.opened) return confirm.handleKey(event)
     if (dialogMode !== "") {
@@ -457,6 +476,11 @@ Item {
     var alt = (event.modifiers & Qt.AltModifier) !== 0
 
     if (event.key === Qt.Key_Escape) {
+      if (p.searching || findMode) {
+        exitFind()
+        searchField.text = ""
+        return true
+      }
       if (p.filter !== "") {
         p.filter = ""
         searchField.text = ""
@@ -473,7 +497,7 @@ Item {
     if (ctrl && event.key === Qt.Key_C) { doCopy(); return true }
     if (ctrl && event.key === Qt.Key_X) { doCut(); return true }
     if (ctrl && event.key === Qt.Key_V) { doPaste(); return true }
-    if (ctrl && event.key === Qt.Key_F) { searchField.forceActiveFocus(); return true }
+    if (ctrl && event.key === Qt.Key_F) { root.enterFind(); return true }
     if (ctrl && event.key === Qt.Key_R) { p.refresh(); return true }
     if (ctrl && event.key === Qt.Key_B) { sidebarVisible = !sidebarVisible; rememberSession(); return true }
     if (ctrl && event.key === Qt.Key_D) { toggleSplit(); return true }
@@ -504,6 +528,16 @@ Item {
     if (event.key === Qt.Key_Home) { p.moveCursor(-999999, shiftKey); return true }
     if (event.key === Qt.Key_End) { p.moveCursor(999999, shiftKey); return true }
     return false
+  }
+
+  Timer {
+    id: findDebounce
+    interval: 320
+    repeat: false
+    onTriggered: {
+      if (!root.findMode) return
+      root.activePane().startSearch(searchField.text)
+    }
   }
 
   Component.onCompleted: Qt.callLater(restoreSession)
@@ -590,13 +624,25 @@ Item {
             TextField {
               id: searchField
               anchors.verticalCenter: parent.verticalCenter
-              width: Style.space(150)
-              placeholderText: "Filter"
+              width: Style.space(170)
+              placeholderText: root.findMode ? "Search in folder" : "Filter"
+              accent: root.findMode ? Color.urgent : Color.accent
               onTextChanged: {
+                if (root.findMode) {
+                  findDebounce.restart()
+                  return
+                }
                 var p = root.activePane()
                 if (p) p.filter = text
               }
+              onAccepted: {
+                if (root.findMode) {
+                  findDebounce.stop()
+                  root.activePane().startSearch(text)
+                }
+              }
               Keys.onEscapePressed: {
+                root.exitFind()
                 text = ""
                 keyCatcher.forceActiveFocus()
               }
@@ -727,6 +773,9 @@ Item {
                 if (!p) return ""
                 if (p.selectedCount > 0)
                   return Model.formatCount(p.selectedCount, "item selected", "items selected")
+                if (p.searching)
+                  return Model.formatCount(p.rows.length, "match", "matches")
+                    + (p.searchTruncated ? " (truncated)" : "")
                 return Model.formatCount(p.rows.length, "item", "items")
               }
               color: Util.alpha(Color.foreground, 0.6)

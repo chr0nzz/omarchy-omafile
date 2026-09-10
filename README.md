@@ -51,7 +51,7 @@ Navigate directories with Enter or double-click. Backspace or Alt+Left go up or 
 
 Use Ctrl+T to open a new tab and Ctrl+W to close it. Press Tab to switch between the left and right panes.
 
-Copy items between panes with F5 or move them with F6. Drag and drop is also supported.
+Copy items between panes with F5 or move them with F6.
 
 Press F7 to create a new folder. Press F2 to rename a file or folder.
 

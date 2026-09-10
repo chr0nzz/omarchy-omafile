@@ -31,6 +31,10 @@ Item {
   property var history: []
   property int historyIndex: -1
 
+  property bool searching: false
+  property string searchQuery: ""
+  property bool searchTruncated: false
+  property int _searchId: 0
   property int _listId: 0
   property int _watchId: 0
   property string _watchPath: ""
@@ -75,6 +79,12 @@ Item {
   function navigate(target, recordHistory) {
     var next = Model.normalizePath(Model.expandTilde(String(target || ""), Quickshell.env("HOME") || ""))
     if (!next) return
+    if (pane.searching) {
+      if (_searchId && service) service.cancel(_searchId)
+      _searchId = 0
+      pane.searching = false
+      pane.searchQuery = ""
+    }
     if (recordHistory !== false) pushHistory(next)
     pane.path = next
     reload()
@@ -124,8 +134,75 @@ Item {
     }
   }
 
+  function hitToEntry(hit) {
+    var kind = String(hit.kind || "f")
+    var name = String(hit.name || "")
+    return {
+      name: name, kind: kind, size: Number(hit.size) || 0,
+      mtime: Number(hit.mtime) || 0, mode: 0, linkTarget: null,
+      path: String(hit.path || ""),
+      isDir: kind === "d" || kind === "L",
+      isLink: kind === "L" || kind === "l" || kind === "b",
+      isBroken: kind === "b",
+      isExec: false,
+      isHidden: name.charAt(0) === ".",
+      ext: ""
+    }
+  }
+
+  function startSearch(query) {
+    if (!service || !pane.path) return
+    var trimmed = String(query || "").trim()
+    pane.searchQuery = trimmed
+    if (!trimmed) {
+      stopSearch()
+      return
+    }
+    if (_searchId) service.cancel(_searchId)
+    if (_listId) service.cancel(_listId)
+    pane.searching = true
+    pane.searchTruncated = false
+    pane.errorMessage = ""
+    pane.loading = true
+    pane.entries = []
+    pane.rows = []
+    pane.selection = ({})
+    pane.cursorIndex = -1
+    pane._pendingChunks = []
+
+    _searchId = service.searchFiles(pane.path, trimmed, "substring", pane.showHidden,
+      function (hit) {
+        pane._pendingChunks.push(pane.hitToEntry(hit))
+        if (!rebuildTimer.running) rebuildTimer.start()
+      },
+      function (msg) {
+        pane.loading = false
+        pane.searchTruncated = msg.truncated === true
+        pane.flushChunks()
+        pane.statusChanged()
+      },
+      function (msg) {
+        pane.loading = false
+        if (msg.code !== "ECANCELED")
+          pane.errorMessage = String(msg.message || "Search failed")
+        pane.statusChanged()
+      })
+  }
+
+  function stopSearch() {
+    if (_searchId && service) service.cancel(_searchId)
+    _searchId = 0
+    pane.searchQuery = ""
+    pane.searchTruncated = false
+    if (pane.searching) {
+      pane.searching = false
+      reload()
+    }
+  }
+
   function reload() {
     if (!service || !pane.path) return
+    if (pane.searching) return
     if (_listId) service.cancel(_listId)
     _pendingChunks = []
     entries = []
@@ -173,7 +250,7 @@ Item {
   }
 
   function rebuild() {
-    var filtered = Model.filterEntries(entries, pane.filter, true)
+    var filtered = pane.searching ? entries : Model.filterEntries(entries, pane.filter, true)
     rows = Model.sortEntries(filtered, pane.sortBy, pane.descending, pane.dirsFirst)
     if (cursorIndex >= rows.length) cursorIndex = rows.length - 1
     statusChanged()
@@ -270,6 +347,7 @@ Item {
   Component.onDestruction: {
     if (service && _watchId) service.unwatch(_watchId, _watchPath)
     if (service && _listId) service.cancel(_listId)
+    if (service && _searchId) service.cancel(_searchId)
   }
 
   Timer {
@@ -582,7 +660,7 @@ Item {
     Text {
       anchors.centerIn: parent
       visible: !pane.loading && pane.errorMessage === "" && pane.rows.length === 0
-      text: pane.filter ? "Nothing matches" : "Empty folder"
+      text: pane.searching ? "No matches" : (pane.filter ? "Nothing matches" : "Empty folder")
       color: Util.alpha(pane.fg, 0.45)
       font.family: Style.font.family
       font.pixelSize: Style.font.body
@@ -591,7 +669,7 @@ Item {
     Text {
       anchors.centerIn: parent
       visible: pane.loading && pane.rows.length === 0
-      text: "Reading"
+      text: pane.searching ? "Searching" : "Reading"
       color: Util.alpha(pane.fg, 0.45)
       font.family: Style.font.family
       font.pixelSize: Style.font.body
