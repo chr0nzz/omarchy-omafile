@@ -464,13 +464,13 @@ Item {
     if (p) p.filter = ""
     findMode = true
     pathBar.clearFilter()
-    pathBar.focusFilter()
+    pathBar.openFilter()
   }
 
   function exitFind() {
     findDebounce.stop()
     findMode = false
-    pathBar.clearFilter()
+    pathBar.closeFilter()
     var p = activePane()
     if (p) {
       p.filter = ""
@@ -513,8 +513,8 @@ Item {
         exitFind()
         return true
       }
-      if (p.filter !== "") {
-        pathBar.clearFilter()
+      if (p.filter !== "" || pathBar.filterOpen) {
+        pathBar.closeFilter()
         return true
       }
       requestClose()
