@@ -314,8 +314,7 @@ Item {
   function rebuild() {
     var filtered = ((pane.searching || pane.virtualView) || !pane.filter)
       ? entries : Model.filterRaw(entries, pane.filter)
-    if (!pane.searching && !pane.virtualView
-      && Model.isDefaultOrder(pane.sortBy, pane.descending, pane.dirsFirst))
+    if (!pane.searching && Model.isDefaultOrder(pane.sortBy, pane.descending, pane.dirsFirst))
       rows = filtered
     else
       rows = Model.sortRaw(filtered, pane.sortBy, pane.descending, pane.dirsFirst)
@@ -529,7 +528,9 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               anchors.leftMargin: Style.space(8)
               anchors.rightMargin: Style.space(8)
-              text: modelData.label + (pane.sortBy === modelData.key ? (pane.descending ? "  " + Icons.actionGlyph("chevronDown") : "  " + Icons.actionGlyph("chevronUp")) : "")
+              text: modelData.label + ((pane.sortBy === modelData.key && !pane.virtualView)
+                ? (pane.descending ? "  " + Icons.actionGlyph("chevronDown")
+                  : "  " + Icons.actionGlyph("chevronUp")) : "")
               color: pane.sortBy === modelData.key ? pane.accent : Util.alpha(pane.fg, 0.6)
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
