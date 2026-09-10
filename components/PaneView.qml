@@ -333,6 +333,12 @@ Item {
     else pane.openRequested(entry)
   }
 
+  function gridLabel(name) {
+    var text = String(name || "")
+    if (text.length <= 26) return text
+    return text.substring(0, 14) + "\u2026" + text.substring(text.length - 10)
+  }
+
   function previewable(entry) {
     if (!pane.thumbnails) return false
     if (entry.isDir || entry.isBroken) return false
@@ -680,13 +686,12 @@ Item {
             Text {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
-              text: cell.entry.name
+              text: pane.gridLabel(cell.entry.name)
               color: pane.fg
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
-              elide: Text.ElideMiddle
               maximumLineCount: 2
-              wrapMode: Text.Wrap
+              wrapMode: Text.WrapAnywhere
             }
           }
         }

@@ -193,10 +193,12 @@ Item {
   function open(payloadJson) {
     closingFromHost = false
     var target = ""
+    var wantDialog = ""
     if (payloadJson) {
       try {
         var parsed = JSON.parse(String(payloadJson))
         if (parsed && typeof parsed.path === "string") target = parsed.path
+        if (parsed && typeof parsed.dialog === "string") wantDialog = parsed.dialog
       } catch (e) {
       }
     }
@@ -205,6 +207,7 @@ Item {
     Qt.callLater(function () {
       if (target) activePane().navigate(target)
       keyCatcher.forceActiveFocus()
+      if (wantDialog === "shortcuts") showDialog("shortcuts", "Keyboard shortcuts", "", null)
     })
   }
 

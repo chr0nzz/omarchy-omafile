@@ -572,6 +572,11 @@ Item {
       return "ok"
     }
 
+    function shortcuts(): string {
+      if (root.shell) root.shell.summon(root.pluginId, JSON.stringify({ dialog: "shortcuts" }))
+      return "ok"
+    }
+
     function trash(path: string): string {
       if (!path) return "path required"
       root.trashPaths([String(path)], null, null)
