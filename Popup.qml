@@ -160,7 +160,7 @@ Panel {
 
         Text {
           anchors.verticalCenter: parent.verticalCenter
-          text: Icons.placeGlyph("home")
+          text: Icons.actionGlyph("app")
           color: Color.accent
           font.family: Style.font.family
           font.pixelSize: Style.font.icon

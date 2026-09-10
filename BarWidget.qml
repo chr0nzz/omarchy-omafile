@@ -11,7 +11,7 @@ BarWidget {
 
   readonly property var service: bar && bar.shell ? bar.shell.serviceFor("xyzlab.omafile") : null
   readonly property string customGlyph: String(setting("glyph", "") || "").trim()
-  readonly property string glyph: customGlyph || Icons.placeGlyph("home")
+  readonly property string glyph: customGlyph || Icons.actionGlyph("app")
   readonly property bool showBadge: boolSetting("showTransferBadge", true)
   readonly property int activeTransfers: service ? service.activeTransfers : 0
   readonly property real transferFraction: service ? service.transferFraction : 0
