@@ -588,9 +588,15 @@ Item {
     next[key] = value
     localSettings = next
     if (!shell || typeof shell.updateEntryInline !== "function") return false
-    var patch = {}
-    patch[key] = value
-    return shell.updateEntryInline(pluginId, patch)
+    return shell.updateEntryInline(pluginId, storedSettingsWith(next))
+  }
+
+  function storedSettingsWith(overrides) {
+    var out = {}
+    var entry = findEntry(shell ? shell.barConfig : null)
+    if (entry) for (var k in entry) if (k !== "id") out[k] = entry[k]
+    for (var o in overrides) out[o] = overrides[o]
+    return out
   }
 
   function connectToServer(uri, user, domain, password, anonymous, onDone, onError) {

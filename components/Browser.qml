@@ -1464,26 +1464,22 @@ Item {
                 text: "Trash in the bar"
               }
 
-              Text {
+              Toggle {
                 width: settingsColumn.width
-                text: "Omafile can also sit in the bar as a standalone trash can, "
-                  + "with the number of items beside it. Left click opens the trash, "
-                  + "right click empties it."
-                color: Util.alpha(Color.popups.text, 0.65)
-                font.family: Style.font.family
-                font.pixelSize: Style.font.bodySmall
-                wrapMode: Text.Wrap
+                label: "Trash can in the bar"
+                description: "A trash can beside the Omafile icon with the number of "
+                  + "items in it. Left click opens the trash, right click empties it."
+                checked: root.boolSetting("showTrash", false)
+                onClicked: root.applySettingNow("showTrash", !checked)
               }
 
-              Text {
+              Toggle {
                 width: settingsColumn.width
-                text: "To add it, open the Omarchy bar settings, add a second Omafile "
-                  + "widget wherever you want it, and set that one's mode to trash. "
-                  + "It moves and lives apart from this icon."
-                color: Util.alpha(Color.popups.text, 0.45)
-                font.family: Style.font.family
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.Wrap
+                visible: root.boolSetting("showTrash", false)
+                label: "Ask before emptying"
+                description: "The first right click arms the trash can, the second empties it"
+                checked: root.boolSetting("trashConfirm", true)
+                onClicked: root.applySettingNow("trashConfirm", !checked)
               }
 
               PanelSectionHeader {

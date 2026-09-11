@@ -19,12 +19,12 @@
   },
   "barWidget": {
     "displayName": "Omafile",
-    "description": "Open the file manager, jump to a place, watch transfers, empty the trash. Add a second one set to Trash for a standalone trash icon.",
+    "description": "Open the file manager, jump to a place, watch transfers, empty the trash.",
     "category": "Tools",
-    "allowMultiple": true,
+    "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "mode": "files",
+      "showTrash": false,
       "homePath": "",
       "showHidden": false,
       "sortBy": "name",
@@ -43,10 +43,10 @@
     },
     "schema": [
       {
-        "key": "mode",
-        "type": "string",
-        "label": "What this icon does: files or trash",
-        "defaultValue": "files"
+        "key": "showTrash",
+        "type": "boolean",
+        "label": "Show a trash can next to the icon",
+        "defaultValue": false
       },
       {
         "key": "homePath",
