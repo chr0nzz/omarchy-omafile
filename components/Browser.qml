@@ -1461,6 +1461,33 @@ Item {
 
               PanelSectionHeader {
                 width: parent.width
+                text: "Trash in the bar"
+              }
+
+              Text {
+                width: settingsColumn.width
+                text: "Omafile can also sit in the bar as a standalone trash can, "
+                  + "with the number of items beside it. Left click opens the trash, "
+                  + "right click empties it."
+                color: Util.alpha(Color.popups.text, 0.65)
+                font.family: Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                wrapMode: Text.Wrap
+              }
+
+              Text {
+                width: settingsColumn.width
+                text: "To add it, open the Omarchy bar settings, add a second Omafile "
+                  + "widget wherever you want it, and set that one's mode to trash. "
+                  + "It moves and lives apart from this icon."
+                color: Util.alpha(Color.popups.text, 0.45)
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.Wrap
+              }
+
+              PanelSectionHeader {
+                width: parent.width
                 visible: root.hiddenDriveRows().length > 0
                 text: "Hidden drives"
               }

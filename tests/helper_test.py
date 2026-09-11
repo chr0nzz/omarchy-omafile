@@ -558,6 +558,19 @@ class TrashTests(HelperTestCase):
         self.assertNotIn("t1.txt", after_names)
         self.assertNotIn("t2.txt", after_names)
 
+class TrashInfoDirsTests(HelperTestCase):
+    def test_trashinfo_reports_the_directories_to_watch(self):
+        req = self.next_id()
+        self.helper.send({"id": req, "op": "trashinfo"})
+        msgs = self.helper.collect_until(req)
+        trash = [m for m in msgs if m["t"] == "trash"][0]
+        self.assertIn("infoDirs", trash)
+        self.assertIsInstance(trash["infoDirs"], list)
+        self.assertTrue(trash["infoDirs"])
+        for d in trash["infoDirs"]:
+            self.assertIsInstance(d, str)
+            self.assertTrue(d.endswith("info"), d)
+
 class SearchTests(HelperTestCase):
     def setUp(self):
         super().setUp()

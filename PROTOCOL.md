@@ -157,9 +157,12 @@ caller can hand that exact name back to `restore` and undo the deletion.
 {"id": N, "op": "emptytrash"}
 ```
 
-`trashinfo` replies `{"t": "trash", "count": C, "bytes": B, "items": [...]}` where each
-item is `{"name", "original", "deleted", "size", "kind"}`. `emptytrash` clears every
-trash directory it knows about and replies `done`.
+`trashinfo` replies `{"t": "trash", "count": C, "bytes": B, "items": [...], "infoDirs": [...]}`
+where each item is `{"name", "original", "deleted", "size", "kind"}`. The count comes from
+the `.trashinfo` entries, not the files, so `infoDirs` lists the directories to `watch` to
+be told when the trash changes. There is one per trash root, so a removable drive with its
+own trash adds an entry and the list changes when that drive is mounted or unmounted.
+`emptytrash` clears every trash directory it knows about and replies `done`.
 
 ### mkdir, mkfile, rename, symlink
 

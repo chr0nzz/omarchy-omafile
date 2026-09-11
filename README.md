@@ -16,6 +16,7 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * Connect to SMB, SFTP, WebDAV and other servers
 * Settings inside the window, no config file editing
 * Bar widget with places, drives, transfers, and trash overview
+* Optional standalone trash can in the bar, with a live count
 * Full keyboard control, following GNOME Files conventions
 * Undo and redo for trash, rename, move, copy and new items
 
@@ -190,6 +191,14 @@ Escape skips the file.
 
 Super+C, Super+V and Super+X are Omarchy's universal clipboard shortcuts. Omarchy translates them to Ctrl+C, Ctrl+V and Ctrl+X before they reach the window, so they copy, paste and cut files in Omafile too.
 
+## Trash in the Bar
+
+Omafile can also sit in the bar as a standalone trash can. The icon is the outlined bin when the trash is empty and the solid one when it is not, with the number of items beside it. Left click opens the trash, right click empties it.
+
+Add it from the Omarchy bar settings: place a second Omafile widget wherever you want it, then set that instance's mode to `trash`. It is a separate bar entry, so it moves and sits apart from the main Omafile icon, on the other side of the bar if you like.
+
+By default the first right click arms the widget and turns it red for four seconds; a second right click in that window empties the trash. Turn off `trashConfirm` on that instance if you would rather the first right click empty it outright.
+
 ## Settings
 
 Configure these keys through the Omarchy bar widget settings:
@@ -209,6 +218,8 @@ Configure these keys through the Omarchy bar widget settings:
 | `showDrives` | Show the Drives section in the sidebar |
 | `thumbnails` | Show image previews in grid view |
 | `glyph` | Custom icon for the bar widget |
+| `mode` | `files` for the file manager icon, `trash` for a trash can |
+| `trashConfirm` | Ask before a right click empties the trash |
 
 ## Command Line
 

@@ -41,6 +41,7 @@ Item {
   }
 
   function trashPath() {
+    if (service && typeof service.trashFilesPath === "function") return service.trashFilesPath()
     return (Quickshell.env("XDG_DATA_HOME") || home + "/.local/share") + "/Trash/files"
   }
 

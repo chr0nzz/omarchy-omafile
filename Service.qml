@@ -100,6 +100,11 @@ Item {
     return home || "/"
   }
 
+  function trashFilesPath() {
+    var base = Quickshell.env("XDG_DATA_HOME") || (home + "/.local/share")
+    return base + "/Trash/files"
+  }
+
   property int _nextId: 1
   property var _pending: ({})
   property var _queue: []
@@ -519,8 +524,34 @@ Item {
         if (m.t !== "trash") return
         root.trashCount = Number(m.count) || 0
         root.trashBytes = Number(m.bytes) || 0
+        root.syncTrashWatches(m.infoDirs || [])
       }
     })
+  }
+
+  property var _trashWatches: ({})
+
+  function syncTrashWatches(dirs) {
+    var wanted = ({})
+    for (var i = 0; i < dirs.length; i++) {
+      var dir = String(dirs[i] || "")
+      if (!dir) continue
+      wanted[dir] = true
+      if (_trashWatches[dir]) continue
+      _trashWatches[dir] = watchDirectory(dir, function () { trashSettle.restart() })
+    }
+    for (var held in _trashWatches) {
+      if (wanted[held]) continue
+      unwatch(_trashWatches[held], held)
+      delete _trashWatches[held]
+    }
+  }
+
+  Timer {
+    id: trashSettle
+    interval: 250
+    repeat: false
+    onTriggered: root.refreshTrash()
   }
 
   function refreshDrives() {

@@ -30,9 +30,9 @@ function assertValidGlyph(glyph, label) {
 }
 
 var placeKeys = ['home', 'desktop', 'documents', 'downloads', 'music', 'pictures', 'videos',
-  'templates', 'publicshare', 'trash', 'root', 'drive', 'usb', 'network', 'pinned', 'recent', 'search'];
+  'templates', 'publicshare', 'trash', 'trashfull', 'root', 'drive', 'usb', 'network', 'pinned', 'recent', 'search'];
 
-var actionKeys = ['copy', 'cut', 'paste', 'rename', 'trash', 'delete', 'newfolder', 'newfile', 'up',
+var actionKeys = ['copy', 'cut', 'paste', 'rename', 'trash', 'trashFull', 'delete', 'newfolder', 'newfile', 'up',
   'back', 'forward', 'refresh', 'search', 'hidden', 'list', 'grid', 'columns', 'split', 'close', 'add',
   'sort', 'menu', 'eject', 'open', 'terminal', 'editor', 'properties', 'cancel', 'check', 'warning',
   'error', 'chevronRight', 'chevronDown', 'chevronUp', 'chevronLeft'];
@@ -125,4 +125,13 @@ test('every glyph across all lookup tables is a single valid code point', functi
   all.forEach(function (glyph) {
     assertValidGlyph(glyph, 'glyph ' + glyph);
   });
+});
+
+test('the full and empty trash glyphs are distinct and neither is the place fallback', function () {
+  var empty = Icons.placeGlyph('trash');
+  var full = Icons.placeGlyph('trashfull');
+  var fallback = Icons.placeGlyph('no-such-place');
+  assert.notStrictEqual(empty, full);
+  assert.notStrictEqual(empty, fallback);
+  assert.notStrictEqual(full, fallback);
 });

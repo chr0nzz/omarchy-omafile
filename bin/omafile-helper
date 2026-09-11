@@ -1008,7 +1008,9 @@ def op_trashinfo(req):
             })
             count += 1
             total_bytes += size
-    emit({"id": req_id, "t": "trash", "count": count, "bytes": total_bytes, "items": items})
+    watch_dirs = [to_str(info_dir) for _, info_dir in roots]
+    emit({"id": req_id, "t": "trash", "count": count, "bytes": total_bytes,
+          "items": items, "infoDirs": watch_dirs})
     send_done(req_id)
 
 def op_emptytrash(req):
