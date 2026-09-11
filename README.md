@@ -78,6 +78,8 @@ Settings also chooses whether Omafile opens as a normal window or as a popup pan
 
 Turn on Default file manager in Settings to have folders opened from other applications land in Omafile. This covers two separate mechanisms: it points `inode/directory` at a desktop entry in `~/.local/share/applications/`, which is what `xdg-open` and `gio open` use, and it claims `org.freedesktop.FileManager1` through a user D-Bus service file, which is what browsers and editors use for Show in folder. Show in folder opens the containing folder with the file selected. Turning the setting off removes both and restores the handler you had before.
 
+The desktop entry also puts Omafile in your application launcher, with the same folder icon the bar widget uses. Launching it there with no folder opens your home directory.
+
 The D-Bus half needs PyGObject, which Omarchy already ships. Without it the desktop entry still works and Show in folder keeps going to your previous file manager. To do the same from a terminal:
 
 ```bash
