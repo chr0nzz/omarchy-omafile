@@ -1268,17 +1268,30 @@ DESKTOP_ID = "xyzlab.omafile.desktop"
 DESKTOP_DIR = os.path.join(
     os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share"),
     "applications")
-DESKTOP_BODY = """[Desktop Entry]
+PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OPEN_BIN = os.path.join(PLUGIN_DIR, "bin", "omafile-open")
+ICON_FILE = os.path.join(PLUGIN_DIR, "icon.png")
+DESKTOP_TEMPLATE = """[Desktop Entry]
 Type=Application
 Name=Omafile
 Comment=Browse your files
-Exec=omarchy-shell omafile open %f
-Icon=system-file-manager
+Exec={open_bin} %f
+Icon={icon}
 Terminal=false
 Categories=System;FileTools;FileManager;
 MimeType=inode/directory;
 StartupNotify=false
 """
+
+
+def desktop_icon():
+    if os.path.exists(ICON_FILE):
+        return ICON_FILE
+    return "system-file-manager"
+
+
+def desktop_body():
+    return DESKTOP_TEMPLATE.format(open_bin=OPEN_BIN, icon=desktop_icon())
 
 
 def current_default_handler():
@@ -1304,7 +1317,6 @@ DBUS_SERVICE_DIR = os.path.join(
     os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share"),
     "dbus-1", "services")
 DBUS_SERVICE_NAME = "org.freedesktop.FileManager1.service"
-PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILEMANAGER1_BIN = os.path.join(PLUGIN_DIR, "bin", "omafile-filemanager1")
 
 
@@ -1344,8 +1356,26 @@ def filemanager1_installed():
     return os.path.exists(os.path.join(DBUS_SERVICE_DIR, DBUS_SERVICE_NAME))
 
 
+def refresh_stale_desktop_entry():
+    desktop_path = os.path.join(DESKTOP_DIR, DESKTOP_ID)
+    wanted = desktop_body()
+    try:
+        with open(desktop_path, "r", encoding="utf-8") as f:
+            if f.read() == wanted:
+                return
+    except OSError:
+        return
+    try:
+        with open(desktop_path, "w", encoding="utf-8") as f:
+            f.write(wanted)
+    except OSError:
+        return
+    refresh_desktop_database()
+
+
 def op_defaultfm(req):
     req_id = req["id"]
+    refresh_stale_desktop_entry()
     handler = current_default_handler()
     emit({
         "id": req_id, "t": "done",
@@ -1370,7 +1400,7 @@ def op_setdefaultfm(req, cancel_event):
         try:
             os.makedirs(DESKTOP_DIR, exist_ok=True)
             with open(desktop_path, "w", encoding="utf-8") as f:
-                f.write(DESKTOP_BODY)
+                f.write(desktop_body())
         except OSError as e:
             send_error(req_id, errno_code(e), e.strerror or str(e), desktop_path)
             return

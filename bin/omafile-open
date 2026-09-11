@@ -1,0 +1,2 @@
+#!/bin/sh
+exec omarchy-shell omafile open "${1:-}"

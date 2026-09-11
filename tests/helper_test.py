@@ -1,3 +1,4 @@
+import importlib.machinery
 import json
 import os
 import queue
@@ -696,6 +697,64 @@ class WatchTests(HelperTestCase):
         self.helper.send({"id": unwatch_id, "op": "unwatch", "path": watch_dir})
         final = self.helper.collect_until(watch_id)
         self.assertEqual(final[-1]["t"], "done")
+
+class DesktopEntryTests(unittest.TestCase):
+    def load_helper(self, data_home):
+        import importlib.util
+        env_keys = ("XDG_DATA_HOME",)
+        saved = {k: os.environ.get(k) for k in env_keys}
+        os.environ["XDG_DATA_HOME"] = data_home
+        try:
+            spec = importlib.util.spec_from_loader(
+                "omafile_helper_under_test",
+                importlib.machinery.SourceFileLoader(
+                    "omafile_helper_under_test", HELPER_PATH))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+    def test_exec_line_uses_the_launcher_shim(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            helper = self.load_helper(tmp)
+            body = helper.desktop_body()
+            exec_line = [l for l in body.splitlines() if l.startswith("Exec=")][0]
+            self.assertTrue(exec_line.endswith(" %f"), exec_line)
+            shim = exec_line[len("Exec="):-len(" %f")]
+            self.assertTrue(shim.endswith(os.path.join("bin", "omafile-open")), shim)
+            self.assertTrue(os.access(shim, os.X_OK), shim)
+
+    def test_icon_points_at_the_plugin_glyph(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            helper = self.load_helper(tmp)
+            body = helper.desktop_body()
+            icon_line = [l for l in body.splitlines() if l.startswith("Icon=")][0]
+            icon = icon_line[len("Icon="):]
+            self.assertTrue(icon.endswith("icon.png"), icon)
+            self.assertTrue(os.path.exists(icon), icon)
+
+    def test_a_stale_entry_is_rewritten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            helper = self.load_helper(tmp)
+            os.makedirs(helper.DESKTOP_DIR, exist_ok=True)
+            path = os.path.join(helper.DESKTOP_DIR, helper.DESKTOP_ID)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("[Desktop Entry]\nExec=omarchy-shell omafile open %f\n")
+            helper.refresh_stale_desktop_entry()
+            with open(path, "r", encoding="utf-8") as f:
+                self.assertEqual(f.read(), helper.desktop_body())
+
+    def test_a_missing_entry_is_not_created(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            helper = self.load_helper(tmp)
+            helper.refresh_stale_desktop_entry()
+            self.assertFalse(
+                os.path.exists(os.path.join(helper.DESKTOP_DIR, helper.DESKTOP_ID)))
 
 if __name__ == "__main__":
     unittest.main()
