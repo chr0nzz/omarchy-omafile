@@ -10,13 +10,18 @@ BarWidget {
   moduleName: "xyzlab.omafile"
 
   readonly property var service: bar && bar.shell ? bar.shell.serviceFor("xyzlab.omafile") : null
+  readonly property string mode: String(setting("mode", "files") || "files").toLowerCase()
+  readonly property bool trashMode: mode === "trash"
   readonly property string customGlyph: String(setting("glyph", "") || "").trim()
-  readonly property string glyph: customGlyph || Icons.actionGlyph("app")
+  readonly property string glyph: {
+    if (trashMode) return customGlyph || trashGlyph
+    return customGlyph || Icons.actionGlyph("app")
+  }
   readonly property bool showBadge: boolSetting("showTransferBadge", true)
   readonly property int activeTransfers: service ? service.activeTransfers : 0
   readonly property real transferFraction: service ? service.transferFraction : 0
-  readonly property bool busy: showBadge && activeTransfers > 0
-  readonly property bool failed: hasFailedTransfer()
+  readonly property bool busy: !trashMode && showBadge && activeTransfers > 0
+  readonly property bool failed: !trashMode && hasFailedTransfer()
   readonly property bool helperDown: service ? (service.helperError !== "" && !service.helperReady) : false
 
   readonly property int trashCount: service ? service.trashCount : 0
@@ -24,14 +29,8 @@ BarWidget {
   readonly property bool askBeforeEmptying: boolSetting("trashConfirm", true)
   property bool emptyArmed: false
   readonly property string countText: trashCount > 99 ? "99+" : String(trashCount)
-  readonly property bool showTrash: boolSetting("showTrash", false)
-  readonly property bool countVisible: showTrash && !vertical && trashFull
+  readonly property bool countVisible: trashMode && !vertical && trashFull
   readonly property string trashGlyph: Icons.placeGlyph(trashFull ? "trashfull" : "trash")
-
-  readonly property color trashColor: {
-    if (emptyArmed) return root.bar ? root.bar.urgent : Color.urgent
-    return button.foreground
-  }
 
   readonly property string trashTip: {
     if (emptyArmed) return "Right click again to empty the trash"
@@ -41,18 +40,22 @@ BarWidget {
   }
 
   readonly property color glyphColor: {
+    if (trashMode && emptyArmed) return root.bar ? root.bar.urgent : Color.urgent
     if (failed || helperDown) return root.bar ? root.bar.urgent : Color.urgent
     if (busy) return Color.accent
     return button.foreground
   }
 
   readonly property string tooltip: {
+    if (trashMode) {
+      if (helperDown) return "File helper is not running"
+      return trashTip
+    }
     var parts = []
     if (helperDown) parts.push("File helper is not running")
     else if (busy) parts.push(Model.formatCount(activeTransfers, "transfer running", "transfers running"))
     else parts.push("Omafile")
-    if (showTrash && trashFull) parts.push(trashTip)
-    else if (trashFull) parts.push(Model.formatCount(trashCount, "item in trash", "items in trash"))
+    if (trashFull) parts.push(Model.formatCount(trashCount, "item in trash", "items in trash"))
     return parts.join("  ")
   }
 
@@ -143,7 +146,7 @@ BarWidget {
 
   Loader {
     id: panelLoader
-    active: true
+    active: !root.trashMode
     source: Qt.resolvedUrl("Popup.qml")
     visible: false
     onLoaded: {
@@ -159,7 +162,7 @@ BarWidget {
     labelVisible: false
     hasVisualContent: true
     tooltipText: root.tooltip
-    readonly property bool wideContent: !root.vertical && root.showTrash
+    readonly property bool wideContent: !root.vertical && root.countVisible
     horizontalMargin: wideContent ? 6 : 0
     fixedWidth: root.vertical
       ? -1
@@ -167,6 +170,11 @@ BarWidget {
     fixedHeight: root.vertical ? Style.bar.iconSlot : -1
 
     onPressed: function (b) {
+      if (root.trashMode) {
+        if (b === Qt.RightButton) root.requestEmpty()
+        else root.openTrash()
+        return
+      }
       if (b === Qt.RightButton) root.togglePanel()
       else if (b === Qt.MiddleButton) {
         if (root.service) root.service.openWindow(root.service.startPath())
@@ -188,6 +196,7 @@ BarWidget {
 
         Text {
           id: glyphText
+          visible: !root.trashMode
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
           text: root.glyph
@@ -201,15 +210,15 @@ BarWidget {
 
         Row {
           id: trashPart
-          visible: root.showTrash
+          visible: root.trashMode
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.space(3)
 
           Text {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: root.trashGlyph
-            color: root.trashColor
+            text: root.glyph
+            color: root.glyphColor
             font.family: button.fontFamily
             font.pixelSize: Style.bar.iconFont
             renderType: Text.NativeRendering
@@ -222,7 +231,7 @@ BarWidget {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
             text: root.countText
-            color: root.trashColor
+            color: root.glyphColor
             font.family: button.fontFamily
             font.pixelSize: Style.font.caption
             font.bold: true
@@ -233,21 +242,6 @@ BarWidget {
         }
       }
 
-      MouseArea {
-        visible: root.showTrash
-        enabled: root.showTrash
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        x: trashPart.x + content.x
-        width: trashPart.width
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        hoverEnabled: false
-        onPressed: function (event) {
-          if (event.button === Qt.RightButton) root.requestEmpty()
-          else root.openTrash()
-          event.accepted = true
-        }
-      }
 
       Canvas {
         id: ring

@@ -587,16 +587,32 @@ Item {
     for (var k in localSettings) next[k] = localSettings[k]
     next[key] = value
     localSettings = next
-    if (!shell || typeof shell.updateEntryInline !== "function") return false
-    return shell.updateEntryInline(pluginId, storedSettingsWith(next))
+    var patch = {}
+    patch[key] = value
+    request({ op: "barsettings", settings: patch }, null)
+    return true
   }
 
-  function storedSettingsWith(overrides) {
-    var out = {}
-    var entry = findEntry(shell ? shell.barConfig : null)
-    if (entry) for (var k in entry) if (k !== "id") out[k] = entry[k]
-    for (var o in overrides) out[o] = overrides[o]
-    return out
+  property bool trashIcon: false
+
+  function refreshTrashIcon() {
+    request({ op: "baricon", action: "status" }, {
+      onData: function (m) {
+        if (m.t !== "baricon") return
+        root.trashIcon = m.trashIcon === true
+      }
+    })
+  }
+
+  function setTrashIcon(enabled, onDone, onError) {
+    request({ op: "baricon", action: enabled ? "add" : "remove" }, {
+      onData: function (m) {
+        if (m.t !== "baricon") return
+        root.trashIcon = m.trashIcon === true
+      },
+      onDone: function (m) { if (onDone) onDone(m) },
+      onError: function (m) { if (onError) onError(m) }
+    })
   }
 
   function connectToServer(uri, user, domain, password, anonymous, onDone, onError) {
@@ -816,6 +832,7 @@ Item {
       refreshUserDirs()
       refreshDrives()
       refreshTrash()
+      refreshTrashIcon()
       refreshDiscovered()
       refreshDefaultHandler()
     })
@@ -920,6 +937,14 @@ Item {
       if (value !== "window" && value !== "popup") return "use window or popup"
       root.updateSetting("windowMode", value)
       return "ok"
+    }
+
+    function trashicon(state: string): string {
+      var value = String(state || "").toLowerCase()
+      if (value === "on" || value === "add" || value === "true") { root.setTrashIcon(true, null, null); return "ok" }
+      if (value === "off" || value === "remove" || value === "false") { root.setTrashIcon(false, null, null); return "ok" }
+      if (value === "" || value === "status") return root.trashIcon ? "on" : "off"
+      return "use on, off or status"
     }
 
     function shortcuts(): string {

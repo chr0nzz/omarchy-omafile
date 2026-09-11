@@ -15,6 +15,7 @@ import struct
 import subprocess
 import xml.etree.ElementTree
 import sys
+import tempfile
 import threading
 import time
 
@@ -1742,6 +1743,172 @@ def op_cancel(req):
             stop_watch(handle, cancelled=True)
     send_done(req_id)
 
+PLUGIN_ENTRY_ID = "xyzlab.omafile"
+SHELL_CONFIG_PATH = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"),
+    "omarchy", "shell.json")
+BAR_SECTIONS = ("left", "center", "right")
+
+
+def read_shell_config():
+    with open(SHELL_CONFIG_PATH, "r", encoding="utf-8") as f:
+        config = json.load(f)
+    if not isinstance(config, dict):
+        raise ValueError("shell.json is not an object")
+    return config
+
+
+def write_shell_config(config):
+    directory = os.path.dirname(SHELL_CONFIG_PATH)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".omafile-shell-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, SHELL_CONFIG_PATH)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def bar_sections(config):
+    bar = config.get("bar")
+    if not isinstance(bar, dict):
+        return []
+    layout = bar.get("layout")
+    if not isinstance(layout, dict):
+        return []
+    out = []
+    for name in BAR_SECTIONS:
+        arr = layout.get(name)
+        if isinstance(arr, list):
+            out.append((name, arr))
+    return out
+
+
+def omafile_entries(config):
+    found = []
+    for name, arr in bar_sections(config):
+        for index, entry in enumerate(arr):
+            if isinstance(entry, dict) and entry.get("id") == PLUGIN_ENTRY_ID:
+                found.append((name, arr, index, entry))
+    return found
+
+
+TRASH_ENTRY_KEYS = ("trashConfirm",)
+
+
+def is_trash_entry(entry):
+    return str(entry.get("mode", "")).lower() == "trash"
+
+
+def bar_state(config):
+    entries = omafile_entries(config)
+    return {
+        "present": bool(entries),
+        "trashIcon": any(is_trash_entry(e) for _, _, _, e in entries),
+        "count": len(entries),
+    }
+
+
+def op_baricon(req):
+    req_id = req["id"]
+    action = str(req.get("action") or "status")
+    try:
+        config = read_shell_config()
+    except (OSError, ValueError) as e:
+        send_error(req_id, "ENOENT", "could not read shell.json: %s" % e, SHELL_CONFIG_PATH)
+        return
+
+    if action == "status":
+        state = bar_state(config)
+        emit(dict({"id": req_id, "t": "baricon"}, **state))
+        send_done(req_id)
+        return
+
+    if action not in ("add", "remove"):
+        send_error(req_id, "EINVAL", "unknown action: %s" % action)
+        return
+
+    entries = omafile_entries(config)
+    changed = False
+
+    if action == "add":
+        if not any(is_trash_entry(e) for _, _, _, e in entries):
+            anchor = None
+            for name, arr, index, entry in entries:
+                if not is_trash_entry(entry):
+                    anchor = (arr, index)
+            new_entry = {"id": PLUGIN_ENTRY_ID, "mode": "trash", "trashConfirm": True}
+            if anchor:
+                anchor[0].insert(anchor[1] + 1, new_entry)
+            else:
+                sections = bar_sections(config)
+                if not sections:
+                    send_error(req_id, "EINVAL", "shell.json has no bar layout")
+                    return
+                sections[-1][1].append(new_entry)
+            changed = True
+    else:
+        for name, arr, index, entry in reversed(entries):
+            if is_trash_entry(entry):
+                del arr[index]
+                changed = True
+
+    if changed:
+        try:
+            write_shell_config(config)
+        except OSError as e:
+            send_error(req_id, errno_code(e), e.strerror or str(e), SHELL_CONFIG_PATH)
+            return
+
+    state = bar_state(config)
+    emit(dict({"id": req_id, "t": "baricon", "changed": changed}, **state))
+    send_done(req_id)
+
+
+def op_barsettings(req):
+    req_id = req["id"]
+    settings = req.get("settings")
+    if not isinstance(settings, dict):
+        send_error(req_id, "EINVAL", "settings must be an object")
+        return
+    try:
+        config = read_shell_config()
+    except (OSError, ValueError) as e:
+        send_error(req_id, "ENOENT", "could not read shell.json: %s" % e, SHELL_CONFIG_PATH)
+        return
+
+    changed = False
+    for name, arr, index, entry in omafile_entries(config):
+        trash = is_trash_entry(entry)
+        merged = dict(entry)
+        for key, value in settings.items():
+            if key in ("id", "mode"):
+                continue
+            if trash and key not in TRASH_ENTRY_KEYS:
+                continue
+            merged[key] = value
+        if merged != entry:
+            arr[index] = merged
+            changed = True
+
+    if changed:
+        try:
+            write_shell_config(config)
+        except OSError as e:
+            send_error(req_id, errno_code(e), e.strerror or str(e), SHELL_CONFIG_PATH)
+            return
+
+    emit({"id": req_id, "t": "barsettings", "changed": changed})
+    send_done(req_id)
+
+
 CANCELLABLE_OPS = {
     "list": op_list,
     "search": op_search,
@@ -1774,6 +1941,8 @@ SIMPLE_OPS = {
     "ping": op_ping,
     "watch": op_watch,
     "unwatch": op_unwatch,
+    "baricon": op_baricon,
+    "barsettings": op_barsettings,
 }
 
 def dispatch(req):

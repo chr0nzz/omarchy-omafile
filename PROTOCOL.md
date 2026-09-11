@@ -164,6 +164,32 @@ be told when the trash changes. There is one per trash root, so a removable driv
 own trash adds an entry and the list changes when that drive is mounted or unmounted.
 `emptytrash` clears every trash directory it knows about and replies `done`.
 
+### baricon, barsettings
+
+```
+{"id": N, "op": "baricon", "action": "status" | "add" | "remove"}
+{"id": N, "op": "barsettings", "settings": {"showHidden": true}}
+```
+
+Both edit `~/.config/omarchy/shell.json`, which the shell reloads on its own.
+
+`baricon` replies `{"t": "baricon", "present": P, "trashIcon": T, "count": C}`, plus
+`"changed"` for `add` and `remove`. `add` inserts `{"id": "xyzlab.omafile", "mode":
+"trash", "trashConfirm": true}` directly after the existing Omafile entry, or at the end
+of the last bar section when there is none. `remove` deletes every Omafile entry whose
+mode is `trash`. Both are idempotent.
+
+`barsettings` merges `settings` into the Omafile bar entries and replies
+`{"t": "barsettings", "changed": B}`. It never writes `id` or `mode`, so a trash entry
+cannot be turned back into a file manager entry by a settings change. Entries in trash
+mode only accept the keys in `TRASH_ENTRY_KEYS`, currently `trashConfirm`; everything else
+lands on the file manager entry alone. This exists because the shell's own
+`updateEntryInline` rewrites every entry sharing a plugin id with the same object, which
+erases the trash entry's mode.
+
+Writes go to a temporary file in the same directory and are renamed into place, so a
+partial write cannot leave the shell without a config.
+
 ### mkdir, mkfile, rename, symlink
 
 ```

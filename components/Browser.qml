@@ -1467,15 +1467,19 @@ Item {
               Toggle {
                 width: settingsColumn.width
                 label: "Trash can in the bar"
-                description: "A trash can beside the Omafile icon with the number of "
-                  + "items in it. Left click opens the trash, right click empties it."
-                checked: root.boolSetting("showTrash", false)
-                onClicked: root.applySettingNow("showTrash", !checked)
+                description: root.service && root.service.trashIcon
+                  ? "A trash can of its own in the bar. Drag it anywhere from the Omarchy bar settings."
+                  : "Adds a trash can to the bar, separate from this icon, showing how many items are in it"
+                checked: root.service ? root.service.trashIcon : false
+                onClicked: {
+                  if (!root.service) return
+                  root.service.setTrashIcon(!checked, null, null)
+                }
               }
 
               Toggle {
                 width: settingsColumn.width
-                visible: root.boolSetting("showTrash", false)
+                visible: root.service ? root.service.trashIcon : false
                 label: "Ask before emptying"
                 description: "The first right click arms the trash can, the second empties it"
                 checked: root.boolSetting("trashConfirm", true)

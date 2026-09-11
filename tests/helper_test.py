@@ -571,6 +571,83 @@ class TrashInfoDirsTests(HelperTestCase):
             self.assertIsInstance(d, str)
             self.assertTrue(d.endswith("info"), d)
 
+class BarIconTests(unittest.TestCase):
+    def helper_with_config(self, tmp, config):
+        import importlib.util
+        cfg_dir = os.path.join(tmp, "omarchy")
+        os.makedirs(cfg_dir, exist_ok=True)
+        with open(os.path.join(cfg_dir, "shell.json"), "w", encoding="utf-8") as f:
+            json.dump(config, f)
+        saved = os.environ.get("XDG_CONFIG_HOME")
+        os.environ["XDG_CONFIG_HOME"] = tmp
+        try:
+            spec = importlib.util.spec_from_loader(
+                "omafile_helper_bar",
+                importlib.machinery.SourceFileLoader("omafile_helper_bar", HELPER_PATH))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+        finally:
+            if saved is None:
+                os.environ.pop("XDG_CONFIG_HOME", None)
+            else:
+                os.environ["XDG_CONFIG_HOME"] = saved
+
+    def base_config(self):
+        return {"version": 1, "bar": {"layout": {
+            "left": [], "center": [],
+            "right": [{"id": "omarchy.tray"},
+                      {"id": "xyzlab.omafile", "windowMode": "window"},
+                      {"id": "omarchy.clock"}]}}}
+
+    def test_add_places_the_trash_entry_after_the_files_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            h = self.helper_with_config(tmp, self.base_config())
+            config = h.read_shell_config()
+            self.assertFalse(h.bar_state(config)["trashIcon"])
+            entries = h.omafile_entries(config)
+            arr = entries[0][1]
+            arr.insert(entries[0][2] + 1,
+                       {"id": "xyzlab.omafile", "mode": "trash", "trashConfirm": True})
+            ids = [e.get("id") for e in config["bar"]["layout"]["right"]]
+            self.assertEqual(ids, ["omarchy.tray", "xyzlab.omafile", "xyzlab.omafile", "omarchy.clock"])
+            self.assertTrue(h.bar_state(config)["trashIcon"])
+
+    def test_settings_never_touch_the_trash_entry_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = self.base_config()
+            config["bar"]["layout"]["right"].insert(
+                2, {"id": "xyzlab.omafile", "mode": "trash", "trashConfirm": True})
+            h = self.helper_with_config(tmp, config)
+            loaded = h.read_shell_config()
+            for name, arr, index, entry in h.omafile_entries(loaded):
+                trash = h.is_trash_entry(entry)
+                merged = dict(entry)
+                for key, value in {"showHidden": True, "trashConfirm": False}.items():
+                    if key in ("id", "mode"):
+                        continue
+                    if trash and key not in h.TRASH_ENTRY_KEYS:
+                        continue
+                    merged[key] = value
+                arr[index] = merged
+            found = h.omafile_entries(loaded)
+            files_entry = [e for _, _, _, e in found if not h.is_trash_entry(e)][0]
+            trash_entry = [e for _, _, _, e in found if h.is_trash_entry(e)][0]
+            self.assertTrue(files_entry["showHidden"])
+            self.assertEqual(trash_entry["mode"], "trash")
+            self.assertNotIn("showHidden", trash_entry)
+            self.assertFalse(trash_entry["trashConfirm"])
+
+    def test_write_is_atomic_and_reloadable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            h = self.helper_with_config(tmp, self.base_config())
+            config = h.read_shell_config()
+            config["bar"]["layout"]["right"].append({"id": "xyzlab.omafile", "mode": "trash"})
+            h.write_shell_config(config)
+            again = h.read_shell_config()
+            self.assertTrue(h.bar_state(again)["trashIcon"])
+            self.assertEqual(h.bar_state(again)["count"], 2)
+
 class SearchTests(HelperTestCase):
     def setUp(self):
         super().setUp()

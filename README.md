@@ -16,7 +16,7 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * Connect to SMB, SFTP, WebDAV and other servers
 * Settings inside the window, no config file editing
 * Bar widget with places, drives, transfers, and trash overview
-* Optional trash can in the bar, with a live count
+* Optional standalone trash can in the bar, placeable anywhere, with a live count
 * Full keyboard control, following GNOME Files conventions
 * Undo and redo for trash, rename, move, copy and new items
 
@@ -86,6 +86,147 @@ Connect to a server mounts an SMB share, an SFTP host, FTP or WebDAV. Servers yo
 This uses GVFS and needs no root. Install `gvfs-smb` for Windows shares if it is missing.
 
 ### Settings
+
+Ctrl+Comma, or the gear in the toolbar. Hidden files, folders-first ordering, image previews, trash behaviour, the drive list, and the trash can in the bar.
+
+Settings also picks whether Omafile is a normal window or a popup panel centred over the desktop that closes when you click away. The change applies immediately, even while Omafile is open.
+
+### Opening folders from other apps
+
+Turn on Default file manager in Settings. Folders opened from anywhere else then land in Omafile, and Show in folder opens the containing folder with the file selected. It also puts Omafile in your application launcher, using the same folder icon as the bar widget. Turning it off restores the handler you had before.
+
+Two separate mechanisms are involved, which is why some apps can follow it and others not:
+
+| Mechanism | Used by |
+|-----------|---------|
+| `inode/directory` pointed at a desktop entry in `~/.local/share/applications/` | `xdg-open`, `gio open`, most desktop apps |
+| `org.freedesktop.FileManager1` claimed through a user D-Bus service file | browsers and editors, for Show in folder |
+
+The D-Bus half needs PyGObject, which Omarchy ships. Without it the desktop entry still works and Show in folder keeps going to your previous file manager.
+
+The desktop entry half from a terminal:
+
+```bash
+xdg-mime default xyzlab.omafile.desktop inode/directory
+xdg-mime query default inode/directory
+```
+
+### Copying over something that exists
+
+Omafile asks what to do. Choose with the mouse, or with the keys under [Keyboard](#when-a-file-already-exists).
+
+## Keyboard
+
+Omafile follows GNOME Files conventions, so shortcuts you already know work here.
+
+### Navigation
+
+| Keys | Action |
+|------|--------|
+| `Enter` | Open the selected item |
+| `Backspace` / `Alt+Up` | Go to the parent folder |
+| `Alt+Left` / `Alt+Right` | Back and forward |
+| `Alt+Home` | Go to your home folder |
+| `Ctrl+L` | Type a path |
+| `/` or `~` | Type a path, starting from root or home |
+| `Home` / `End` | First and last item |
+| `F5` / `Ctrl+R` | Refresh |
+
+### Moving around without a mouse
+
+Focus starts in the file list. Tab moves it to the sidebar, or to the other pane when the window is split. Escape or Right returns focus to the file list.
+
+| Keys | Action |
+|------|--------|
+| `Tab` | Sidebar, or the other pane when split |
+| `Shift+Tab` | Jump to the sidebar |
+| `Arrows`, `Enter` | Move and open, once in the sidebar |
+| `Ctrl+Enter` | Open a sidebar place in a new tab |
+| `Delete` | Remove a bookmark or hide a drive, in the sidebar |
+| `Escape` | Leave the sidebar |
+| `Shift+F10` / `Menu` | Open the context menu on the current item |
+
+The context menu is a real focus target: arrows move through it, Enter or Space runs the highlighted entry, Escape closes it. Anything Omafile can do to a file is in there, so no action needs the mouse.
+
+### Selection
+
+| Keys | Action |
+|------|--------|
+| `Ctrl+Click` | Add one item to the selection |
+| `Ctrl+Space` | Add the item under the cursor |
+| `Shift+Click`, `Shift+Arrows` | Select a range |
+| `Ctrl+A` | Select everything |
+| `Ctrl+Shift+I` | Invert the selection |
+| `Escape` | Clear the selection |
+
+### Files
+
+| Keys | Action |
+|------|--------|
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy, cut and paste |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo and redo |
+| `F2` | Rename |
+| `Ctrl+Shift+N` | New folder |
+| `Ctrl+N` | New file |
+| `Delete` | Move to trash |
+| `Shift+Delete` | Delete permanently |
+| `Ctrl+I` / `Alt+Enter` | Properties |
+| `Ctrl+D` | Bookmark this folder |
+
+Undo covers trash, rename, move, copy and new file or folder. Undoing a trash puts the items back where they were, and undoing a copy trashes what the copy created.
+
+### Panes and tabs
+
+| Keys | Action |
+|------|--------|
+| `Ctrl+T` / `Ctrl+W` | New tab and close tab |
+| `Ctrl+PageUp` / `Ctrl+PageDown` | Previous and next tab |
+| `Ctrl+Enter` | Open the folder under the cursor in a new tab |
+| `F6` | Split into two panes |
+| `Tab` | Switch the active pane, while split |
+| `Ctrl+Shift+C` / `Ctrl+Shift+M` | Copy and move to the other pane |
+
+### View
+
+| Keys | Action |
+|------|--------|
+| `Ctrl+1` / `Ctrl+2` | List and grid |
+| `Ctrl+H` | Show hidden files |
+| `Ctrl+B` | Show or hide the sidebar |
+| `Ctrl+F`, or just type | Search in this folder |
+| `Ctrl+Comma` | Settings |
+| `F1` | The shortcut list |
+| `Ctrl+Q` / `Escape` | Close the window |
+
+Typing an ordinary character opens the search box with that character already typed, the way GNOME Files does.
+
+### When a file already exists
+
+| Keys | Action |
+|------|--------|
+| `R` / `K` / `S` / `A` | Replace, keep both, skip, skip all |
+
+Escape skips the file.
+
+Super+C, Super+V and Super+X are Omarchy's universal clipboard shortcuts. Omarchy translates them to Ctrl+C, Ctrl+V and Ctrl+X before they reach the window, so they copy, paste and cut files in Omafile too.
+
+## Trash in the Bar
+
+Turn on **Trash can in the bar** in Settings. Omafile adds a trash can to your bar as its own widget, so you can drag it anywhere from the Omarchy bar settings, including the other side of the bar from the file manager icon. Turning the setting off removes it again.
+
+The icon is outlined when the trash is empty and solid when it is not, with the number of items beside it. The count updates on its own as things are deleted or restored from anywhere, not only from Omafile, and it covers every trash directory on the system, so a removable drive with its own trash is included.
+
+Left click opens the trash. Right click empties it: the first right click turns it red for four seconds, and a second right click within that window empties it, so a stray click cannot wipe anything. Turn off **Ask before emptying** if you want the first right click to empty it outright.
+
+From a terminal:
+
+```bash
+omarchy-shell omafile trashicon on
+omarchy-shell omafile trashicon off
+omarchy-shell omafile trashicon status
+```
+
+## Settings
 
 Ctrl+Comma, or the gear in the toolbar. Hidden files, folders-first ordering, image previews, trash behaviour, the drive list, and the trash can in the bar.
 
@@ -370,7 +511,7 @@ Configure these keys through the Omarchy bar widget settings:
 | `showDrives` | Show the Drives section in the sidebar |
 | `thumbnails` | Show image previews in grid view |
 | `glyph` | Custom icon for the bar widget |
-| `showTrash` | Show a trash can beside the bar icon |
+| `mode` | `files` for the file manager icon, `trash` for a trash can |
 | `trashConfirm` | Ask before a right click empties the trash |
 
 ## Command Line
@@ -399,6 +540,13 @@ Switch between a window and a popup:
 ```bash
 omarchy-shell omafile windowmode window
 omarchy-shell omafile windowmode popup
+```
+
+Add or remove the trash can in the bar:
+
+```bash
+omarchy-shell omafile trashicon on
+omarchy-shell omafile trashicon off
 ```
 
 Toggle the window from a keybinding or script:
