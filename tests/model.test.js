@@ -213,6 +213,27 @@ test('breadcrumbs for a nested path', function () {
   ]);
 });
 
+test('breadcrumbs keep a tilde path rooted at home', function () {
+  assert.deepEqual(plainCrumbs(Model.breadcrumbs('~')), [{ label: '~', path: '~' }]);
+  assert.deepEqual(plainCrumbs(Model.breadcrumbs('~/Downloads')), [
+    { label: '~', path: '~' },
+    { label: 'Downloads', path: '~/Downloads' }
+  ]);
+  assert.deepEqual(plainCrumbs(Model.breadcrumbs('~/a/b')), [
+    { label: '~', path: '~' },
+    { label: 'a', path: '~/a' },
+    { label: 'b', path: '~/a/b' }
+  ]);
+});
+
+test('breadcrumbs treat a literal tilde directory as absolute', function () {
+  assert.deepEqual(plainCrumbs(Model.breadcrumbs('/~/weird')), [
+    { label: '/', path: '/' },
+    { label: '~', path: '/~' },
+    { label: 'weird', path: '/~/weird' }
+  ]);
+});
+
 test('isAncestor', function () {
   assert.equal(Model.isAncestor('/', '/a'), true);
   assert.equal(Model.isAncestor('/', '/'), false);
