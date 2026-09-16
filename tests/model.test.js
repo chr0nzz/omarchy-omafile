@@ -25,6 +25,10 @@ function plainCrumbs(list) {
   return out;
 }
 
+function expand(command, path) {
+  return Array.prototype.slice.call(Model.expandFieldCodes(command, path));
+}
+
 test('natural sort orders file2 before file10', function () {
   var entries = Model.decodeEntries([
     ['file10', 'f', 1, 0, 33188, null],
@@ -314,4 +318,57 @@ test('sortIndicator returns a glyph only for the active column', function () {
   assert.equal(Model.sortIndicator('name', 'name', false), '▲');
   assert.equal(Model.sortIndicator('name', 'name', true), '▼');
   assert.equal(Model.sortIndicator('name', 'size', false), '');
+});
+
+test('expandFieldCodes substitutes the path for every file and url code', function () {
+  assert.deepEqual(expand(['vim', '%f'], '/tmp/a.txt'), ['vim', '/tmp/a.txt']);
+  assert.deepEqual(expand(['vim', '%F'], '/tmp/a.txt'), ['vim', '/tmp/a.txt']);
+  assert.deepEqual(expand(['vim', '%u'], '/tmp/a.txt'), ['vim', '/tmp/a.txt']);
+  assert.deepEqual(expand(['vim', '%U'], '/tmp/a.txt'), ['vim', '/tmp/a.txt']);
+});
+
+test('expandFieldCodes appends the path when no file code is present', function () {
+  assert.deepEqual(expand(['gedit'], '/tmp/a.txt'), ['gedit', '/tmp/a.txt']);
+  assert.deepEqual(expand(['flatpak', 'run', 'org.x.App'], '/tmp/a'),
+    ['flatpak', 'run', 'org.x.App', '/tmp/a']);
+});
+
+test('expandFieldCodes appends the path for real parsed desktop commands', function () {
+  assert.deepEqual(expand(['/usr/bin/google-chrome-stable'], '/tmp/a.html'),
+    ['/usr/bin/google-chrome-stable', '/tmp/a.html']);
+  assert.deepEqual(expand(['libreoffice', '--math'], '/tmp/a.odf'),
+    ['libreoffice', '--math', '/tmp/a.odf']);
+  assert.deepEqual(expand(['nautilus', '--new-window'], '/tmp/d'),
+    ['nautilus', '--new-window', '/tmp/d']);
+  assert.deepEqual(expand(['mpv', '--player-operation-mode=pseudo-gui', '--'], '/tmp/-weird.mkv'),
+    ['mpv', '--player-operation-mode=pseudo-gui', '--', '/tmp/-weird.mkv']);
+});
+
+test('expandFieldCodes drops deprecated and metadata codes', function () {
+  assert.deepEqual(expand(['app', '%i', '%c', '%k', '%f'], '/tmp/a'),
+    ['app', '/tmp/a']);
+  assert.deepEqual(expand(['app', '%d', '%D', '%n', '%N', '%v', '%m', '%f'], '/tmp/a'),
+    ['app', '/tmp/a']);
+});
+
+test('expandFieldCodes handles embedded codes and literal percent', function () {
+  assert.deepEqual(expand(['app', '--file=%f'], '/tmp/a'), ['app', '--file=/tmp/a']);
+  assert.deepEqual(expand(['app', '100%%', '%f'], '/tmp/a'), ['app', '100%', '/tmp/a']);
+  assert.deepEqual(expand(['app', 'trailing%'], '/tmp/a'),
+    ['app', 'trailing%', '/tmp/a']);
+});
+
+test('expandFieldCodes keeps shell metacharacters as one inert argument', function () {
+  assert.deepEqual(expand(['evil; rm -rf ~', '%f'], '/tmp/a'),
+    ['evil; rm -rf ~', '/tmp/a']);
+  assert.deepEqual(expand(['app', '$(id)', '%f'], '/tmp/a'),
+    ['app', '$(id)', '/tmp/a']);
+  assert.deepEqual(expand(['app', '`id`', '&&', 'curl x', '%f'], '/tmp/a'),
+    ['app', '`id`', '&&', 'curl x', '/tmp/a']);
+});
+
+test('expandFieldCodes returns nothing for an empty command', function () {
+  assert.deepEqual(expand([], '/tmp/a'), []);
+  assert.deepEqual(expand(null, '/tmp/a'), []);
+  assert.deepEqual(expand(['%i'], '/tmp/a'), []);
 });

@@ -846,5 +846,90 @@ class DesktopEntryTests(unittest.TestCase):
             self.assertFalse(
                 os.path.exists(os.path.join(helper.DESKTOP_DIR, helper.DESKTOP_ID)))
 
+class TrustedRunTests(unittest.TestCase):
+    def load_helper(self):
+        import importlib.util
+        spec = importlib.util.spec_from_loader(
+            "omafile_helper_trusted_run",
+            importlib.machinery.SourceFileLoader(
+                "omafile_helper_trusted_run", HELPER_PATH))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_output_and_exit_code_are_captured(self):
+        helper = self.load_helper()
+        result = helper.run_trusted("echo", ["hello"], timeout=10)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "hello\n")
+
+    def test_stdin_is_delivered(self):
+        helper = self.load_helper()
+        result = helper.run_trusted("cat", [], stdin_text="answer\n", timeout=10)
+        self.assertEqual(result.stdout, "answer\n")
+
+    def test_a_nonzero_exit_is_reported(self):
+        helper = self.load_helper()
+        result = helper.run_trusted("sh", ["-c", "exit 4"], timeout=10)
+        self.assertEqual(result.returncode, 4)
+
+    def test_capture_stops_at_the_limit(self):
+        helper = self.load_helper()
+        result = helper.run_trusted(
+            "sh", ["-c", "yes abcdefgh | head -c 200000"], timeout=20, limit=4096)
+        self.assertEqual(len(result.stdout), 4096)
+
+    def test_an_endless_writer_times_out_instead_of_growing(self):
+        helper = self.load_helper()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            helper.run_trusted("cat", ["/dev/zero"], timeout=2, limit=4096)
+
+    def test_a_timeout_kills_the_whole_process_group(self):
+        helper = self.load_helper()
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = os.path.join(tmp, "pid")
+            script = "sleep 47 & echo $! > " + marker + "; wait"
+            with self.assertRaises(subprocess.TimeoutExpired):
+                helper.run_trusted("sh", ["-c", script], timeout=2)
+            time.sleep(0.5)
+            with open(marker, "r", encoding="utf-8") as f:
+                grandchild = int(f.read().strip())
+            with self.assertRaises(ProcessLookupError):
+                os.kill(grandchild, 0)
+
+    def test_a_shadowed_binary_on_path_is_ignored(self):
+        helper = self.load_helper()
+        with tempfile.TemporaryDirectory() as tmp:
+            shadow = os.path.join(tmp, "echo")
+            with open(shadow, "w", encoding="utf-8") as f:
+                f.write("#!/bin/sh\nexit 0\n")
+            os.chmod(shadow, 0o755)
+            saved = os.environ.get("PATH")
+            os.environ["PATH"] = tmp + os.pathsep + (saved or "")
+            try:
+                resolved = helper.trusted_program("echo")
+            finally:
+                if saved is None:
+                    os.environ.pop("PATH", None)
+                else:
+                    os.environ["PATH"] = saved
+            self.assertNotEqual(resolved, shadow)
+            self.assertIn(os.path.dirname(resolved), helper.TRUSTED_BIN_DIRS)
+
+    def test_a_program_outside_trusted_directories_is_refused(self):
+        helper = self.load_helper()
+        with self.assertRaises(FileNotFoundError):
+            helper.trusted_program("omafile-definitely-not-installed")
+
+    def test_the_child_environment_is_minimal(self):
+        helper = self.load_helper()
+        os.environ["OMAFILE_LEAK_CHECK"] = "leaked"
+        try:
+            env = helper.trusted_env()
+        finally:
+            os.environ.pop("OMAFILE_LEAK_CHECK", None)
+        self.assertEqual(env["PATH"], "/usr/bin:/bin")
+        self.assertNotIn("OMAFILE_LEAK_CHECK", env)
+
 if __name__ == "__main__":
     unittest.main()
