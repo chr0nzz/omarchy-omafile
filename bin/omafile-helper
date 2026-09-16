@@ -10,6 +10,7 @@ import pwd
 import re
 import select
 import shutil
+import signal
 import stat
 import struct
 import subprocess
@@ -1241,6 +1242,110 @@ def gvfs_label(name):
     return name, scheme
 
 
+TRUSTED_BIN_DIRS = ("/usr/bin", "/bin", "/usr/local/bin")
+MAX_CAPTURE_BYTES = 1 << 20
+TRUSTED_ENV_PASSTHROUGH = (
+    "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS")
+
+
+def trusted_program(name):
+    for directory in TRUSTED_BIN_DIRS:
+        candidate = os.path.join(directory, name)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    raise FileNotFoundError(errno.ENOENT, "not found in a trusted directory", name)
+
+
+def trusted_env():
+    env = {"PATH": "/usr/bin:/bin", "HOME": HOME, "LC_ALL": "C.UTF-8"}
+    for key in TRUSTED_ENV_PASSTHROUGH:
+        value = os.environ.get(key)
+        if value:
+            env[key] = value
+    return env
+
+
+def kill_process_group(proc):
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def run_trusted(name, args, stdin_text=None, timeout=30, limit=MAX_CAPTURE_BYTES):
+    program = trusted_program(name)
+    argv = [program] + list(args)
+    proc = subprocess.Popen(
+        argv,
+        stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=trusted_env(),
+        shell=False,
+        close_fds=True,
+        start_new_session=True)
+    pending = stdin_text.encode("utf-8", "replace") if stdin_text is not None else b""
+    captured_out = bytearray()
+    captured_err = bytearray()
+    buffers = {proc.stdout: captured_out, proc.stderr: captured_err}
+    open_readers = [proc.stdout, proc.stderr]
+    deadline = time.monotonic() + timeout
+    try:
+        while open_readers or pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(argv, timeout)
+            writers = [proc.stdin] if pending and proc.stdin else []
+            readable, writable, _ = select.select(
+                open_readers, writers, [], min(remaining, 0.5))
+            for stream in writable:
+                try:
+                    written = os.write(stream.fileno(), pending)
+                    pending = pending[written:]
+                except (BrokenPipeError, OSError):
+                    pending = b""
+                if not pending:
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
+                    proc.stdin = None
+            for stream in readable:
+                chunk = os.read(stream.fileno(), 65536)
+                if not chunk:
+                    open_readers.remove(stream)
+                    continue
+                buffer = buffers[stream]
+                if len(buffer) < limit:
+                    buffer.extend(chunk[:limit - len(buffer)])
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(argv, timeout)
+        proc.wait(timeout=remaining)
+    except BaseException:
+        kill_process_group(proc)
+        raise
+    finally:
+        pending = b""
+        for stream in (proc.stdin, proc.stdout, proc.stderr):
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+    return subprocess.CompletedProcess(
+        argv, proc.returncode,
+        captured_out.decode("utf-8", "replace"),
+        captured_err.decode("utf-8", "replace"))
+
+
 def gvfs_mounts():
     out = []
     try:
@@ -1499,9 +1604,7 @@ def op_netdiscover(req):
     req_id = req["id"]
     found = []
     try:
-        proc = subprocess.run(
-            ["gio", "list", "-u", "network:///"],
-            capture_output=True, text=True, timeout=10, shell=False)
+        proc = run_trusted("gio", ["list", "-u", "network:///"], timeout=10)
     except (FileNotFoundError, subprocess.TimeoutExpired):
         emit({"id": req_id, "t": "drives", "drives": found})
         send_done(req_id)
@@ -1541,9 +1644,7 @@ def op_mounturi(req, cancel_event):
     else:
         answers = user + "\n" + domain + "\n" + password + "\n"
     try:
-        proc = subprocess.run(
-            ["gio", "mount", uri],
-            input=answers, capture_output=True, text=True, timeout=40, shell=False)
+        proc = run_trusted("gio", ["mount", uri], stdin_text=answers, timeout=40)
     except FileNotFoundError:
         send_error(req_id, "EUNSUPPORTED", "gio is not installed")
         return
@@ -1572,9 +1673,7 @@ def op_unmounturi(req, cancel_event):
         send_error(req_id, "EINVAL", "path required")
         return
     try:
-        proc = subprocess.run(
-            ["gio", "mount", "-u", target.strip()],
-            capture_output=True, text=True, timeout=30, shell=False)
+        proc = run_trusted("gio", ["mount", "-u", target.strip()], timeout=30)
     except FileNotFoundError:
         send_error(req_id, "EUNSUPPORTED", "gio is not installed")
         return
