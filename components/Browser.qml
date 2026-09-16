@@ -39,6 +39,8 @@ Item {
   property var menuEntry: null
   property string statusText: ""
   property string appFilter: ""
+  readonly property bool canRunTyped: dialogMode === "openwith"
+    && Model.tokenizeCommand(appFilter).length > 0
   property bool findMode: false
   property bool connectAnonymous: false
   property string connectStatus: ""
@@ -225,6 +227,8 @@ Item {
           else dialogField.selectAll()
         } else dialogField.selectAll()
       } else if (dialogMode === "openwith") {
+        appField.text = ""
+        root.appCursor = 0
         appField.forceActiveFocus()
       } else if (dialogMode === "connect") {
         root.connectStatus = ""
@@ -594,12 +598,27 @@ Item {
 
   function moveAppCursor(delta) {
     var list = filteredApps()
-    if (list.length === 0) return
-    appCursor = Math.max(0, Math.min(list.length - 1, appCursor + delta))
+    var floor = canRunTyped ? -1 : 0
+    if (list.length === 0) {
+      appCursor = floor
+      return
+    }
+    appCursor = Math.max(floor, Math.min(list.length - 1, appCursor + delta))
+  }
+
+  function runTypedCommand() {
+    var entry = dialogPayload
+    var typed = appFilter
+    closeDialog()
+    if (entry && service) service.runCommandOn(typed, entry.path)
   }
 
   function chooseApp() {
     var list = filteredApps()
+    if (canRunTyped && (appCursor < 0 || list.length === 0)) {
+      runTypedCommand()
+      return
+    }
     if (appCursor < 0 || appCursor >= list.length) return
     var app = list[appCursor]
     var entry = dialogPayload
@@ -1286,9 +1305,41 @@ Item {
             id: appField
             width: parent.width
             visible: root.dialogMode === "openwith"
-            placeholderText: "Search applications"
-            onTextChanged: root.appFilter = text
+            placeholderText: "Search applications or type a command"
+            onTextChanged: {
+              root.appFilter = text
+              root.appCursor = 0
+            }
             Keys.onEscapePressed: root.closeDialog()
+          }
+
+          Rectangle {
+            width: parent.width
+            height: Style.space(30)
+            visible: root.canRunTyped
+            color: (runHover.hovered || root.appCursor < 0)
+              ? Util.alpha(Color.foreground, 0.08) : "transparent"
+            radius: Style.cornerRadius
+
+            HoverHandler { id: runHover }
+
+            Text {
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.leftMargin: Style.space(8)
+              anchors.rightMargin: Style.space(8)
+              text: "Run " + root.appFilter
+              color: Color.popups.text
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+              elide: Text.ElideRight
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              onClicked: root.runTypedCommand()
+            }
           }
 
           ListView {

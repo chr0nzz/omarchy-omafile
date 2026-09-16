@@ -29,6 +29,10 @@ function expand(command, path) {
   return Array.prototype.slice.call(Model.expandFieldCodes(command, path));
 }
 
+function tokens(text) {
+  return Array.prototype.slice.call(Model.tokenizeCommand(text));
+}
+
 test('natural sort orders file2 before file10', function () {
   var entries = Model.decodeEntries([
     ['file10', 'f', 1, 0, 33188, null],
@@ -371,4 +375,37 @@ test('expandFieldCodes returns nothing for an empty command', function () {
   assert.deepEqual(expand([], '/tmp/a'), []);
   assert.deepEqual(expand(null, '/tmp/a'), []);
   assert.deepEqual(expand(['%i'], '/tmp/a'), []);
+});
+
+test('tokenizeCommand splits on whitespace', function () {
+  assert.deepEqual(tokens('alacritty -e nvim'), ['alacritty', '-e', 'nvim']);
+  assert.deepEqual(tokens('  spaced   out  '), ['spaced', 'out']);
+  assert.deepEqual(tokens('tabs\tand\nnewlines'), ['tabs', 'and', 'newlines']);
+});
+
+test('tokenizeCommand respects quotes and escapes', function () {
+  assert.deepEqual(tokens('code "my file.txt"'), ['code', 'my file.txt']);
+  assert.deepEqual(tokens("code 'my file.txt'"), ['code', 'my file.txt']);
+  assert.deepEqual(tokens('code my\\ file.txt'), ['code', 'my file.txt']);
+  assert.deepEqual(tokens('say "a \\"quote\\""'), ['say', 'a "quote"']);
+  assert.deepEqual(tokens("echo '$HOME'"), ['echo', '$HOME']);
+  assert.deepEqual(tokens('echo ""'), ['echo', '']);
+});
+
+test('tokenizeCommand keeps metacharacters as literal arguments', function () {
+  assert.deepEqual(tokens('sh -c "id; rm -rf ~"'), ['sh', '-c', 'id; rm -rf ~']);
+  assert.deepEqual(tokens('app $(id)'), ['app', '$(id)']);
+  assert.deepEqual(tokens('a | b'), ['a', '|', 'b']);
+});
+
+test('tokenizeCommand rejects an unterminated quote', function () {
+  assert.deepEqual(tokens('code "unterminated'), []);
+  assert.deepEqual(tokens("code 'unterminated"), []);
+});
+
+test('tokenizeCommand returns nothing for blank input', function () {
+  assert.deepEqual(tokens(''), []);
+  assert.deepEqual(tokens('   '), []);
+  assert.deepEqual(tokens(null), []);
+  assert.deepEqual(tokens(undefined), []);
 });

@@ -708,6 +708,14 @@ Item {
     Quickshell.execDetached(argv)
   }
 
+  function runCommandOn(text, path) {
+    var argv = Model.tokenizeCommand(text)
+    if (argv.length === 0) return false
+    argv.push(String(path))
+    Quickshell.execDetached(argv)
+    return true
+  }
+
   function openTerminal(path) {
     var configured = String(setting("terminal", "") || "").trim()
     if (configured) Quickshell.execDetached(["sh", "-c", configured, "omafile"])

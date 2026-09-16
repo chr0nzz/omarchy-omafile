@@ -530,3 +530,54 @@ function expandFieldCodes(command, path) {
   if (!used) out.push(target);
   return out;
 }
+
+function tokenizeCommand(text) {
+  var source = text === undefined || text === null ? '' : String(text);
+  var out = [];
+  var current = '';
+  var started = false;
+  var quote = '';
+  for (var i = 0; i < source.length; i++) {
+    var ch = source.charAt(i);
+    if (quote !== '') {
+      if (ch === quote) {
+        quote = '';
+        continue;
+      }
+      if (quote === '"' && ch === '\\') {
+        var escaped = source.charAt(i + 1);
+        if (escaped === '"' || escaped === '\\' || escaped === '$' || escaped === '`') {
+          current += escaped;
+          i++;
+          continue;
+        }
+      }
+      current += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      started = true;
+      continue;
+    }
+    if (ch === '\\' && i + 1 < source.length) {
+      current += source.charAt(i + 1);
+      i++;
+      started = true;
+      continue;
+    }
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+      if (started) {
+        out.push(current);
+        current = '';
+        started = false;
+      }
+      continue;
+    }
+    current += ch;
+    started = true;
+  }
+  if (quote !== '') return [];
+  if (started) out.push(current);
+  return out;
+}
