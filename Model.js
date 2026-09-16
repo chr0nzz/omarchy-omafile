@@ -494,3 +494,39 @@ function sortRaw(rows, sortBy, descending, dirsFirst) {
   });
   return out;
 }
+
+function expandFieldCodes(command, path) {
+  var out = [];
+  var target = path === undefined || path === null ? '' : String(path);
+  var used = false;
+  var length = command && command.length ? command.length : 0;
+  for (var i = 0; i < length; i++) {
+    var arg = String(command[i]);
+    var built = '';
+    for (var j = 0; j < arg.length; j++) {
+      var ch = arg.charAt(j);
+      if (ch !== '%') {
+        built += ch;
+        continue;
+      }
+      var code = arg.charAt(j + 1);
+      if (code === '') {
+        built += '%';
+        continue;
+      }
+      j++;
+      if (code === '%') {
+        built += '%';
+        continue;
+      }
+      if (code === 'f' || code === 'F' || code === 'u' || code === 'U') {
+        built += target;
+        used = true;
+      }
+    }
+    if (built !== '') out.push(built);
+  }
+  if (out.length === 0) return [];
+  if (!used) out.push(target);
+  return out;
+}

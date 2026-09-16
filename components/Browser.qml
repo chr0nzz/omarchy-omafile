@@ -604,7 +604,7 @@ Item {
     var app = list[appCursor]
     var entry = dialogPayload
     closeDialog()
-    if (entry && service) service.openWith(app.execString, entry.path)
+    if (entry && service) service.openWith(app.command, entry.path)
   }
 
   function handleKey(event) {
@@ -1326,7 +1326,7 @@ Item {
                 onClicked: {
                   var entry = root.dialogPayload
                   root.closeDialog()
-                  if (entry) root.service.openWith(modelData.execString, entry.path)
+                  if (entry) root.service.openWith(modelData.command, entry.path)
                 }
               }
             }

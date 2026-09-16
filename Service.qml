@@ -702,10 +702,10 @@ Item {
     Quickshell.execDetached(["gio", "open", path])
   }
 
-  function openWith(execString, path) {
-    var cleaned = String(execString || "").replace(/%[fFuUdDnNickvm]/g, "").trim()
-    if (!cleaned) return
-    Quickshell.execDetached(["sh", "-c", cleaned + " \"$1\"", "omafile", path])
+  function openWith(command, path) {
+    var argv = Model.expandFieldCodes(command, path)
+    if (argv.length === 0) return
+    Quickshell.execDetached(argv)
   }
 
   function openTerminal(path) {
