@@ -33,6 +33,7 @@
       "confirmTrash": true,
       "useTrash": true,
       "defaultView": "list",
+      "viewScale": 1,
       "terminal": "",
       "editor": "",
       "showTransferBadge": true,
@@ -96,6 +97,12 @@
         "type": "string",
         "label": "Default view: list or grid",
         "defaultValue": "list"
+      },
+      {
+        "key": "viewScale",
+        "type": "number",
+        "label": "View size multiplier for rows, icons and grid cells",
+        "defaultValue": 1
       },
       {
         "key": "terminal",

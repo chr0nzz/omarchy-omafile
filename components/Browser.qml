@@ -30,6 +30,7 @@ Item {
   property string dialogError: ""
   property var dialogPayload: null
   property string confirmAction: ""
+  readonly property real viewScale: clampViewScale(service ? service.setting("viewScale", 1) : 1)
   property bool menuOpen: false
   property int menuCursor: -1
   property var menuActions: []
@@ -322,6 +323,19 @@ Item {
     var p = activePane()
     service.beginTransfer(clip.mode === "cut" ? "move" : "copy", clip.paths, p.path, "ask")
     if (clip.mode === "cut") service.clearClipboard()
+  }
+  function clampViewScale(value) {
+    var n = Number(value)
+    if (!isFinite(n) || n <= 0) return 1
+    return Math.max(0.8, Math.min(2.5, Math.round(n * 20) / 20))
+  }
+  function setViewScale(value) {
+    var next = clampViewScale(value)
+    applySettingNow("viewScale", next)
+    statusText = "View size " + Math.round(next * 100) + "%"
+  }
+  function nudgeViewScale(delta) {
+    setViewScale(viewScale + delta)
   }
   function transferToOtherPane(op) {
     if (!split) return
@@ -749,6 +763,9 @@ Item {
     if (ctrl && event.key === Qt.Key_Q) { requestClose(); return true }
     if (ctrl && event.key === Qt.Key_L) { pathBar.beginEdit(); return true }
     if (ctrl && event.key === Qt.Key_H) { p.showHidden = !p.showHidden; rememberSession(); return true }
+    if (ctrl && (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal)) { nudgeViewScale(0.1); return true }
+    if (ctrl && event.key === Qt.Key_Minus) { nudgeViewScale(-0.1); return true }
+    if (ctrl && event.key === Qt.Key_0) { setViewScale(1); return true }
     if (ctrl && event.key === Qt.Key_A) { p.selectAll(); return true }
     if (ctrl && event.key === Qt.Key_C) { doCopy(); return true }
     if (ctrl && event.key === Qt.Key_X) { doCut(); return true }
@@ -1044,6 +1061,7 @@ Item {
               width: parent.width
               height: parent.height - (tabStripA.visible ? tabStripA.height : 0)
               service: root.service
+              viewScale: root.viewScale
               active: root.activeSide === 0
               onActivated: {
                 root.activeSide = 0
@@ -1086,6 +1104,7 @@ Item {
               width: parent.width
               height: parent.height - (tabStripB.visible ? tabStripB.height : 0)
               service: root.service
+              viewScale: root.viewScale
               active: root.activeSide === 1
               onActivated: {
                 root.activeSide = 1

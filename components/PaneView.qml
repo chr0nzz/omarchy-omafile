@@ -17,6 +17,15 @@ Item {
   property bool dirsFirst: true
   property string view: "list"
   property bool thumbnails: true
+  property real viewScale: 1
+
+  readonly property int rowHeight: Math.round(Style.space(22) * viewScale)
+  readonly property int listIconSize: Math.round(Style.space(18) * viewScale)
+  readonly property int gridIconSize: Math.round(Style.space(48) * viewScale)
+
+  function scaled(value) {
+    return Math.max(1, Math.round(value * viewScale))
+  }
   property bool active: false
   property string filter: ""
 
@@ -593,7 +602,7 @@ Item {
           readonly property var entry: Model.decodeEntry(modelData, pane.path)
 
           width: listView.width
-          height: Style.space(22)
+          height: pane.rowHeight
           color: pane.selection[modelData[0]]
             ? Util.alpha(pane.accent, Style.selectedFillAlpha)
             : (rowHover.hovered ? Util.alpha(pane.fg, Style.hoverFillAlpha) : "transparent")
@@ -646,7 +655,7 @@ Item {
                 Item {
                   anchors.verticalCenter: parent.verticalCenter
                   width: Style.space(18)
-                  height: Style.space(18)
+                  height: pane.listIconSize
 
                   Text {
                     anchors.centerIn: parent
@@ -655,7 +664,7 @@ Item {
                     color: row.entry.isBroken ? Color.urgent
                       : (row.entry.isDir ? pane.accent : Util.alpha(pane.fg, 0.75))
                     font.family: Style.font.family
-                    font.pixelSize: Style.font.icon
+                    font.pixelSize: pane.scaled(Style.font.icon)
                   }
 
                   Image {
@@ -664,7 +673,7 @@ Item {
                     visible: pane.previewable(row.entry) && status === Image.Ready
                     source: pane.previewable(row.entry) ? Util.fileUrl(row.entry.path) : ""
                     sourceSize.width: Style.space(36)
-                    sourceSize.height: Style.space(36)
+                    sourceSize.height: pane.listIconSize * 2
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
                     cache: true
@@ -679,7 +688,7 @@ Item {
                   text: row.entry.name
                   color: row.entry.isHidden ? Util.alpha(pane.fg, 0.55) : pane.fg
                   font.family: Style.font.family
-                  font.pixelSize: Style.font.body
+                  font.pixelSize: pane.scaled(Style.font.body)
                   font.italic: row.entry.isLink
                   elide: Text.ElideMiddle
                 }
@@ -695,7 +704,7 @@ Item {
               text: row.entry.isDir ? "" : Model.formatSize(row.entry.size)
               color: Util.alpha(pane.fg, 0.7)
               font.family: Style.font.family
-              font.pixelSize: Style.font.bodySmall
+              font.pixelSize: pane.scaled(Style.font.bodySmall)
             }
 
             Text {
@@ -706,7 +715,7 @@ Item {
               text: Model.kindLabel(row.entry)
               color: Util.alpha(pane.fg, 0.55)
               font.family: Style.font.family
-              font.pixelSize: Style.font.bodySmall
+              font.pixelSize: pane.scaled(Style.font.bodySmall)
               elide: Text.ElideRight
             }
 
@@ -718,7 +727,7 @@ Item {
               text: Model.formatDate(row.entry.mtime, Date.now())
               color: Util.alpha(pane.fg, 0.55)
               font.family: Style.font.family
-              font.pixelSize: Style.font.bodySmall
+              font.pixelSize: pane.scaled(Style.font.bodySmall)
               elide: Text.ElideRight
             }
           }
@@ -732,8 +741,8 @@ Item {
         clip: true
         model: pane.rows
         visible: pane.view === "grid"
-        cellWidth: Style.space(110)
-        cellHeight: Style.space(96)
+        cellWidth: Math.round(Style.space(110) * pane.viewScale)
+        cellHeight: Math.round(Style.space(96) * pane.viewScale)
         cacheBuffer: 600
         boundsBehavior: Flickable.StopAtBounds
 
@@ -782,7 +791,7 @@ Item {
             Item {
               anchors.horizontalCenter: parent.horizontalCenter
               width: Style.space(48)
-              height: Style.space(48)
+              height: pane.gridIconSize
 
               Text {
                 anchors.centerIn: parent
@@ -791,7 +800,7 @@ Item {
                 color: cell.entry.isBroken ? Color.urgent
                   : (cell.entry.isDir ? pane.accent : Util.alpha(pane.fg, 0.8))
                 font.family: Style.font.family
-                font.pixelSize: Style.font.displayLarge
+                font.pixelSize: pane.scaled(Style.font.displayLarge)
               }
 
               Image {
@@ -802,7 +811,7 @@ Item {
                 visible: pane.previewable(cell.entry) && status === Image.Ready
                 source: pane.previewable(cell.entry) ? Util.fileUrl(cell.entry.path) : ""
                 sourceSize.width: Style.space(96)
-                sourceSize.height: Style.space(96)
+                sourceSize.height: pane.gridIconSize * 2
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
                 cache: true
@@ -817,7 +826,7 @@ Item {
               text: pane.gridLabel(cell.entry.name)
               color: pane.fg
               font.family: Style.font.family
-              font.pixelSize: Style.font.caption
+              font.pixelSize: pane.scaled(Style.font.caption)
               maximumLineCount: 2
               wrapMode: Text.WrapAnywhere
             }
