@@ -501,8 +501,9 @@ Item {
   Rectangle {
     anchors.fill: parent
     color: pane.bg
-    border.width: pane.active ? Math.max(1, Style.space(1)) : 0
-    border.color: Util.alpha(pane.accent, 0.5)
+    border.width: Math.max(1, Style.space(1))
+    border.color: pane.active
+      ? Util.alpha(pane.accent, 0.5) : Util.alpha(pane.fg, 0.15)
 
     MouseArea {
       anchors.fill: parent
