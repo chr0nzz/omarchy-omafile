@@ -29,6 +29,7 @@ Item {
   property string dialogTitle: ""
   property string dialogError: ""
   property var dialogPayload: null
+  property string confirmAction: ""
   property bool menuOpen: false
   property int menuCursor: -1
   property var menuActions: []
@@ -331,10 +332,18 @@ Item {
     service.beginTransfer(op, paths, to.path, "ask")
   }
   function doTrash() {
-    var p = activePane()
-    var paths = p.selectedPaths()
+    var paths = activePane().selectedPaths()
     if (paths.length === 0) return
     if (service.setting("useTrash", true) !== true) return askDelete(paths)
+    if (service.setting("confirmTrash", true) !== true) return performTrash(paths)
+    confirmAction = "trash"
+    confirm.message = "Move " + Model.formatCount(paths.length, "item", "items") + " to trash?"
+    confirm.confirmText = "Move to trash"
+    dialogPayload = paths
+    confirm.opened = true
+  }
+  function performTrash(paths) {
+    var p = activePane()
     service.trashPaths(paths, function () { p.refresh() }, null)
     statusText = Model.formatCount(paths.length, "item moved to trash", "items moved to trash")
   }
@@ -342,6 +351,7 @@ Item {
     var targets = paths || activePane().selectedPaths()
     if (targets.length === 0) return
     if (service.setting("confirmDelete", true) !== true) return performDelete(targets)
+    confirmAction = "delete"
     confirm.message = "Permanently delete " + Model.formatCount(targets.length, "item", "items") + "? This cannot be undone."
     confirm.confirmText = "Delete"
     dialogPayload = targets
@@ -1749,13 +1759,17 @@ Item {
       onCanceled: {
         confirm.opened = false
         root.dialogPayload = null
+        root.confirmAction = ""
         keyCatcher.forceActiveFocus()
       }
       onConfirmed: {
         confirm.opened = false
         var targets = root.dialogPayload
+        var action = root.confirmAction
         root.dialogPayload = null
-        if (targets) root.performDelete(targets)
+        root.confirmAction = ""
+        if (targets && action === "trash") root.performTrash(targets)
+        else if (targets) root.performDelete(targets)
         keyCatcher.forceActiveFocus()
       }
     }
@@ -1887,6 +1901,8 @@ Item {
         description: "Turn this off to delete permanently every time" },
       { key: "confirmDelete", label: "Confirm permanent deletes",
         description: "Ask before anything is destroyed for good" },
+      { key: "confirmTrash", label: "Confirm moves to trash",
+        description: "Ask before items are moved to the trash" },
       { key: "showDrives", label: "Show drives",
         description: "The Drives section in the sidebar" },
       { key: "showTransferBadge", label: "Transfer progress on the bar icon",

@@ -30,6 +30,7 @@
       "sortBy": "name",
       "sortDirsFirst": true,
       "confirmDelete": true,
+      "confirmTrash": true,
       "useTrash": true,
       "defaultView": "list",
       "terminal": "",
@@ -76,6 +77,12 @@
         "key": "confirmDelete",
         "type": "boolean",
         "label": "Confirm before deleting",
+        "defaultValue": true
+      },
+      {
+        "key": "confirmTrash",
+        "type": "boolean",
+        "label": "Confirm before moving items to trash",
         "defaultValue": true
       },
       {
