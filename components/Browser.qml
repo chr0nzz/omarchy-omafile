@@ -30,6 +30,7 @@ Item {
   property string dialogError: ""
   property var dialogPayload: null
   property string confirmAction: ""
+  property string settingsSection: "opening"
   readonly property real viewScale: clampViewScale(service ? service.setting("viewScale", 1) : 1)
   property bool menuOpen: false
   property int menuCursor: -1
@@ -1303,9 +1304,10 @@ Item {
 
       Rectangle {
         anchors.centerIn: parent
-        width: (root.dialogMode === "shortcuts" || root.dialogMode === "settings") ? Style.space(470)
+        width: root.dialogMode === "settings" ? Style.space(780)
+          : (root.dialogMode === "shortcuts" ? Style.space(470)
           : ((root.dialogMode === "openwith" || root.dialogMode === "properties")
-            ? Style.space(420) : Style.space(360))
+            ? Style.space(420) : Style.space(360)))
         height: dialogColumn.implicitHeight + Style.space(28)
         color: Color.popups.background
         border.width: Math.max(1, Style.space(1))
@@ -1495,115 +1497,361 @@ Item {
             }
           }
 
-          Flickable {
+          Row {
+            id: settingsBody
             width: parent.width
-            height: Math.min(Style.space(440), settingsColumn.implicitHeight)
+            height: Style.space(430)
             visible: root.dialogMode === "settings"
-            contentHeight: settingsColumn.implicitHeight
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            spacing: Style.space(10)
 
             Column {
-              id: settingsColumn
-              width: parent.width
-              spacing: Style.space(4)
-
-              PanelSectionHeader {
-                width: parent.width
-                text: "How Omafile opens"
-              }
-
-              Toggle {
-                width: settingsColumn.width
-                label: "Open as a popup"
-                description: root.popupMode
-                  ? "A centred panel over the desktop that closes when you click away"
-                  : "Currently a normal window that tiles and resizes like any app"
-                checked: root.popupMode
-                onClicked: {
-                  if (!root.service) return
-                  root.service.updateSetting("windowMode", root.popupMode ? "window" : "popup")
-                }
-              }
-
-              Toggle {
-                width: settingsColumn.width
-                label: "Default file manager"
-                description: root.service && root.service.isDefaultFileManager
-                  ? "Folders opened from other apps come here"
-                  : "Other apps currently open folders in something else"
-                checked: root.service ? root.service.isDefaultFileManager : false
-                onClicked: {
-                  if (!root.service) return
-                  root.service.setDefaultFileManager(!checked, null, null)
-                }
-              }
-
-
-              PanelSectionHeader {
-                width: parent.width
-                text: "Browsing"
-              }
-
+              id: settingsNav
+              width: Style.space(150)
+              height: parent.height
+              spacing: Style.space(2)
 
               Repeater {
-                model: root.dialogMode === "settings" ? root.settingsRows() : []
+                model: root.dialogMode === "settings" ? root.settingsSections() : []
 
-                delegate: Toggle {
+                delegate: Rectangle {
                   required property var modelData
-                  width: settingsColumn.width
-                  label: modelData.label
-                  description: modelData.description
-                  checked: root.boolSetting(modelData.key, true)
-                  onClicked: root.applySettingNow(modelData.key, !checked)
+                  width: settingsNav.width
+                  height: Style.space(28)
+                  radius: Style.cornerRadius
+                  color: root.settingsSection === modelData.key
+                    ? Util.alpha(Color.accent, 0.18)
+                    : (navHover.hovered ? Util.alpha(Color.foreground, 0.08) : "transparent")
+
+                  HoverHandler { id: navHover }
+
+                  Text {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: Style.space(10)
+                    anchors.rightMargin: Style.space(6)
+                    text: modelData.label
+                    color: Color.popups.text
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.bodySmall
+                    elide: Text.ElideRight
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.settingsSection = modelData.key
+                  }
                 }
               }
+            }
 
-              PanelSectionHeader {
+            Rectangle {
+              width: Math.max(1, Style.space(1))
+              height: parent.height
+              color: Util.alpha(Color.foreground, 0.12)
+            }
+
+            Flickable {
+              width: settingsBody.width - settingsNav.width
+                - Style.space(20) - Math.max(1, Style.space(1))
+              height: parent.height
+              contentHeight: settingsColumn.implicitHeight
+              clip: true
+              boundsBehavior: Flickable.StopAtBounds
+
+              ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+              Column {
+                id: settingsColumn
                 width: parent.width
-                text: "Trash in the bar"
-              }
+                spacing: Style.space(4)
 
-              Toggle {
-                width: settingsColumn.width
-                label: "Trash can in the bar"
-                description: root.service && root.service.trashIcon
-                  ? "A trash can of its own in the bar. Drag it anywhere from the Omarchy bar settings."
-                  : "Adds a trash can to the bar, separate from this icon, showing how many items are in it"
-                checked: root.service ? root.service.trashIcon : false
-                onClicked: {
-                  if (!root.service) return
-                  root.service.setTrashIcon(!checked, null, null)
-                }
-              }
-
-              Toggle {
-                width: settingsColumn.width
-                visible: root.service ? root.service.trashIcon : false
-                label: "Ask before emptying"
-                description: "The first right click arms the trash can, the second empties it"
-                checked: root.boolSetting("trashConfirm", true)
-                onClicked: root.applySettingNow("trashConfirm", !checked)
-              }
-
-              PanelSectionHeader {
-                width: parent.width
-                visible: root.hiddenDriveRows().length > 0
-                text: "Hidden drives"
-              }
-
-              Repeater {
-                model: root.dialogMode === "settings" ? root.hiddenDriveRows() : []
-
-                delegate: PlaceRow {
-                  required property var modelData
+                Column {
                   width: settingsColumn.width
-                  label: modelData.path
-                  glyph: Icons.placeGlyph("drive")
-                  trailing: "show"
-                  onClicked: root.service.toggleHiddenDrive(modelData.path)
+                  spacing: Style.space(4)
+                  visible: root.settingsSection === "opening"
+
+                  Toggle {
+                    width: parent.width
+                    label: "Open as a popup"
+                    description: root.popupMode
+                      ? "A centred panel over the desktop that closes when you click away"
+                      : "Currently a normal window that tiles and resizes like any app"
+                    checked: root.popupMode
+                    onClicked: {
+                      if (!root.service) return
+                      root.service.updateSetting("windowMode", root.popupMode ? "window" : "popup")
+                    }
+                  }
+
+                  Toggle {
+                    width: parent.width
+                    label: "Default file manager"
+                    description: root.service && root.service.isDefaultFileManager
+                      ? "Folders opened from other apps come here"
+                      : "Other apps currently open folders in something else"
+                    checked: root.service ? root.service.isDefaultFileManager : false
+                    onClicked: {
+                      if (!root.service) return
+                      root.service.setDefaultFileManager(!checked, null, null)
+                    }
+                  }
+
+                  PanelSectionHeader {
+                    width: parent.width
+                    text: "Start folder"
+                  }
+
+                  TextField {
+                    width: parent.width
+                    text: root.textSetting("homePath", "")
+                    placeholderText: "Your home folder"
+                    onAccepted: root.applySettingNow("homePath", text)
+                  }
+
+                  Text {
+                    width: parent.width
+                    text: "Press Enter to save"
+                    color: Util.alpha(Color.popups.text, 0.5)
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                  }
+                }
+
+                Column {
+                  width: settingsColumn.width
+                  spacing: Style.space(4)
+                  visible: root.settingsSection === "browsing"
+
+                  Repeater {
+                    model: root.dialogMode === "settings" ? root.browsingRows() : []
+
+                    delegate: Toggle {
+                      required property var modelData
+                      width: settingsColumn.width
+                      label: modelData.label
+                      description: modelData.description
+                      checked: root.boolSetting(modelData.key, true)
+                      onClicked: root.applySettingNow(modelData.key, !checked)
+                    }
+                  }
+
+                  PanelSectionHeader {
+                    width: parent.width
+                    text: "Defaults for new tabs"
+                  }
+
+                  Dropdown {
+                    width: parent.width
+                    label: "Sort by"
+                    value: root.textSetting("sortBy", "name")
+                    options: [
+                      { label: "Name", value: "name" },
+                      { label: "Size", value: "size" },
+                      { label: "Modified", value: "modified" },
+                      { label: "Type", value: "type" }
+                    ]
+                    onChanged: function (v) { root.applySettingNow("sortBy", v) }
+                  }
+
+                  Dropdown {
+                    width: parent.width
+                    label: "View"
+                    value: root.textSetting("defaultView", "list")
+                    options: [
+                      { label: "List", value: "list" },
+                      { label: "Grid", value: "grid" }
+                    ]
+                    onChanged: function (v) { root.applySettingNow("defaultView", v) }
+                  }
+                }
+
+                Column {
+                  width: settingsColumn.width
+                  spacing: Style.space(6)
+                  visible: root.settingsSection === "view"
+
+                  PanelSectionHeader {
+                    width: parent.width
+                    text: "Rows, icons and grid cells"
+                  }
+
+                  Text {
+                    width: parent.width
+                    text: "Currently " + Math.round(root.viewScale * 100) + " percent. Ctrl with plus, minus or zero also works."
+                    color: Util.alpha(Color.popups.text, 0.6)
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.Wrap
+                  }
+
+                  PanelSlider {
+                    width: parent.width
+                    value: root.viewScale
+                    minimum: 0.8
+                    maximum: 2.5
+                    step: 0.05
+                    onReleased: function (v) { root.setViewScale(v) }
+                  }
+
+                  Button {
+                    text: "Reset to 100 percent"
+                    bordered: true
+                    onClicked: root.setViewScale(1)
+                  }
+                }
+
+                Column {
+                  width: settingsColumn.width
+                  spacing: Style.space(4)
+                  visible: root.settingsSection === "deleting"
+
+                  Repeater {
+                    model: root.dialogMode === "settings" ? root.deletingRows() : []
+
+                    delegate: Toggle {
+                      required property var modelData
+                      width: settingsColumn.width
+                      label: modelData.label
+                      description: modelData.description
+                      checked: root.boolSetting(modelData.key, true)
+                      onClicked: root.applySettingNow(modelData.key, !checked)
+                    }
+                  }
+                }
+
+                Column {
+                  width: settingsColumn.width
+                  spacing: Style.space(4)
+                  visible: root.settingsSection === "commands"
+
+                  PanelSectionHeader {
+                    width: parent.width
+                    text: "Terminal"
+                  }
+
+                  TextField {
+                    width: parent.width
+                    text: root.textSetting("terminal", "")
+                    placeholderText: "System default"
+                    onAccepted: root.applySettingNow("terminal", text)
+                  }
+
+                  PanelSectionHeader {
+                    width: parent.width
+                    text: "Editor"
+                  }
+
+                  TextField {
+                    width: parent.width
+                    text: root.textSetting("editor", "")
+                    placeholderText: "Omarchy default"
+                    onAccepted: root.applySettingNow("editor", text)
+                  }
+
+                  Text {
+                    width: parent.width
+                    text: "For example alacritty -e nvim. Press Enter to save."
+                    color: Util.alpha(Color.popups.text, 0.5)
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.Wrap
+                  }
+                }
+
+                Column {
+                  width: settingsColumn.width
+                  spacing: Style.space(4)
+                  visible: root.settingsSection === "bar"
+
+                  Repeater {
+                    model: root.dialogMode === "settings" ? root.barRows() : []
+
+                    delegate: Toggle {
+                      required property var modelData
+                      width: settingsColumn.width
+                      label: modelData.label
+                      description: modelData.description
+                      checked: root.boolSetting(modelData.key, true)
+                      onClicked: root.applySettingNow(modelData.key, !checked)
+                    }
+                  }
+
+                  Toggle {
+                    width: parent.width
+                    label: "Trash can in the bar"
+                    description: root.service && root.service.trashIcon
+                      ? "A trash can of its own in the bar. Drag it anywhere from the Omarchy bar settings."
+                      : "Adds a trash can to the bar, separate from this icon, showing how many items are in it"
+                    checked: root.service ? root.service.trashIcon : false
+                    onClicked: {
+                      if (!root.service) return
+                      root.service.setTrashIcon(!checked, null, null)
+                    }
+                  }
+
+                  Toggle {
+                    width: parent.width
+                    visible: root.service ? root.service.trashIcon : false
+                    label: "Ask before emptying"
+                    description: "The first right click arms the trash can, the second empties it"
+                    checked: root.boolSetting("trashConfirm", true)
+                    onClicked: root.applySettingNow("trashConfirm", !checked)
+                  }
+
+                  PanelSectionHeader {
+                    width: parent.width
+                    text: "Bar glyph"
+                  }
+
+                  TextField {
+                    width: parent.width
+                    text: root.textSetting("glyph", "")
+                    placeholderText: "Folder"
+                    onAccepted: root.applySettingNow("glyph", text)
+                  }
+                }
+
+                Column {
+                  width: settingsColumn.width
+                  spacing: Style.space(4)
+                  visible: root.settingsSection === "drives"
+
+                  Toggle {
+                    width: parent.width
+                    label: "Show drives"
+                    description: "The Drives section in the sidebar"
+                    checked: root.boolSetting("showDrives", true)
+                    onClicked: root.applySettingNow("showDrives", !checked)
+                  }
+
+                  PanelSectionHeader {
+                    width: parent.width
+                    visible: root.hiddenDriveRows().length > 0
+                    text: "Hidden drives"
+                  }
+
+                  Repeater {
+                    model: root.dialogMode === "settings" ? root.hiddenDriveRows() : []
+
+                    delegate: PlaceRow {
+                      required property var modelData
+                      width: settingsColumn.width
+                      label: modelData.path
+                      glyph: Icons.placeGlyph("drive")
+                      trailing: "show"
+                      onClicked: root.service.toggleHiddenDrive(modelData.path)
+                    }
+                  }
+
+                  Text {
+                    width: parent.width
+                    visible: root.hiddenDriveRows().length === 0
+                    text: "No hidden drives"
+                    color: Util.alpha(Color.popups.text, 0.5)
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                  }
                 }
               }
             }
@@ -1917,25 +2165,51 @@ Item {
     return fallback
   }
 
-  function settingsRows() {
+  function settingsSections() {
+    return [
+      { key: "opening", label: "Opening" },
+      { key: "browsing", label: "Browsing" },
+      { key: "view", label: "View size" },
+      { key: "deleting", label: "Deleting" },
+      { key: "commands", label: "Commands" },
+      { key: "bar", label: "Bar and trash" },
+      { key: "drives", label: "Drives" }
+    ]
+  }
+
+  function browsingRows() {
     return [
       { key: "showHidden", label: "Show hidden files",
         description: "Files and folders whose name starts with a dot" },
       { key: "sortDirsFirst", label: "Folders first",
         description: "List folders above files whatever the sort order" },
       { key: "thumbnails", label: "Image previews",
-        description: "Draw the picture instead of a generic icon" },
+        description: "Draw the picture instead of a generic icon" }
+    ]
+  }
+
+  function deletingRows() {
+    return [
       { key: "useTrash", label: "Delete moves to trash",
         description: "Turn this off to delete permanently every time" },
-      { key: "confirmDelete", label: "Confirm permanent deletes",
-        description: "Ask before anything is destroyed for good" },
       { key: "confirmTrash", label: "Confirm moves to trash",
         description: "Ask before items are moved to the trash" },
-      { key: "showDrives", label: "Show drives",
-        description: "The Drives section in the sidebar" },
+      { key: "confirmDelete", label: "Confirm permanent deletes",
+        description: "Ask before anything is destroyed for good" }
+    ]
+  }
+
+  function barRows() {
+    return [
       { key: "showTransferBadge", label: "Transfer progress on the bar icon",
         description: "A progress ring while a copy or move is running" }
     ]
+  }
+
+  function textSetting(key, fallback) {
+    if (!service) return fallback
+    var v = service.settingNow(key, fallback)
+    return v === undefined || v === null ? fallback : String(v)
   }
 
   function applySettingNow(key, value) {
