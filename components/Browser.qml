@@ -365,6 +365,11 @@ Item {
   function handleOpenRequest(entry) {
     if (!entry || !service) return
     service.openExternally(entry.path)
+    afterLaunch()
+  }
+
+  function afterLaunch() {
+    if (popupMode) requestClose()
   }
   function isBookmarked(path) {
     if (!service) return false
@@ -610,7 +615,9 @@ Item {
     var entry = dialogPayload
     var typed = appFilter
     closeDialog()
-    if (entry && service) service.runCommandOn(typed, entry.path)
+    if (!entry || !service) return
+    service.runCommandOn(typed, entry.path)
+    afterLaunch()
   }
 
   function chooseApp() {
@@ -621,9 +628,12 @@ Item {
     }
     if (appCursor < 0 || appCursor >= list.length) return
     var app = list[appCursor]
+    var command = Array.prototype.slice.call(app.command || [])
     var entry = dialogPayload
     closeDialog()
-    if (entry && service) service.openWith(app.command, entry.path)
+    if (!entry || !service) return
+    service.openWith(command, entry.path)
+    afterLaunch()
   }
 
   function handleKey(event) {
@@ -1376,8 +1386,11 @@ Item {
                 anchors.fill: parent
                 onClicked: {
                   var entry = root.dialogPayload
+                  var command = Array.prototype.slice.call(modelData.command || [])
                   root.closeDialog()
-                  if (entry) root.service.openWith(modelData.command, entry.path)
+                  if (!entry || !root.service) return
+                  root.service.openWith(command, entry.path)
+                  root.afterLaunch()
                 }
               }
             }
