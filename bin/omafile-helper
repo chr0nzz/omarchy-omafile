@@ -1246,14 +1246,50 @@ TRUSTED_BIN_DIRS = ("/usr/bin", "/bin", "/usr/local/bin")
 MAX_CAPTURE_BYTES = 1 << 20
 TRUSTED_ENV_PASSTHROUGH = (
     "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS")
+UNSAFE_WRITE_BITS = stat.S_IWGRP | stat.S_IWOTH
+
+
+def trusted_node(st):
+    return st.st_uid == 0 and not (st.st_mode & UNSAFE_WRITE_BITS)
+
+
+def trusted_directory_chain(directory):
+    current = os.path.abspath(directory)
+    while True:
+        try:
+            st = os.lstat(current)
+        except OSError:
+            return False
+        if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
+            return False
+        if not trusted_node(st):
+            return False
+        parent = os.path.dirname(current)
+        if parent == current:
+            return True
+        current = parent
 
 
 def trusted_program(name):
+    program = str(name or "")
+    if not program or "/" in program or program in (".", ".."):
+        raise FileNotFoundError(errno.ENOENT, "invalid program name", program)
     for directory in TRUSTED_BIN_DIRS:
-        candidate = os.path.join(directory, name)
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            return candidate
-    raise FileNotFoundError(errno.ENOENT, "not found in a trusted directory", name)
+        candidate = os.path.join(directory, program)
+        try:
+            st = os.lstat(candidate)
+        except OSError:
+            continue
+        if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
+            continue
+        if not trusted_node(st) or not (st.st_mode & stat.S_IXUSR):
+            continue
+        if os.path.realpath(candidate) != candidate:
+            continue
+        if not trusted_directory_chain(directory):
+            continue
+        return candidate
+    raise FileNotFoundError(errno.ENOENT, "no trusted executable found", program)
 
 
 def trusted_env():

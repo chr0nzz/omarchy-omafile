@@ -870,13 +870,13 @@ class TrustedRunTests(unittest.TestCase):
 
     def test_a_nonzero_exit_is_reported(self):
         helper = self.load_helper()
-        result = helper.run_trusted("sh", ["-c", "exit 4"], timeout=10)
+        result = helper.run_trusted("bash", ["-c", "exit 4"], timeout=10)
         self.assertEqual(result.returncode, 4)
 
     def test_capture_stops_at_the_limit(self):
         helper = self.load_helper()
         result = helper.run_trusted(
-            "sh", ["-c", "yes abcdefgh | head -c 200000"], timeout=20, limit=4096)
+            "bash", ["-c", "yes abcdefgh | head -c 200000"], timeout=20, limit=4096)
         self.assertEqual(len(result.stdout), 4096)
 
     def test_an_endless_writer_times_out_instead_of_growing(self):
@@ -890,7 +890,7 @@ class TrustedRunTests(unittest.TestCase):
             marker = os.path.join(tmp, "pid")
             script = "sleep 47 & echo $! > " + marker + "; wait"
             with self.assertRaises(subprocess.TimeoutExpired):
-                helper.run_trusted("sh", ["-c", script], timeout=2)
+                helper.run_trusted("bash", ["-c", script], timeout=2)
             time.sleep(0.5)
             with open(marker, "r", encoding="utf-8") as f:
                 grandchild = int(f.read().strip())
@@ -930,6 +930,82 @@ class TrustedRunTests(unittest.TestCase):
             os.environ.pop("OMAFILE_LEAK_CHECK", None)
         self.assertEqual(env["PATH"], "/usr/bin:/bin")
         self.assertNotIn("OMAFILE_LEAK_CHECK", env)
+
+class TrustedProgramTests(unittest.TestCase):
+    def load_helper(self):
+        import importlib.util
+        spec = importlib.util.spec_from_loader(
+            "omafile_helper_trusted_program",
+            importlib.machinery.SourceFileLoader(
+                "omafile_helper_trusted_program", HELPER_PATH))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def make_executable(self, path):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        os.chmod(path, 0o755)
+        return path
+
+    @unittest.skipUnless(os.path.exists("/usr/bin/env"), "needs /usr/bin/env")
+    def test_resolves_a_real_system_binary(self):
+        helper = self.load_helper()
+        self.assertEqual(helper.trusted_program("env"), "/usr/bin/env")
+
+    def test_refuses_a_symlink_to_a_user_owned_executable(self):
+        helper = self.load_helper()
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self.make_executable(os.path.join(tmp, "payload"))
+            fake_bin = os.path.join(tmp, "bin")
+            os.makedirs(fake_bin)
+            os.symlink(target, os.path.join(fake_bin, "gio"))
+            helper.TRUSTED_BIN_DIRS = (fake_bin,)
+            with self.assertRaises(FileNotFoundError):
+                helper.trusted_program("gio")
+
+    @unittest.skipUnless(os.path.exists("/usr/bin/env"), "needs /usr/bin/env")
+    def test_refuses_a_symlink_even_when_the_target_is_trusted(self):
+        helper = self.load_helper()
+        with tempfile.TemporaryDirectory() as tmp:
+            os.symlink("/usr/bin/env", os.path.join(tmp, "gio"))
+            helper.TRUSTED_BIN_DIRS = (tmp,)
+            with self.assertRaises(FileNotFoundError):
+                helper.trusted_program("gio")
+
+    def test_refuses_a_plain_user_owned_executable(self):
+        helper = self.load_helper()
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_executable(os.path.join(tmp, "gio"))
+            helper.TRUSTED_BIN_DIRS = (tmp,)
+            with self.assertRaises(FileNotFoundError):
+                helper.trusted_program("gio")
+
+    def test_refuses_a_name_containing_a_separator(self):
+        helper = self.load_helper()
+        for bad in ("../etc/passwd", "/bin/sh", "", "."):
+            with self.assertRaises(FileNotFoundError):
+                helper.trusted_program(bad)
+
+    def test_trusted_node_rejects_a_non_root_owner(self):
+        helper = self.load_helper()
+        if is_root():
+            self.skipTest("running as root")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.make_executable(os.path.join(tmp, "gio"))
+            self.assertFalse(helper.trusted_node(os.lstat(path)))
+
+    def test_trusted_directory_chain_rejects_a_user_owned_directory(self):
+        helper = self.load_helper()
+        if is_root():
+            self.skipTest("running as root")
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(helper.trusted_directory_chain(tmp))
+
+    @unittest.skipUnless(os.path.isdir("/usr/bin"), "needs /usr/bin")
+    def test_trusted_directory_chain_accepts_usr_bin(self):
+        helper = self.load_helper()
+        self.assertTrue(helper.trusted_directory_chain("/usr/bin"))
 
 if __name__ == "__main__":
     unittest.main()
