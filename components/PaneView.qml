@@ -83,6 +83,55 @@ Item {
     return out
   }
 
+  function activeView() {
+    return pane.view === "list" ? listView : gridView
+  }
+
+  function hitTestIndex(x, y) {
+    var v = activeView()
+    var pt = bandArea.mapToItem(v, x, y)
+    if (pt.x < 0 || pt.y < 0 || pt.x > v.width || pt.y > v.height) return -1
+    return v.indexAt(pt.x + v.contentX, pt.y + v.contentY)
+  }
+
+  function selectInBand(x1, y1, x2, y2, base) {
+    var v = activeView()
+    var a = bandArea.mapToItem(v, Math.min(x1, x2), Math.min(y1, y2))
+    var b = bandArea.mapToItem(v, Math.max(x1, x2), Math.max(y1, y2))
+    var left = a.x + v.contentX
+    var top = a.y + v.contentY
+    var right = b.x + v.contentX
+    var bottom = b.y + v.contentY
+    var next = {}
+    for (var k in base) if (base[k]) next[k] = true
+    if (pane.view === "list") {
+      var h = pane.rowHeight
+      if (h > 0) {
+        var i0 = Math.max(0, Math.floor(top / h))
+        var i1 = Math.min(pane.rows.length - 1, Math.floor(bottom / h))
+        for (var i = i0; i <= i1; i++) next[pane.rows[i][0]] = true
+      }
+    } else {
+      var cw = gridView.cellWidth
+      var chh = gridView.cellHeight
+      if (cw > 0 && chh > 0) {
+        var cols = Math.max(1, Math.floor(gridView.width / cw))
+        var c0 = Math.max(0, Math.floor(left / cw))
+        var c1 = Math.min(cols - 1, Math.floor(right / cw))
+        var r0 = Math.max(0, Math.floor(top / chh))
+        var r1 = Math.floor(bottom / chh)
+        for (var r = r0; r <= r1; r++) {
+          for (var c = c0; c <= c1; c++) {
+            var idx = r * cols + c
+            if (idx >= 0 && idx < pane.rows.length) next[pane.rows[idx][0]] = true
+          }
+        }
+      }
+    }
+    pane.selection = next
+    pane.statusChanged()
+  }
+
   function cursorEntry() {
     if (cursorIndex < 0 || cursorIndex >= rows.length) return null
     return Model.decodeEntry(rows[cursorIndex], pane.path)
@@ -515,14 +564,58 @@ Item {
       ? Util.alpha(pane.accent, 0.5) : Util.alpha(pane.fg, 0.15)
 
     MouseArea {
+      id: bandArea
       anchors.fill: parent
+      z: 10
       acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+      property real originX: 0
+      property real originY: 0
+      property real currentX: 0
+      property real currentY: 0
+      property bool banding: false
+      property var baseSelection: ({})
+
       onPressed: function (mouse) {
         pane.activated()
+        if (pane.hitTestIndex(mouse.x, mouse.y) >= 0) {
+          mouse.accepted = false
+          return
+        }
         if (mouse.button === Qt.RightButton) {
           pane.clearSelection()
           pane.contextRequested(null, mouse.x, mouse.y)
-        } else pane.clearSelection()
+          return
+        }
+        var additive = (mouse.modifiers & Qt.ControlModifier) !== 0
+        baseSelection = additive ? pane.selection : ({})
+        if (!additive) pane.clearSelection()
+        originX = mouse.x
+        originY = mouse.y
+        currentX = mouse.x
+        currentY = mouse.y
+        banding = true
+      }
+
+      onPositionChanged: function (mouse) {
+        if (!banding) return
+        currentX = mouse.x
+        currentY = mouse.y
+        pane.selectInBand(originX, originY, currentX, currentY, baseSelection)
+      }
+
+      onReleased: banding = false
+      onCanceled: banding = false
+
+      Rectangle {
+        visible: bandArea.banding
+        x: Math.min(bandArea.originX, bandArea.currentX)
+        y: Math.min(bandArea.originY, bandArea.currentY)
+        width: Math.abs(bandArea.currentX - bandArea.originX)
+        height: Math.abs(bandArea.currentY - bandArea.originY)
+        color: Util.alpha(pane.accent, 0.15)
+        border.width: 1
+        border.color: Util.alpha(pane.accent, 0.6)
       }
     }
 
