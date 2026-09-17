@@ -942,6 +942,15 @@ Item {
 
           Button {
             anchors.verticalCenter: parent.verticalCenter
+            iconText: Icons.actionGlyph("copy")
+            visible: root.split && root.activePane() !== null
+              && root.activePane().selectedCount > 0
+            tooltipText: "Copy the selection to the other pane"
+            onClicked: root.transferToOtherPane("copy")
+          }
+
+          Button {
+            anchors.verticalCenter: parent.verticalCenter
             iconText: Icons.actionGlyph("split")
             tooltipText: root.split ? "Close the second pane" : "Split into two panes"
             selected: root.split
