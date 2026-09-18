@@ -578,6 +578,10 @@ Item {
 
       onPressed: function (mouse) {
         pane.activated()
+        if (pane.view === "list" && mouse.y < header.height + Style.space(1)) {
+          mouse.accepted = false
+          return
+        }
         if (pane.hitTestIndex(mouse.x, mouse.y) >= 0) {
           mouse.accepted = false
           return

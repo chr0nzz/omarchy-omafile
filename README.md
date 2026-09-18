@@ -87,6 +87,8 @@ This uses GVFS and needs no root. Install `gvfs-smb` for Windows shares if it is
 
 ### Settings
 
+In list view, click Name, Size, Type or Modified to sort. Click the same column again to reverse its order.
+
 Ctrl+Comma, or the gear in the toolbar. Hidden files, folders-first ordering, image previews, trash behaviour, the drive list, and the trash can in the bar.
 
 Settings also picks whether Omafile is a normal window or a popup panel centred over the desktop that closes when you click away. The change applies immediately, even while Omafile is open.
