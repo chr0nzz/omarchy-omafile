@@ -38,9 +38,10 @@ The panel is declared `keepLoaded`, so QML changes do **not** hot reload. Run `o
 npm test
 python3 -m unittest discover -s tests -p "*_test.py"
 bash tests/pane-clicks.sh
+bash tests/browser-flows.sh
 ```
 
-Node 22 or newer and Python 3.11 or newer for the logic and helper tests. The pane click test uses Quickshell, QtTest and the installed Omarchy shell, running offscreen. Anything that can live in `Model.js` should, with a test next to it. Add or update a test for every change to `Model.js`, `Icons.js`, or the helper. Also check QML changes by hand in a running shell.
+Node 22 or newer and Python 3.11 or newer for the logic and helper tests. The pane click and browser flow tests use Quickshell, QtTest and the installed Omarchy shell, running offscreen. Anything that can live in `Model.js` should, with a test next to it. Add or update a test for every change to `Model.js`, `Icons.js`, or the helper. Also check QML changes by hand in a running shell.
 
 Lint the QML before pushing:
 
@@ -54,7 +55,7 @@ qmllint -I /usr/share/omarchy/shell -I . *.qml components/*.qml
 - No em dashes anywhere: code, docs, commit messages. Use a comma, a hyphen, or a full stop.
 - Match the shell: build on `Button`, `TextField`, `Toggle`, `ConfirmDialog`, and `KeyboardPanel`, and take colours, spacing, and fonts from `qs.Commons`. Never hardcode a colour, a size, or a font.
 - The shell is one process for the whole desktop. Nothing may block it. Every filesystem call belongs in the helper, and the helper must answer on a worker thread.
-- The helper is Python standard library only. No third party imports, no `sudo`, no `pkexec`, no `shell=True`. The one exception is `bin/omafile-filemanager1`, which needs PyGObject for D-Bus. It is optional, feature detected, and never on the path of a normal file operation.
+- The helper is Python standard library only. No third party imports, no `sudo`, no `pkexec`, no `shell=True`. The exceptions are `bin/omafile-filemanager1` and `bin/omafile-portal`, which need PyGObject for D-Bus, and `bin/omafile-portal-setup`, which uses `pkexec` once to install the portal file. They are optional, feature detected, and never on the path of a normal file operation.
 - Paths go to the helper as JSON on standard input, never in argv and never through a shell.
 - Keep docs short. Prefer a table to a paragraph. Describe what a thing does, not why.
 

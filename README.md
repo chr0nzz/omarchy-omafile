@@ -6,7 +6,11 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 
 * Real resizable window with tabs for multiple locations
 * Dual pane layout with one-key copy and move between panes
-* List and grid view modes
+* List, compact, grid and gallery views
+* Sort from the toolbar in any view: A to Z, Z to A, last modified, size or type
+* Quick preview with Space: images full size, text files such as `.yml` as plain text
+* Mouse back and forward buttons move through folder history
+* Can stand in for the GTK file chooser, so browser uploads and downloads open Omafile
 * Live directory watching: external changes appear immediately
 * Background copy and move with persistent progress tracking
 * Freedesktop trash integration, compatible with GNOME Files
@@ -71,7 +75,15 @@ The magnifier at the end of the address bar filters the folder you are in. Ctrl+
 
 ### Sorting
 
-In list view, click Name, Size, Type or Modified to sort. Click the same column again to reverse its order.
+The sort button in the toolbar sorts by A to Z, Z to A, last modified, first modified, largest, smallest or type, in every view. In list view you can also click Name, Size, Type or Modified. Click the same column again to reverse its order.
+
+### Views
+
+The view button in the toolbar switches between list, compact, grid and gallery. Compact packs names into columns. Gallery shows large image previews. Ctrl+1 to Ctrl+4 pick them from the keyboard.
+
+### Preview
+
+Press Space on a file to preview it without opening another app. Images are shown full size. Text files such as `.yml`, `.json`, `.md` or scripts are shown as text, up to the first 256 KB. Arrow keys move to the next file while the preview stays open. Enter opens the file, and Space or Escape closes the preview. Preview is also in the right click menu.
 
 ### The sidebar
 
@@ -115,6 +127,28 @@ xdg-mime default xyzlab.omafile.desktop inode/directory
 xdg-mime query default inode/directory
 ```
 
+### Picking files for other apps
+
+Turn on Pick files for other apps in Settings, under Opening. When a browser or another app asks you to choose a file, for example Upload file in Chrome or Firefox, Omafile opens instead of the GTK file chooser. The same goes for Save as and download locations. A bar along the bottom of the window shows what the app asked for, with a name box when saving and the app's file type filters. Pick a file and press Enter or the Select button, or press `Escape` to cancel.
+
+It works through the desktop portal, the same route every app uses to ask for a file. Omafile registers a small D-Bus service in your home directory and tells the portal to send file chooser requests to it. Other portals, such as screen sharing, are left alone.
+
+The portal only reads its list of backends from `/usr/share/xdg-desktop-portal/portals`, so enabling asks for your password once to install one file there, `omafile.portal`. Nothing else outside your home directory changes.
+
+Turning it off sends file chooser requests back to the GTK portal. The file in `/usr/share` stays behind. It does nothing on its own, and you can remove it with `sudo rm /usr/share/xdg-desktop-portal/portals/omafile.portal`.
+
+This needs PyGObject, which Omarchy ships. Apps that are already open may keep the old file chooser until you restart them.
+
+The same from a terminal:
+
+```bash
+~/.config/omarchy/plugins/xyzlab.omafile/bin/omafile-portal-setup enable
+~/.config/omarchy/plugins/xyzlab.omafile/bin/omafile-portal-setup status
+~/.config/omarchy/plugins/xyzlab.omafile/bin/omafile-portal-setup disable
+```
+
+`enable` adds `org.freedesktop.impl.portal.FileChooser=omafile` to `~/.config/xdg-desktop-portal/hyprland-portals.conf` and keeps anything else you have in that file. `disable` removes only that line.
+
 ### Copying over something that exists
 
 Omafile asks what to do. Choose with the mouse, or with the keys under [Keyboard](#when-a-file-already-exists).
@@ -130,6 +164,7 @@ Omafile follows GNOME Files conventions, so shortcuts you already know work here
 | `Enter` | Open the selected item |
 | `Backspace` / `Alt+Up` | Go to the parent folder |
 | `Alt+Left` / `Alt+Right` | Back and forward |
+| Mouse back / forward | Back and forward |
 | `Alt+Home` | Go to your home folder |
 | `Ctrl+L` | Type a path |
 | `/` or `~` | Type a path, starting from root or home |
@@ -195,6 +230,8 @@ Undo covers trash, rename, move, copy and new file or folder. Undoing a trash pu
 | Keys | Action |
 |------|--------|
 | `Ctrl+1` / `Ctrl+2` | List and grid |
+| `Ctrl+3` / `Ctrl+4` | Compact and gallery |
+| `Space` | Preview the item under the cursor |
 | `Ctrl+H` | Show hidden files |
 | `Ctrl+B` | Show or hide the sidebar |
 | `Ctrl+F`, or just type | Search in this folder |
@@ -234,7 +271,7 @@ Configure these keys through the Omarchy bar widget settings:
 | `sortDirsFirst` | List directories before files |
 | `confirmDelete` | Prompt before deleting items |
 | `useTrash` | Send deleted items to trash (vs. permanent deletion) |
-| `defaultView` | Start in `list` or `grid` view |
+| `defaultView` | Start in `list`, `compact`, `grid` or `gallery` view |
 | `terminal` | Terminal command to open in the current directory |
 | `editor` | Text editor command to open selected files |
 | `showTransferBadge` | Show a progress ring on the bar icon while a transfer runs |

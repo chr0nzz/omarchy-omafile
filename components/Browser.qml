@@ -40,6 +40,7 @@ Item {
   property real menuX: 0
   property real menuY: 0
   property var menuEntry: null
+  property string menuKind: ""
   property string statusText: ""
   property string appFilter: ""
   readonly property bool canRunTyped: dialogMode === "openwith"
@@ -183,12 +184,14 @@ Item {
     var target = ""
     var wantDialog = ""
     var wantSelect = ""
+    var wantPick = false
     if (payloadJson) {
       try {
         var parsed = JSON.parse(String(payloadJson))
         if (parsed && typeof parsed.path === "string") target = parsed.path
         if (parsed && typeof parsed.dialog === "string") wantDialog = parsed.dialog
         if (parsed && typeof parsed.select === "string") wantSelect = parsed.select
+        if (parsed && parsed.pick === true) wantPick = true
       } catch (e) {
       }
     }
@@ -204,14 +207,145 @@ Item {
         selectTimer.restart()
       }
       if (wantDialog === "shortcuts") showDialog("shortcuts", "Keyboard shortcuts", "", null)
+      if (wantPick) beginPickSession()
     })
   }
   function close() {
     root.closeRequested()
   }
   function requestClose() {
+    if (picking) service.finishPick({ ok: false })
     rememberSession()
     root.dismissRequested()
+  }
+
+  readonly property var pick: service ? service.pickRequest : null
+  readonly property bool picking: pick !== null && pick !== undefined
+  readonly property bool pickSaving: picking && (pick.mode === "save" || pick.mode === "savefiles")
+  readonly property bool pickNeedsName: picking && pick.mode === "save"
+  property int pickFilter: -1
+
+  Component.onDestruction: {
+    if (service && service.pickRequest) service.finishPick({ ok: false })
+  }
+
+  function pickFilters() {
+    return picking && pick.filters && pick.filters.length ? pick.filters : []
+  }
+
+  function pickPatterns() {
+    var list = pickFilters()
+    if (pickFilter < 0 || pickFilter >= list.length) return []
+    return list[pickFilter].patterns || []
+  }
+
+  function pickTitle() {
+    if (!picking) return ""
+    if (pick.title) return String(pick.title)
+    if (pick.mode === "save") return "Save file"
+    if (pick.mode === "savefiles") return "Choose a folder to save into"
+    if (pick.directory) return "Choose a folder"
+    return pick.multiple ? "Choose files" : "Choose a file"
+  }
+
+  function pickAcceptLabel() {
+    if (picking && pick.acceptLabel) return String(pick.acceptLabel).replace(/_/g, "")
+    if (pickSaving) return "Save"
+    return "Select"
+  }
+
+  function beginPickSession() {
+    if (!picking) return
+    closeMenu()
+    if (dialogMode !== "") closeDialog()
+    if (previewOpen) closePreview()
+    var filters = pickFilters()
+    var wanted = Number(pick.currentFilter)
+    pickFilter = filters.length === 0 ? -1
+      : (isFinite(wanted) && wanted >= 0 && wanted < filters.length ? wanted : 0)
+    var folder = String(pick.currentFolder || "")
+    if (!folder && pick.currentFile) folder = Model.dirname(String(pick.currentFile))
+    var p = activePane()
+    if (folder) p.navigate(folder)
+    var name = String(pick.currentName || "")
+    if (!name && pick.currentFile) name = Model.basename(String(pick.currentFile))
+    pickNameField.text = name
+    if (pickNeedsName) {
+      pickNameField.forceActiveFocus()
+      var dot = name.lastIndexOf(".")
+      if (dot > 0) pickNameField.select(0, dot)
+      else pickNameField.selectAll()
+    } else keyCatcher.forceActiveFocus()
+  }
+
+  function completePick(paths) {
+    if (!picking) return
+    service.finishPick({ ok: true, paths: paths, filter: pickFilter })
+    rememberSession()
+    root.dismissRequested()
+  }
+
+  function cancelPick() {
+    if (!picking) return
+    service.finishPick({ ok: false })
+    rememberSession()
+    root.dismissRequested()
+  }
+
+  function pickTargetFolder() {
+    var p = activePane()
+    var sel = p.selectedEntries
+    if (sel.length === 1 && sel[0].isDir) return sel[0].path
+    return p.virtualView ? "" : p.path
+  }
+
+  function acceptPick(entries) {
+    if (!picking) return
+    var p = activePane()
+    if (pick.mode === "save") {
+      var name = String(pickNameField.text || "").trim()
+      if (!name) { statusText = "Type a name to save as"; pickNameField.forceActiveFocus(); return }
+      if (name.indexOf("/") >= 0) { statusText = "The name cannot contain a slash"; return }
+      if (p.virtualView) { statusText = "Pick a folder to save into"; return }
+      var target = Model.joinPath(p.path, name)
+      for (var i = 0; i < p.rows.length; i++) {
+        if (p.rows[i][0] === name) {
+          confirmAction = "pickreplace"
+          confirm.message = "\"" + name + "\" already exists. Replace it?"
+          confirm.confirmText = "Replace"
+          dialogPayload = [target]
+          confirm.opened = true
+          keyCatcher.forceActiveFocus()
+          return
+        }
+      }
+      completePick([target])
+      return
+    }
+    if (pick.mode === "savefiles") {
+      var folder = pickTargetFolder()
+      if (!folder) { statusText = "Pick a folder to save into"; return }
+      var names = pick.files || []
+      var out = []
+      for (var n = 0; n < names.length; n++) out.push(Model.joinPath(folder, String(names[n])))
+      completePick(out)
+      return
+    }
+    if (pick.directory) {
+      var dir = pickTargetFolder()
+      if (dir) completePick([dir])
+      return
+    }
+    var chosen = entries || p.selectedEntries
+    var files = []
+    for (var k = 0; k < chosen.length; k++) if (!chosen[k].isDir) files.push(chosen[k].path)
+    if (files.length === 0) {
+      var cursor = p.cursorEntry()
+      if (cursor && cursor.isDir && chosen.length <= 1) p.openEntry(cursor)
+      else statusText = "Select a file"
+      return
+    }
+    completePick(pick.multiple ? files : [files[0]])
   }
   function showDialog(mode, title, value, payload) {
     dialogMode = mode
@@ -389,6 +523,11 @@ Item {
   }
   function handleOpenRequest(entry) {
     if (!entry || !service) return
+    if (picking) {
+      if (pickNeedsName) pickNameField.text = entry.name
+      else if (!pickSaving && !pick.directory) acceptPick([entry])
+      return
+    }
     service.openExternally(entry.path)
     afterLaunch()
   }
@@ -408,7 +547,8 @@ Item {
     var items = []
     if (hasEntry) {
       items.push({ key: "open", label: entry.isDir ? "Open" : "Open", glyph: Icons.actionGlyph("open") })
-      if (!entry.isDir) items.push({ key: "openwith", label: "Open with", glyph: Icons.actionGlyph("open") })
+      items.push({ key: "openwith", label: "Open with", glyph: Icons.actionGlyph("open") })
+      if (!entry.isDir) items.push({ key: "preview", label: "Preview", glyph: Icons.actionGlyph("search") })
       if (entry.isDir) {
         items.push({ key: "opentab", label: "Open in new tab", glyph: Icons.actionGlyph("add") })
         items.push({
@@ -450,7 +590,11 @@ Item {
     var p = activePane()
     var entry = menuEntry
     menuOpen = false
-    if (key === "open") p.openEntry(entry)
+    menuKind = ""
+    if (key.indexOf("sort:") === 0) applySortPreset(key.substring(5))
+    else if (key.indexOf("view:") === 0) setView(key.substring(5))
+    else if (key === "preview") showPreview(entry)
+    else if (key === "open") p.openEntry(entry)
     else if (key === "openwith") showDialog("openwith", "Open with", "", entry)
     else if (key === "opentab") newTab(activeSide, entry.path)
     else if (key === "copy") doCopy()
@@ -467,6 +611,84 @@ Item {
     else if (key === "terminal") service.openTerminal(p.path)
     else if (key === "refresh") p.refresh()
   }
+  property bool previewOpen: false
+  property var previewEntry: null
+  property string previewText: ""
+  property bool previewBinary: false
+  property bool previewTruncated: false
+  property bool previewLoading: false
+  property int previewToken: 0
+  readonly property string previewKind: Model.previewKind(previewEntry)
+
+  function showPreview(entry) {
+    if (!entry) return
+    var token = ++previewToken
+    previewEntry = entry
+    previewText = ""
+    previewBinary = false
+    previewTruncated = false
+    previewLoading = false
+    previewOpen = true
+    if (Model.previewKind(entry) !== "text" || !service) return
+    previewLoading = true
+    service.peekFile(entry.path, 262144, function (m) {
+      if (token !== root.previewToken) return
+      root.previewLoading = false
+      root.previewText = String(m.text || "")
+      root.previewBinary = m.binary === true
+      root.previewTruncated = m.truncated === true
+    }, function (m) {
+      if (token !== root.previewToken) return
+      root.previewLoading = false
+      root.previewBinary = true
+    })
+  }
+
+  function togglePreview() {
+    if (previewOpen) closePreview()
+    else showPreview(activePane().cursorEntry())
+  }
+
+  function closePreview() {
+    previewToken++
+    previewOpen = false
+    previewEntry = null
+    previewText = ""
+    keyCatcher.forceActiveFocus()
+  }
+
+  function stepPreview(delta) {
+    var p = activePane()
+    p.moveCursor(delta, false)
+    var entry = p.cursorEntry()
+    if (entry) showPreview(entry)
+  }
+
+  function handlePreviewKey(event) {
+    var p = activePane()
+    if (event.key === Qt.Key_Escape || event.key === Qt.Key_Space) { closePreview(); return true }
+    if (event.key === Qt.Key_Right) { stepPreview(1); return true }
+    if (event.key === Qt.Key_Left) { stepPreview(-1); return true }
+    if (event.key === Qt.Key_Down) { stepPreview(p.columnsPerRow()); return true }
+    if (event.key === Qt.Key_Up) { stepPreview(-p.columnsPerRow()); return true }
+    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+      var entry = previewEntry
+      closePreview()
+      p.openEntry(entry)
+      return true
+    }
+    return false
+  }
+
+  function previewDetails() {
+    var entry = previewEntry
+    if (!entry) return ""
+    var parts = [Model.kindLabel(entry)]
+    if (!entry.isDir) parts.push(Model.formatSize(entry.size))
+    parts.push(Model.formatFullDate(entry.mtime))
+    return parts.join("   ")
+  }
+
   property var propsInfo: null
   property real propsBytes: 0
   property int propsFiles: 0
@@ -521,9 +743,79 @@ Item {
 
   function setView(mode) {
     var p = activePane()
-    if (!p) return
+    if (!p || !Model.isViewMode(mode)) return
     p.view = mode
     rememberSession()
+  }
+
+  function viewGlyph() {
+    var p = activePane()
+    var mode = p ? p.view : "list"
+    for (var i = 0; i < Model.viewModes.length; i++)
+      if (Model.viewModes[i].key === mode) return Model.viewModes[i].glyph
+    return "list"
+  }
+
+  function applySortPreset(key) {
+    var preset = Model.sortPreset(key)
+    var p = activePane()
+    if (!preset || !p) return
+    p.setSortOrder(preset.sortBy, preset.descending)
+    rememberSession()
+  }
+
+  function toolbarMenuActions(kind) {
+    var p = activePane()
+    var items = []
+    var check = Icons.actionGlyph("check")
+    if (kind === "sort") {
+      var current = p ? Model.sortPresetKey(p.sortBy, p.descending) : ""
+      for (var i = 0; i < Model.sortPresets.length; i++) {
+        var preset = Model.sortPresets[i]
+        items.push({ key: "sort:" + preset.key, label: preset.label,
+          glyph: preset.key === current ? check : "", disabled: !p || p.virtualView })
+      }
+    } else {
+      var mode = p ? p.view : "list"
+      for (var j = 0; j < Model.viewModes.length; j++) {
+        var view = Model.viewModes[j]
+        items.push({ key: "view:" + view.key, label: view.label,
+          glyph: view.key === mode ? check : Icons.actionGlyph(view.glyph) })
+      }
+    }
+    return items
+  }
+
+  function openToolbarMenu(kind, anchor) {
+    if (menuOpen && menuKind === kind) {
+      closeMenu()
+      return
+    }
+    menuEntry = null
+    menuKind = kind
+    menuActions = toolbarMenuActions(kind)
+    menuCursor = -1
+    var pt = anchor.mapToItem(keyCatcher, 0, anchor.height)
+    menuX = pt.x + anchor.width - Style.space(200)
+    menuY = pt.y + Style.space(4)
+    menuOpen = true
+  }
+
+  function paneAt(x, y) {
+    if (split) {
+      var pt = paneB.mapFromItem(keyCatcher, x, y)
+      if (pt.x >= 0 && pt.y >= 0 && pt.x <= paneB.width && pt.y <= paneB.height) return 1
+    }
+    return 0
+  }
+
+  function mouseNavigate(button, x, y) {
+    if (dialogMode !== "" || confirm.opened || previewOpen) return
+    menuOpen = false
+    activeSide = paneAt(x, y)
+    var p = activePane()
+    if (button === Qt.BackButton || button === Qt.ExtraButton4) p.goBack()
+    else p.goForward()
   }
 
   function cycleTab(delta) {
@@ -577,6 +869,7 @@ Item {
   function openMenuAtCursor() {
     var p = activePane()
     var entry = p.cursorEntry()
+    menuKind = ""
     menuEntry = entry
     menuActions = contextActions(entry)
     menuCursor = firstMenuIndex()
@@ -589,6 +882,7 @@ Item {
 
   function closeMenu() {
     menuOpen = false
+    menuKind = ""
     menuCursor = -1
     keyCatcher.forceActiveFocus()
   }
@@ -652,12 +946,17 @@ Item {
       return
     }
     if (appCursor < 0 || appCursor >= list.length) return
-    var app = list[appCursor]
+    launchApp(list[appCursor])
+  }
+
+  function launchApp(app) {
+    if (!app) return
     var command = Array.prototype.slice.call(app.command || [])
+    var inTerminal = app.runInTerminal === true
     var entry = dialogPayload
     closeDialog()
     if (!entry || !service) return
-    service.openWith(command, entry.path)
+    service.openWith(command, entry.path, inTerminal)
     afterLaunch()
   }
 
@@ -672,6 +971,7 @@ Item {
       return true
     }
     if (dialogMode !== "") return handleDialogKey(event)
+    if (previewOpen) return handlePreviewKey(event)
     if (menuOpen) return handleMenuKey(event)
     if (focusZone === "sidebar") return handleSidebarKey(event)
     return handlePaneKey(event)
@@ -735,6 +1035,7 @@ Item {
       if (p.searching || findMode) { exitFind(); return true }
       if (p.filter !== "" || pathBar.filterOpen) { pathBar.closeFilter(); return true }
       if (p.selectedCount > 0) { p.clearSelection(); return true }
+      if (picking) { cancelPick(); return true }
       requestClose()
       return true
     }
@@ -781,6 +1082,8 @@ Item {
     if (ctrl && event.key === Qt.Key_Comma) { showDialog("settings", "Settings", "", null); return true }
     if (ctrl && event.key === Qt.Key_1) { setView("list"); return true }
     if (ctrl && event.key === Qt.Key_2) { setView("grid"); return true }
+    if (ctrl && event.key === Qt.Key_3) { setView("compact"); return true }
+    if (ctrl && event.key === Qt.Key_4) { setView("gallery"); return true }
     if (ctrl && event.key === Qt.Key_PageDown) { cycleTab(1); return true }
     if (ctrl && event.key === Qt.Key_PageUp) { cycleTab(-1); return true }
     if (ctrl && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) { openCursorInNewTab(); return true }
@@ -807,8 +1110,11 @@ Item {
     if (event.key === Qt.Key_AsciiTilde) { pathBar.beginEditWith("~"); return true }
 
     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { p.activateCursor(); return true }
-    if (event.key === Qt.Key_Down) { p.moveCursor(1, shiftKey); return true }
-    if (event.key === Qt.Key_Up) { p.moveCursor(-1, shiftKey); return true }
+    if (event.key === Qt.Key_Space) { togglePreview(); return true }
+    if (event.key === Qt.Key_Down) { p.moveCursor(p.columnsPerRow(), shiftKey); return true }
+    if (event.key === Qt.Key_Up) { p.moveCursor(-p.columnsPerRow(), shiftKey); return true }
+    if (event.key === Qt.Key_Right && p.view !== "list") { p.moveCursor(1, shiftKey); return true }
+    if (event.key === Qt.Key_Left && p.view !== "list") { p.moveCursor(-1, shiftKey); return true }
     if (event.key === Qt.Key_PageDown) { p.moveCursor(12, shiftKey); return true }
     if (event.key === Qt.Key_PageUp) { p.moveCursor(-12, shiftKey); return true }
     if (event.key === Qt.Key_Home) { p.jumpCursor(0, shiftKey); return true }
@@ -919,14 +1225,23 @@ Item {
           spacing: Style.space(4)
 
           Button {
+            id: sortButton
+            objectName: "sortButton"
             anchors.verticalCenter: parent.verticalCenter
-            iconText: Icons.actionGlyph(root.activePane() && root.activePane().view === "grid" ? "list" : "grid")
-            tooltipText: "Switch view"
-            onClicked: {
-              var p = root.activePane()
-              p.view = p.view === "grid" ? "list" : "grid"
-              root.rememberSession()
-            }
+            iconText: Icons.actionGlyph("sort")
+            tooltipText: "Sort"
+            selected: root.menuOpen && root.menuKind === "sort"
+            onClicked: root.openToolbarMenu("sort", sortButton)
+          }
+
+          Button {
+            id: viewButton
+            objectName: "viewButton"
+            anchors.verticalCenter: parent.verticalCenter
+            iconText: Icons.actionGlyph(root.viewGlyph())
+            tooltipText: "View"
+            selected: root.menuOpen && root.menuKind === "view"
+            onClicked: root.openToolbarMenu("view", viewButton)
           }
 
           Button {
@@ -1016,6 +1331,7 @@ Item {
       Row {
         width: parent.width
         height: parent.height - toolbar.height - statusBar.height
+          - (pickBar.visible ? pickBar.height : 0)
         spacing: 0
 
         SidebarPlaces {
@@ -1069,6 +1385,7 @@ Item {
             PaneView {
               id: paneA
               width: parent.width
+              patterns: root.picking ? root.pickPatterns() : []
               height: parent.height - (tabStripA.visible ? tabStripA.height : 0)
               service: root.service
               viewScale: root.viewScale
@@ -1081,6 +1398,7 @@ Item {
               onOpenRequested: function (entry) { root.handleOpenRequest(entry) }
               onNavigated: function (p) { root.rememberSession() }
               onContextRequested: function (entry, x, y) {
+                root.menuKind = ""
                 root.menuEntry = entry
                 root.menuActions = root.contextActions(entry)
                 root.menuCursor = -1
@@ -1112,6 +1430,7 @@ Item {
             PaneView {
               id: paneB
               width: parent.width
+              patterns: root.picking ? root.pickPatterns() : []
               height: parent.height - (tabStripB.visible ? tabStripB.height : 0)
               service: root.service
               viewScale: root.viewScale
@@ -1124,6 +1443,7 @@ Item {
               onOpenRequested: function (entry) { root.handleOpenRequest(entry) }
               onNavigated: function (p) { root.rememberSession() }
               onContextRequested: function (entry, x, y) {
+                root.menuKind = ""
                 root.menuEntry = entry
                 root.menuActions = root.contextActions(entry)
                 root.menuCursor = -1
@@ -1132,6 +1452,92 @@ Item {
                 root.menuOpen = true
               }
             }
+          }
+        }
+      }
+
+      Rectangle {
+        id: pickBar
+        objectName: "pickBar"
+        width: parent.width
+        height: Style.space(48)
+        visible: root.picking
+        color: Util.alpha(Color.accent, 0.08)
+
+        Rectangle {
+          width: parent.width
+          height: Math.max(1, Style.space(1))
+          color: Util.alpha(Color.accent, 0.35)
+        }
+
+        Row {
+          id: pickLeft
+          anchors.left: parent.left
+          anchors.right: pickRight.left
+          anchors.leftMargin: Style.space(12)
+          anchors.rightMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(10)
+
+          Text {
+            id: pickTitleText
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, pickLeft.width * (root.pickNeedsName ? 0.35 : 1))
+            text: root.pickTitle()
+            color: Color.foreground
+            font.family: Style.font.family
+            font.pixelSize: Style.font.body
+            elide: Text.ElideRight
+          }
+
+          TextField {
+            id: pickNameField
+            objectName: "pickNameField"
+            anchors.verticalCenter: parent.verticalCenter
+            width: pickLeft.width - pickTitleText.width - pickLeft.spacing
+            visible: root.pickNeedsName
+            placeholderText: "File name"
+            onAccepted: root.acceptPick(null)
+            Keys.onEscapePressed: root.cancelPick()
+          }
+        }
+
+        Row {
+          id: pickRight
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(12)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(8)
+
+          Dropdown {
+            anchors.verticalCenter: parent.verticalCenter
+            width: Style.space(190)
+            visible: root.pickFilters().length > 0
+            showLabel: false
+            value: String(root.pickFilter)
+            options: {
+              var list = root.pickFilters()
+              var out = []
+              for (var i = 0; i < list.length; i++) out.push({ label: String(list[i].name || "Filter"), value: String(i) })
+              return out
+            }
+            onChanged: function (v) { root.pickFilter = Number(v) }
+          }
+
+          Button {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Cancel"
+            bordered: true
+            onClicked: root.cancelPick()
+          }
+
+          Button {
+            objectName: "pickAccept"
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.pickAcceptLabel()
+            bordered: true
+            selected: true
+            onClicked: root.acceptPick(null)
           }
         }
       }
@@ -1201,10 +1607,17 @@ Item {
     }
 
     MouseArea {
+      objectName: "sideButtons"
+      anchors.fill: parent
+      acceptedButtons: Qt.BackButton | Qt.ForwardButton | Qt.ExtraButton3 | Qt.ExtraButton4
+      onPressed: function (mouse) { root.mouseNavigate(mouse.button, mouse.x, mouse.y) }
+    }
+
+    MouseArea {
       anchors.fill: parent
       visible: root.menuOpen
       acceptedButtons: Qt.LeftButton | Qt.RightButton
-      onPressed: root.menuOpen = false
+      onPressed: root.closeMenu()
     }
 
     Rectangle {
@@ -1289,6 +1702,177 @@ Item {
     }
 
     Rectangle {
+      id: previewScrim
+      objectName: "previewScrim"
+      anchors.fill: parent
+      visible: root.previewOpen
+      color: Util.alpha(Color.background, 0.7)
+
+      MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: root.closePreview()
+      }
+
+      Rectangle {
+        id: previewCard
+        anchors.centerIn: parent
+        width: Math.max(Style.space(240), parent.width - Style.space(60))
+        height: Math.max(Style.space(200), parent.height - Style.space(60))
+        color: Color.popups.background
+        border.width: Math.max(1, Style.space(1))
+        border.color: Color.popups.border
+        radius: Style.cornerRadius
+
+        MouseArea { anchors.fill: parent }
+
+        Item {
+          id: previewHeader
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          anchors.margins: Style.space(12)
+          height: Style.space(40)
+
+          Column {
+            anchors.left: parent.left
+            anchors.right: previewButtons.left
+            anchors.rightMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(2)
+
+            Text {
+              width: parent.width
+              text: root.previewEntry ? root.previewEntry.name : ""
+              color: Color.popups.text
+              font.family: Style.font.family
+              font.pixelSize: Style.font.subtitle
+              elide: Text.ElideMiddle
+            }
+
+            Text {
+              width: parent.width
+              text: root.previewDetails()
+              color: Util.alpha(Color.popups.text, 0.55)
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
+              elide: Text.ElideRight
+            }
+          }
+
+          Row {
+            id: previewButtons
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(6)
+
+            Button {
+              text: "Open"
+              bordered: true
+              onClicked: {
+                var entry = root.previewEntry
+                root.closePreview()
+                root.activePane().openEntry(entry)
+              }
+            }
+
+            Button {
+              iconText: Icons.actionGlyph("close")
+              tooltipText: "Close preview"
+              onClicked: root.closePreview()
+            }
+          }
+        }
+
+        Item {
+          id: previewBody
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: previewHeader.bottom
+          anchors.bottom: parent.bottom
+          anchors.margins: Style.space(12)
+          clip: true
+
+          Image {
+            id: previewImage
+            anchors.fill: parent
+            visible: root.previewKind === "image"
+            source: root.previewOpen && root.previewKind === "image" && root.previewEntry
+              ? Util.fileUrl(root.previewEntry.path) : ""
+            sourceSize.width: Math.max(1, previewBody.width * 2)
+            sourceSize.height: Math.max(1, previewBody.height * 2)
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+            cache: false
+            smooth: true
+            mipmap: true
+          }
+
+          Flickable {
+            id: previewFlick
+            anchors.fill: parent
+            visible: root.previewKind === "text" && !root.previewBinary && !root.previewLoading
+            contentWidth: Math.max(width, previewTextItem.implicitWidth)
+            contentHeight: previewTextItem.implicitHeight + (root.previewTruncated ? Style.space(28) : 0)
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            TextEdit {
+              id: previewTextItem
+              objectName: "previewText"
+              readOnly: true
+              selectByMouse: true
+              textFormat: TextEdit.PlainText
+              text: root.previewText
+              color: Color.popups.text
+              selectionColor: Util.alpha(Color.accent, 0.35)
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            Text {
+              y: previewTextItem.implicitHeight + Style.space(8)
+              visible: root.previewTruncated
+              text: "Showing the first 256 KB"
+              color: Util.alpha(Color.popups.text, 0.5)
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
+            }
+          }
+
+          Column {
+            anchors.centerIn: parent
+            spacing: Style.space(10)
+            visible: root.previewKind === "folder" || root.previewKind === "none"
+              || (root.previewKind === "text" && (root.previewBinary || root.previewLoading))
+              || (root.previewKind === "image" && previewImage.status === Image.Error)
+
+            Text {
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: Icons.glyphFor(root.previewEntry)
+              color: root.previewEntry && root.previewEntry.isDir ? Color.accent : Util.alpha(Color.popups.text, 0.7)
+              font.family: Style.font.family
+              font.pixelSize: Style.font.displayLarge * 3
+            }
+
+            Text {
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: root.previewLoading ? "Reading"
+                : (root.previewKind === "folder" ? "Folder. Press Enter to open it."
+                  : "No preview for this kind of file")
+              color: Util.alpha(Color.popups.text, 0.55)
+              font.family: Style.font.family
+              font.pixelSize: Style.font.body
+            }
+          }
+        }
+      }
+    }
+
+    Rectangle {
       id: dialogScrim
       anchors.fill: parent
       visible: root.dialogMode !== ""
@@ -1303,11 +1887,12 @@ Item {
       }
 
       Rectangle {
+        objectName: "dialogCard"
         anchors.centerIn: parent
-        width: root.dialogMode === "settings" ? Style.space(780)
+        width: Math.min(root.width - Style.space(24), root.dialogMode === "settings" ? Style.space(780)
           : (root.dialogMode === "shortcuts" ? Style.space(470)
           : ((root.dialogMode === "openwith" || root.dialogMode === "properties")
-            ? Style.space(420) : Style.space(360)))
+            ? Style.space(420) : Style.space(360))))
         height: dialogColumn.implicitHeight + Style.space(28)
         color: Color.popups.background
         border.width: Math.max(1, Style.space(1))
@@ -1360,6 +1945,7 @@ Item {
               root.appFilter = text
               root.appCursor = 0
             }
+            onAccepted: root.chooseApp()
             Keys.onEscapePressed: root.closeDialog()
           }
 
@@ -1393,8 +1979,11 @@ Item {
           }
 
           ListView {
+            objectName: "openWithList"
             width: parent.width
-            height: Style.space(240)
+            height: Math.max(Style.space(80), Math.min(Style.space(240), root.dialogRoom - Style.space(90)))
+            currentIndex: root.appCursor
+            onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
             visible: root.dialogMode === "openwith"
             clip: true
             model: root.dialogMode === "openwith" ? root.filteredApps() : []
@@ -1405,7 +1994,9 @@ Item {
               required property var modelData
               width: ListView.view.width
               height: Style.space(26)
-              color: appHover.hovered ? Util.alpha(Color.foreground, 0.08) : "transparent"
+              required property int index
+              color: (appHover.hovered || root.appCursor === index)
+                ? Util.alpha(Color.foreground, 0.08) : "transparent"
               radius: Style.cornerRadius
 
               HoverHandler { id: appHover }
@@ -1424,21 +2015,14 @@ Item {
 
               MouseArea {
                 anchors.fill: parent
-                onClicked: {
-                  var entry = root.dialogPayload
-                  var command = Array.prototype.slice.call(modelData.command || [])
-                  root.closeDialog()
-                  if (!entry || !root.service) return
-                  root.service.openWith(command, entry.path)
-                  root.afterLaunch()
-                }
+                onClicked: root.launchApp(modelData)
               }
             }
           }
 
           Flickable {
             width: parent.width
-            height: Math.min(Style.space(430), shortcutColumn.implicitHeight)
+            height: Math.min(Style.space(430), shortcutColumn.implicitHeight, root.dialogRoom)
             visible: root.dialogMode === "shortcuts"
             contentHeight: shortcutColumn.implicitHeight
             clip: true
@@ -1499,14 +2083,15 @@ Item {
 
           Row {
             id: settingsBody
+            objectName: "settingsBody"
             width: parent.width
-            height: Style.space(430)
+            height: Math.min(Style.space(430), root.dialogRoom)
             visible: root.dialogMode === "settings"
             spacing: Style.space(10)
 
             Column {
               id: settingsNav
-              width: Style.space(150)
+              width: settingsBody.width < Style.space(520) ? Style.space(104) : Style.space(150)
               height: parent.height
               spacing: Style.space(2)
 
@@ -1597,6 +2182,31 @@ Item {
                     }
                   }
 
+                  Toggle {
+                    width: parent.width
+                    label: "Pick files for other apps"
+                    description: root.service && root.service.filePickerBusy
+                      ? "Waiting for your password"
+                      : (root.service && root.service.filePicker
+                        ? "Upload and save dialogs in browsers and other apps open Omafile"
+                        : "Use Omafile instead of the GTK dialog when an app asks for a file. Asks for your password once.")
+                    checked: root.service ? root.service.filePicker : false
+                    onClicked: {
+                      if (!root.service) return
+                      root.service.setFilePicker(!checked)
+                    }
+                  }
+
+                  Text {
+                    width: parent.width
+                    visible: root.service ? root.service.filePickerError !== "" : false
+                    text: root.service ? root.service.filePickerError : ""
+                    color: Color.urgent
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.Wrap
+                  }
+
                   PanelSectionHeader {
                     width: parent.width
                     text: "Start folder"
@@ -1660,7 +2270,9 @@ Item {
                     value: root.textSetting("defaultView", "list")
                     options: [
                       { label: "List", value: "list" },
-                      { label: "Grid", value: "grid" }
+                      { label: "Compact", value: "compact" },
+                      { label: "Grid", value: "grid" },
+                      { label: "Gallery", value: "gallery" }
                     ]
                     onChanged: function (v) { root.applySettingNow("defaultView", v) }
                   }
@@ -2036,7 +2648,8 @@ Item {
         confirm.opened = false
         root.dialogPayload = null
         root.confirmAction = ""
-        keyCatcher.forceActiveFocus()
+        if (root.pickNeedsName) pickNameField.forceActiveFocus()
+        else keyCatcher.forceActiveFocus()
       }
       onConfirmed: {
         confirm.opened = false
@@ -2045,6 +2658,7 @@ Item {
         root.dialogPayload = null
         root.confirmAction = ""
         if (targets && action === "trash") root.performTrash(targets)
+        else if (targets && action === "pickreplace") root.completePick(targets)
         else if (targets) root.performDelete(targets)
         keyCatcher.forceActiveFocus()
       }
@@ -2113,6 +2727,9 @@ Item {
       { keys: "Ctrl+Shift+C / Ctrl+Shift+M", label: "Copy and move to the other pane" },
       { section: "View" },
       { keys: "Ctrl+1 / Ctrl+2", label: "List and grid" },
+      { keys: "Ctrl+3 / Ctrl+4", label: "Compact and gallery" },
+      { keys: "Space", label: "Preview the item under the cursor" },
+      { keys: "Mouse back / forward", label: "Back and forward" },
       { keys: "Ctrl+H", label: "Show hidden files" },
       { keys: "Ctrl+B", label: "Show or hide the sidebar" },
       { keys: "Ctrl+F, or just type", label: "Search in this folder" },
@@ -2154,6 +2771,7 @@ Item {
   }
 
   readonly property bool popupMode: service ? service.windowMode === "popup" : false
+  readonly property real dialogRoom: Math.max(Style.space(140), height - Style.space(130))
 
   function boolSetting(key, fallback) {
     if (!service) return fallback

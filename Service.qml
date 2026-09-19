@@ -35,6 +35,11 @@ Item {
   property var hiddenDrives: []
   property var servers: []
   property var session: null
+  property var pickRequest: null
+  property bool filePicker: false
+  property bool filePickerBusy: false
+  property string filePickerError: ""
+  readonly property string portalSetupPath: String(Qt.resolvedUrl("bin/omafile-portal-setup")).replace(/^file:\/\//, "")
 
   signal directoryChanged(string path, var names)
   signal conflictRaised(int jobId, var info)
@@ -241,6 +246,15 @@ Item {
   function statPaths(paths, onResult) {
     return request({ op: "stat", paths: paths }, {
       onData: function (m) { if (m.t === "stat" && onResult) onResult(m.items) }
+    })
+  }
+
+  function peekFile(path, limit, onDone, onError) {
+    var result = null
+    return request({ op: "peek", path: path, limit: limit }, {
+      onData: function (m) { if (m.t === "peek") result = m },
+      onDone: function () { if (onDone && result) onDone(result) },
+      onError: function (m) { if (onError) onError(m) }
     })
   }
 
@@ -702,9 +716,10 @@ Item {
     Quickshell.execDetached(["gio", "open", path])
   }
 
-  function openWith(command, path) {
+  function openWith(command, path, inTerminal) {
     var argv = Model.expandFieldCodes(command, path)
     if (argv.length === 0) return
+    if (inTerminal) argv = ["xdg-terminal-exec"].concat(argv)
     Quickshell.execDetached(argv)
   }
 
@@ -792,6 +807,51 @@ Item {
     if (shell) shell.toggle(pluginId, "{}")
   }
 
+  function beginPick(requestJson) {
+    var parsed = null
+    try {
+      parsed = JSON.parse(String(requestJson || ""))
+    } catch (e) {
+      return "invalid request"
+    }
+    if (!parsed || typeof parsed.result !== "string" || parsed.result === "") return "result path required"
+    if (pickRequest) writePickResult(pickRequest.result, { ok: false })
+    pickRequest = parsed
+    if (shell) shell.summon(pluginId, JSON.stringify({ pick: true }))
+    return "ok"
+  }
+
+  function finishPick(result) {
+    var current = pickRequest
+    if (!current) return
+    pickRequest = null
+    writePickResult(current.result, result || { ok: false })
+  }
+
+  function cancelPick(resultPath) {
+    if (!pickRequest) return
+    if (resultPath && String(resultPath) !== String(pickRequest.result)) return
+    pickRequest = null
+    if (shell && typeof shell.hide === "function") shell.hide(pluginId)
+  }
+
+  function refreshFilePicker() {
+    if (!portalStatus.running) portalStatus.running = true
+  }
+
+  function setFilePicker(enabled) {
+    if (filePickerBusy) return
+    filePickerBusy = true
+    filePickerError = ""
+    portalToggle.command = [portalSetupPath, enabled ? "enable" : "disable"]
+    portalToggle.running = true
+  }
+
+  function writePickResult(file, result) {
+    Quickshell.execDetached(["sh", "-c", "printf %s \"$1\" > \"$2.tmp\" && mv -f \"$2.tmp\" \"$2\"",
+      "omafile", JSON.stringify(result), String(file)])
+  }
+
   function windowOpen() {
     return shell ? shell.isPluginOpen(pluginId) === true : false
   }
@@ -843,6 +903,7 @@ Item {
       refreshTrashIcon()
       refreshDiscovered()
       refreshDefaultHandler()
+      refreshFilePicker()
     })
   }
 
@@ -875,6 +936,36 @@ Item {
         var text = String(line || "").trim()
         if (text) root.helperError = text
       }
+    }
+  }
+
+  property Process portalStatus: Process {
+    id: portalStatus
+    command: [root.portalSetupPath, "status"]
+    running: false
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var parsed = JSON.parse(String(text || "{}"))
+          root.filePicker = parsed.enabled === true && parsed.systemFile === true
+        } catch (e) {
+          root.filePicker = false
+        }
+      }
+    }
+  }
+
+  property Process portalToggle: Process {
+    id: portalToggle
+    running: false
+    stderr: StdioCollector { id: portalToggleErr }
+    onExited: function (code) {
+      root.filePickerBusy = false
+      if (code !== 0) {
+        var lines = String(portalToggleErr.text || "").trim().split("\n")
+        root.filePickerError = lines[lines.length - 1] || "Could not change the file picker"
+      }
+      root.refreshFilePicker()
     }
   }
 
@@ -953,6 +1044,15 @@ Item {
       if (value === "off" || value === "remove" || value === "false") { root.setTrashIcon(false, null, null); return "ok" }
       if (value === "" || value === "status") return root.trashIcon ? "on" : "off"
       return "use on, off or status"
+    }
+
+    function pick(request: string): string {
+      return root.beginPick(request)
+    }
+
+    function pickcancel(result: string): string {
+      root.cancelPick(result)
+      return "ok"
     }
 
     function shortcuts(): string {

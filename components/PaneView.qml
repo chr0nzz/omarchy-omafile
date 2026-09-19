@@ -18,10 +18,12 @@ Item {
   property string view: "list"
   property bool thumbnails: true
   property real viewScale: 1
+  property var patterns: []
 
   readonly property int rowHeight: Math.round(Style.space(22) * viewScale)
   readonly property int listIconSize: Math.round(Style.space(18) * viewScale)
-  readonly property int gridIconSize: Math.round(Style.space(48) * viewScale)
+  readonly property int gridIconSize: Math.round(Style.space(view === "gallery" ? 150 : 48) * viewScale)
+  readonly property bool compactView: view === "compact"
 
   function scaled(value) {
     return Math.max(1, Math.round(value * viewScale))
@@ -85,6 +87,11 @@ Item {
 
   function activeView() {
     return pane.view === "list" ? listView : gridView
+  }
+
+  function columnsPerRow() {
+    if (pane.view === "list" || gridView.cellWidth <= 0) return 1
+    return Math.max(1, Math.floor(gridView.width / gridView.cellWidth))
   }
 
   function hitTestIndex(x, y) {
@@ -193,7 +200,7 @@ Item {
     for (var i = 0; i < rows.length; i++) {
       if (rows[i][0] === name) {
         setCursor(i, false, false)
-        listView.positionViewAtIndex(i, ListView.Contain)
+        activeView().positionViewAtIndex(i, ListView.Contain)
         return
       }
     }
@@ -362,7 +369,7 @@ Item {
       _pendingChunks = []
     }
     if (loading) {
-      rows = pane.filter ? Model.filterRaw(entries, pane.filter) : entries
+      rows = Model.filterByPatterns(pane.filter ? Model.filterRaw(entries, pane.filter) : entries, pane.patterns)
       statusChanged()
       return
     }
@@ -370,8 +377,8 @@ Item {
   }
 
   function rebuild() {
-    var filtered = ((pane.searching || pane.virtualView) || !pane.filter)
-      ? entries : Model.filterRaw(entries, pane.filter)
+    var filtered = Model.filterByPatterns(((pane.searching || pane.virtualView) || !pane.filter)
+      ? entries : Model.filterRaw(entries, pane.filter), pane.patterns)
     if (pane.virtualView
         || (!pane.searching && Model.isDefaultOrder(pane.sortBy, pane.descending, pane.dirsFirst)))
       rows = filtered
@@ -459,7 +466,7 @@ Item {
     if (rows.length === 0) return
     var target = Math.max(0, Math.min(rows.length - 1, index))
     setCursor(target, extend, false)
-    listView.positionViewAtIndex(target, ListView.Contain)
+    activeView().positionViewAtIndex(target, ListView.Contain)
   }
 
   function moveCursor(delta, extend) {
@@ -467,7 +474,7 @@ Item {
     var next = cursorIndex < 0 ? 0 : cursorIndex + delta
     next = Math.max(0, Math.min(rows.length - 1, next))
     setCursor(next, extend, false)
-    listView.positionViewAtIndex(next, ListView.Contain)
+    activeView().positionViewAtIndex(next, ListView.Contain)
   }
 
   function openEntry(entry) {
@@ -509,6 +516,13 @@ Item {
     rebuild()
   }
 
+  function setSortOrder(column, descending) {
+    if (pane.virtualView) return
+    pane.sortBy = column
+    pane.descending = descending === true
+    rebuild()
+  }
+
   property bool ready: true
 
   onServiceChanged: {
@@ -517,6 +531,7 @@ Item {
 
   onShowHiddenChanged: if (ready) reload()
   onFilterChanged: if (ready) rebuild()
+  onPatternsChanged: if (ready) rebuild()
   onDirsFirstChanged: if (ready) rebuild()
 
   Component.onDestruction: {
@@ -840,9 +855,11 @@ Item {
         height: parent.height - header.height
         clip: true
         model: pane.rows
-        visible: pane.view === "grid"
-        cellWidth: Math.round(Style.space(110) * pane.viewScale)
-        cellHeight: Math.round(Style.space(96) * pane.viewScale)
+        visible: pane.view !== "list"
+        cellWidth: pane.compactView ? Math.round(Style.space(230) * pane.viewScale)
+          : Math.round(Style.space(pane.view === "gallery" ? 190 : 110) * pane.viewScale)
+        cellHeight: pane.compactView ? pane.rowHeight + Style.space(2)
+          : Math.round(Style.space(pane.view === "gallery" ? 196 : 96) * pane.viewScale)
         cacheBuffer: 600
         boundsBehavior: Flickable.StopAtBounds
 
@@ -855,7 +872,7 @@ Item {
 
           readonly property var entry: Model.decodeEntry(modelData, pane.path)
 
-          width: gridView.cellWidth
+          width: gridView.cellWidth - (pane.compactView ? Style.space(4) : 0)
           height: gridView.cellHeight
           radius: Style.cornerRadius
           color: pane.selection[modelData[0]]
@@ -883,14 +900,64 @@ Item {
             onDoubleClicked: pane.openEntry(cell.entry)
           }
 
+          Row {
+            anchors.fill: parent
+            anchors.leftMargin: Style.space(8)
+            anchors.rightMargin: Style.space(8)
+            spacing: Style.space(8)
+            visible: pane.compactView
+
+            Item {
+              anchors.verticalCenter: parent.verticalCenter
+              width: Style.space(18)
+              height: pane.listIconSize
+
+              Text {
+                anchors.centerIn: parent
+                visible: !compactThumb.visible
+                text: Icons.glyphFor(cell.entry)
+                color: cell.entry.isBroken ? Color.urgent
+                  : (cell.entry.isDir ? pane.accent : Util.alpha(pane.fg, 0.75))
+                font.family: Style.font.family
+                font.pixelSize: pane.scaled(Style.font.icon)
+              }
+
+              Image {
+                id: compactThumb
+                anchors.fill: parent
+                visible: pane.compactView && pane.previewable(cell.entry) && status === Image.Ready
+                source: pane.compactView && pane.previewable(cell.entry) ? Util.fileUrl(cell.entry.path) : ""
+                sourceSize.width: Style.space(36)
+                sourceSize.height: pane.listIconSize * 2
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                cache: true
+                smooth: true
+                mipmap: true
+              }
+            }
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              width: parent.width - Style.space(26)
+              text: cell.entry.name
+              color: cell.entry.isHidden ? Util.alpha(pane.fg, 0.55) : pane.fg
+              font.family: Style.font.family
+              font.pixelSize: pane.scaled(Style.font.bodySmall)
+              font.italic: cell.entry.isLink
+              elide: Text.ElideMiddle
+            }
+          }
+
           Column {
             anchors.centerIn: parent
             width: parent.width - Style.space(12)
             spacing: Style.space(6)
+            visible: !pane.compactView
 
             Item {
               anchors.horizontalCenter: parent.horizontalCenter
-              width: Style.space(48)
+              width: pane.view === "gallery" ? parent.width : Style.space(48)
               height: pane.gridIconSize
 
               Text {
@@ -900,7 +967,7 @@ Item {
                 color: cell.entry.isBroken ? Color.urgent
                   : (cell.entry.isDir ? pane.accent : Util.alpha(pane.fg, 0.8))
                 font.family: Style.font.family
-                font.pixelSize: pane.scaled(Style.font.displayLarge)
+                font.pixelSize: pane.scaled(pane.view === "gallery" ? Style.font.displayLarge * 2 : Style.font.displayLarge)
               }
 
               Image {
@@ -908,9 +975,9 @@ Item {
                 anchors.centerIn: parent
                 width: parent.width
                 height: parent.height
-                visible: pane.previewable(cell.entry) && status === Image.Ready
-                source: pane.previewable(cell.entry) ? Util.fileUrl(cell.entry.path) : ""
-                sourceSize.width: Style.space(96)
+                visible: !pane.compactView && pane.previewable(cell.entry) && status === Image.Ready
+                source: !pane.compactView && pane.previewable(cell.entry) ? Util.fileUrl(cell.entry.path) : ""
+                sourceSize.width: pane.view === "gallery" ? Style.space(360) : Style.space(96)
                 sourceSize.height: pane.gridIconSize * 2
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
@@ -923,12 +990,13 @@ Item {
             Text {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
-              text: pane.gridLabel(cell.entry.name)
+              text: pane.view === "gallery" ? cell.entry.name : pane.gridLabel(cell.entry.name)
               color: pane.fg
               font.family: Style.font.family
               font.pixelSize: pane.scaled(Style.font.caption)
-              maximumLineCount: 2
-              wrapMode: Text.WrapAnywhere
+              maximumLineCount: pane.view === "gallery" ? 1 : 2
+              wrapMode: pane.view === "gallery" ? Text.NoWrap : Text.WrapAnywhere
+              elide: pane.view === "gallery" ? Text.ElideMiddle : Text.ElideNone
             }
           }
         }
