@@ -14,30 +14,46 @@ ShellRoot {
       id: tests
       name: "HeaderSorting"
       when: window.visible
+      onCompletedChanged: {
+        if (!harness.passed) console.log("OMAFILE_PANE_CLICKS_FAILED")
+        Qt.quit()
+      }
+      function clickHeader(key) {
+        var cell = findChild(pane, "header-" + key)
+        verify(cell !== null, "header cell " + key)
+        mouseClick(cell)
+      }
+      function rowY(index) {
+        var cell = findChild(pane, "header-name")
+        var bottom = cell.mapToItem(pane, 0, 0).y + cell.height + 1
+        return bottom + pane.rowHeight * index + pane.rowHeight / 2
+      }
       function test_headers() {
-        wait(300)
+        tryVerify(function () { return findChild(pane, "header-name") !== null })
         pane.entries = [["alpha.txt","f",30,300,0,null],["beta.csv","f",10,100,0,null],["gamma.log","f",20,200,0,null]]
         pane.rebuild()
-        mouseClick(pane, 100, 10)
+        clickHeader("name")
         compare(pane.descending, true)
         compare(pane.rows[0][0], "gamma.log")
-        mouseClick(pane, 470, 10)
+        clickHeader("size")
         compare(pane.sortBy, "size")
         compare(pane.rows[0][0], "beta.csv")
-        mouseClick(pane, 585, 10)
+        clickHeader("type")
         compare(pane.sortBy, "type")
         compare(pane.rows[0][0], "beta.csv")
-        mouseClick(pane, 720, 10)
+        clickHeader("modified")
         compare(pane.sortBy, "modified")
         compare(pane.rows[0][0], "beta.csv")
-        mouseClick(pane, 720, 10)
+        clickHeader("modified")
         compare(pane.descending, true)
         compare(pane.rows[0][0], "alpha.txt")
-        mouseClick(pane, 100, 40)
+        mouseClick(pane, 100, rowY(0))
         compare(pane.selectedCount, 1)
-        mousePress(pane, 100, 150)
-        mouseMove(pane, 150, 60, 50)
-        mouseRelease(pane, 150, 60)
+        var below = rowY(pane.rows.length) + pane.rowHeight
+        verify(below < pane.height, "empty space below the rows")
+        mousePress(pane, 100, below)
+        mouseMove(pane, 150, rowY(1), 50)
+        mouseRelease(pane, 150, rowY(1))
         verify(pane.selectedCount > 0)
         pane.view = "grid"
         wait(100)
@@ -48,5 +64,5 @@ ShellRoot {
       }
     }
   }
-  Timer { interval: 2000; running: true; onTriggered: { if (!harness.passed) console.log("OMAFILE_HEADER_TEST_FAILED"); Qt.quit() } }
+  Timer { interval: 15000; running: true; onTriggered: { console.log("OMAFILE_PANE_CLICKS_TIMEOUT"); Qt.quit() } }
 }

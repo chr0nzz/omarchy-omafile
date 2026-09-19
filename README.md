@@ -69,6 +69,10 @@ Click any part of the address bar to type a path, or press Ctrl+L. Click a bread
 
 The magnifier at the end of the address bar filters the folder you are in. Ctrl+F searches that folder and everything inside it instead. Escape clears the text, then leaves the results.
 
+### Sorting
+
+In list view, click Name, Size, Type or Modified to sort. Click the same column again to reverse its order.
+
 ### The sidebar
 
 Places, then your bookmarks, then drives, then Network, then Trash.
@@ -86,8 +90,6 @@ Connect to a server mounts an SMB share, an SFTP host, FTP or WebDAV. Servers yo
 This uses GVFS and needs no root. Install `gvfs-smb` for Windows shares if it is missing.
 
 ### Settings
-
-In list view, click Name, Size, Type or Modified to sort. Click the same column again to reverse its order.
 
 Ctrl+Comma, or the gear in the toolbar. Hidden files, folders-first ordering, image previews, trash behaviour, the drive list, and the trash can in the bar.
 

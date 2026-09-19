@@ -645,6 +645,7 @@ Item {
 
           delegate: Item {
             required property var modelData
+            objectName: "header-" + modelData.key
             width: header.width * modelData.weight
             height: header.height
 
