@@ -37,9 +37,10 @@ The panel is declared `keepLoaded`, so QML changes do **not** hot reload. Run `o
 ```bash
 npm test
 python3 -m unittest discover -s tests -p "*_test.py"
+bash tests/pane-clicks.sh
 ```
 
-Node 22 or newer and Python 3.11 or newer, nothing else. Anything that can live in `Model.js` should, with a test next to it. Add or update a test for every change to `Model.js`, `Icons.js`, or the helper. QML changes are checked by hand in a running shell.
+Node 22 or newer and Python 3.11 or newer for the logic and helper tests. The pane click test uses Quickshell, QtTest and the installed Omarchy shell, running offscreen. Anything that can live in `Model.js` should, with a test next to it. Add or update a test for every change to `Model.js`, `Icons.js`, or the helper. Also check QML changes by hand in a running shell.
 
 Lint the QML before pushing:
 
