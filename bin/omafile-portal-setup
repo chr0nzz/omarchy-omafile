@@ -1,0 +1,246 @@
+#!/usr/bin/env python3
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+BUS_NAME = "org.freedesktop.impl.portal.desktop.omafile"
+KEY = "org.freedesktop.impl.portal.FileChooser"
+VALUE = "omafile"
+DEFAULT_CONF = "[preferred]\ndefault=hyprland;gtk\n"
+PORTAL_BODY = (
+    "[portal]\n"
+    "DBusName=%s\n"
+    "Interfaces=org.freedesktop.impl.portal.FileChooser;\n" % BUS_NAME)
+SYSTEM_PORTAL = "/usr/share/xdg-desktop-portal/portals/omafile.portal"
+PORTAL_BIN = os.path.join(os.path.dirname(os.path.realpath(__file__)), "omafile-portal")
+
+
+def home():
+    return os.path.expanduser("~")
+
+
+def conf_path():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home(), ".config")
+    return os.path.join(base, "xdg-desktop-portal", "hyprland-portals.conf")
+
+
+def service_path():
+    base = os.environ.get("XDG_DATA_HOME") or os.path.join(home(), ".local", "share")
+    return os.path.join(base, "dbus-1", "services", BUS_NAME + ".service")
+
+
+def service_body():
+    return "[D-BUS Service]\nName=%s\nExec=%s\n" % (BUS_NAME, PORTAL_BIN)
+
+
+def is_section(line):
+    text = line.strip()
+    return text.startswith("[") and text.endswith("]")
+
+
+def key_of(line):
+    text = line.strip()
+    if not text or text.startswith("#") or text.startswith(";") or "=" not in text:
+        return None
+    return text.split("=", 1)[0].strip()
+
+
+def value_of(line):
+    return line.split("=", 1)[1].strip()
+
+
+def merge_conf(text):
+    if text is None or not text.strip():
+        return DEFAULT_CONF + "%s=%s\n" % (KEY, VALUE)
+    lines = text.splitlines()
+    entry = "%s=%s" % (KEY, VALUE)
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip() == "[preferred]":
+            start = i
+            break
+    if start is None:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        if lines:
+            lines.append("")
+        lines += ["[preferred]", entry]
+        return "\n".join(lines) + "\n"
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        if is_section(lines[i]):
+            end = i
+            break
+    for i in range(start + 1, end):
+        if key_of(lines[i]) == KEY:
+            lines[i] = entry
+            return "\n".join(lines) + "\n"
+    insert = end
+    while insert > start + 1 and not lines[insert - 1].strip():
+        insert -= 1
+    lines.insert(insert, entry)
+    return "\n".join(lines) + "\n"
+
+
+def unmerge_conf(text):
+    if text is None:
+        return None
+    lines = text.splitlines()
+    section = None
+    kept = []
+    for line in lines:
+        if is_section(line):
+            section = line.strip()
+        elif section == "[preferred]" and key_of(line) == KEY and value_of(line) == VALUE:
+            continue
+        kept.append(line)
+    result = "\n".join(kept) + "\n" if kept else ""
+    if result.strip() == DEFAULT_CONF.strip() or not result.strip():
+        return None
+    return result
+
+
+def conf_enabled(text):
+    if not text:
+        return False
+    section = None
+    for line in text.splitlines():
+        if is_section(line):
+            section = line.strip()
+        elif section == "[preferred]" and key_of(line) == KEY:
+            return value_of(line) == VALUE
+    return False
+
+
+def read_text(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return None
+
+
+def write_text(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def gi_available():
+    try:
+        subprocess.run(
+            [sys.executable, "-c", "import gi; gi.require_version('Gio','2.0'); from gi.repository import Gio"],
+            capture_output=True, timeout=10, shell=False, check=True)
+    except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
+        return False
+    return True
+
+
+def skip_system():
+    return os.environ.get("OMAFILE_PORTAL_SKIP_SYSTEM") == "1"
+
+
+def run_quietly(argv):
+    try:
+        subprocess.run(argv, capture_output=True, timeout=20, shell=False, check=False)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+
+def reload_services():
+    if skip_system():
+        return
+    run_quietly(["gdbus", "call", "--session", "--dest", "org.freedesktop.DBus",
+                 "--object-path", "/org/freedesktop/DBus",
+                 "--method", "org.freedesktop.DBus.ReloadConfig"])
+    run_quietly(["systemctl", "--user", "restart", "xdg-desktop-portal.service"])
+
+
+def install_system_file():
+    if read_text(SYSTEM_PORTAL) == PORTAL_BODY:
+        return
+    if skip_system():
+        return
+    if shutil.which("pkexec"):
+        prefix = ["pkexec"]
+    elif shutil.which("sudo") and sys.stdin.isatty():
+        prefix = ["sudo"]
+    else:
+        raise RuntimeError("need pkexec or sudo to install %s" % SYSTEM_PORTAL)
+    with tempfile.NamedTemporaryFile("w", suffix=".portal", delete=False, encoding="utf-8") as f:
+        f.write(PORTAL_BODY)
+        tmp = f.name
+    try:
+        os.chmod(tmp, 0o644)
+        result = subprocess.run(prefix + ["install", "-Dm644", tmp, SYSTEM_PORTAL], shell=False)
+    finally:
+        os.unlink(tmp)
+    if result.returncode != 0 or read_text(SYSTEM_PORTAL) != PORTAL_BODY:
+        raise RuntimeError("could not install %s" % SYSTEM_PORTAL)
+
+
+def enable():
+    if not os.access(PORTAL_BIN, os.X_OK):
+        raise RuntimeError("%s is missing or not executable" % PORTAL_BIN)
+    if not gi_available():
+        raise RuntimeError("PyGObject is not available, install python-gobject")
+    write_text(service_path(), service_body())
+    write_text(conf_path(), merge_conf(read_text(conf_path())))
+    install_system_file()
+    reload_services()
+    print("Omafile now picks files for other apps")
+
+
+def disable():
+    path = conf_path()
+    text = read_text(path)
+    if text is not None:
+        remaining = unmerge_conf(text)
+        if remaining is None:
+            os.unlink(path)
+        elif remaining != text:
+            write_text(path, remaining)
+    try:
+        os.unlink(service_path())
+    except FileNotFoundError:
+        pass
+    reload_services()
+    print("Omafile no longer picks files for other apps")
+    if os.path.exists(SYSTEM_PORTAL):
+        print("%s is left in place and does nothing on its own. Remove it with: sudo rm %s"
+              % (SYSTEM_PORTAL, SYSTEM_PORTAL))
+
+
+def status():
+    return {
+        "enabled": conf_enabled(read_text(conf_path())) and os.path.exists(service_path()),
+        "systemFile": read_text(SYSTEM_PORTAL) == PORTAL_BODY,
+        "available": gi_available(),
+    }
+
+
+def main(argv):
+    command = argv[1] if len(argv) > 1 else ""
+    try:
+        if command == "enable":
+            enable()
+        elif command == "disable":
+            disable()
+        elif command == "status":
+            print(json.dumps(status()))
+        else:
+            sys.stderr.write("usage: omafile-portal-setup enable|disable|status\n")
+            return 2
+    except (RuntimeError, OSError) as e:
+        sys.stderr.write("omafile-portal-setup: %s\n" % e)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

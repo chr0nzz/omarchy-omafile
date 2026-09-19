@@ -1,0 +1,429 @@
+#!/usr/bin/env python3
+import fnmatch
+import json
+import mimetypes
+import os
+import sys
+import uuid
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+BUS_NAME = "org.freedesktop.impl.portal.desktop.omafile"
+OBJECT_PATH = "/org/freedesktop/portal/desktop"
+VERSION = 4
+INTERFACE = """
+<node>
+  <interface name='org.freedesktop.impl.portal.FileChooser'>
+    <method name='OpenFile'>
+      <arg type='o' name='handle' direction='in'/>
+      <arg type='s' name='app_id' direction='in'/>
+      <arg type='s' name='parent_window' direction='in'/>
+      <arg type='s' name='title' direction='in'/>
+      <arg type='a{sv}' name='options' direction='in'/>
+      <arg type='u' name='response' direction='out'/>
+      <arg type='a{sv}' name='results' direction='out'/>
+    </method>
+    <method name='SaveFile'>
+      <arg type='o' name='handle' direction='in'/>
+      <arg type='s' name='app_id' direction='in'/>
+      <arg type='s' name='parent_window' direction='in'/>
+      <arg type='s' name='title' direction='in'/>
+      <arg type='a{sv}' name='options' direction='in'/>
+      <arg type='u' name='response' direction='out'/>
+      <arg type='a{sv}' name='results' direction='out'/>
+    </method>
+    <method name='SaveFiles'>
+      <arg type='o' name='handle' direction='in'/>
+      <arg type='s' name='app_id' direction='in'/>
+      <arg type='s' name='parent_window' direction='in'/>
+      <arg type='s' name='title' direction='in'/>
+      <arg type='a{sv}' name='options' direction='in'/>
+      <arg type='u' name='response' direction='out'/>
+      <arg type='a{sv}' name='results' direction='out'/>
+    </method>
+    <property name='version' type='u' access='read'/>
+  </interface>
+</node>
+"""
+REQUEST_INTERFACE = """
+<node>
+  <interface name='org.freedesktop.impl.portal.Request'>
+    <method name='Close'/>
+  </interface>
+</node>
+"""
+
+IDLE_SECONDS = 120
+POLL_MS = 150
+MODES = {"OpenFile": "open", "SaveFile": "save", "SaveFiles": "savefiles"}
+DEFAULT_TITLES = {"open": "Open File", "save": "Save File", "savefiles": "Save Files"}
+RESPONSE_OK = 0
+RESPONSE_CANCELLED = 1
+RESPONSE_ERROR = 2
+
+
+def decode_bytes(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.rstrip("\0")
+    data = bytes(value)
+    end = data.find(b"\0")
+    if end >= 0:
+        data = data[:end]
+    return os.fsdecode(data)
+
+
+def strip_mnemonic(label):
+    text = str(label or "")
+    out = []
+    i = 0
+    while i < len(text):
+        if text[i] == "_":
+            if i + 1 < len(text) and text[i + 1] == "_":
+                out.append("_")
+                i += 2
+                continue
+            i += 1
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+def mime_globs(mime):
+    mime = str(mime or "").strip().lower()
+    if not mime:
+        return []
+    if mime in ("*", "*/*", "application/octet-stream"):
+        return ["*"]
+    if not mimetypes.inited:
+        mimetypes.init()
+    if mime.endswith("/*"):
+        exts = sorted({ext for ext, kind in mimetypes.types_map.items()
+                       if fnmatch.fnmatch(kind, mime)})
+    else:
+        exts = mimetypes.guess_all_extensions(mime, strict=False)
+    globs = []
+    for ext in exts:
+        glob = "*" + ext
+        if glob not in globs:
+            globs.append(glob)
+    return globs or ["mime:" + mime]
+
+
+def convert_filter(portal_filter):
+    name, entries = portal_filter
+    patterns = []
+    for kind, value in entries:
+        if kind == 0:
+            found = [str(value)]
+        else:
+            found = mime_globs(value)
+        for pattern in found:
+            if pattern not in patterns:
+                patterns.append(pattern)
+    return {"name": str(name), "patterns": patterns}
+
+
+def same_filter(a, b):
+    return (str(a[0]) == str(b[0])
+            and [(int(k), str(v)) for k, v in a[1]] == [(int(k), str(v)) for k, v in b[1]])
+
+
+def portal_filters(options):
+    filters = [tuple(f) for f in (options.get("filters") or [])]
+    current = options.get("current_filter")
+    index = -1
+    if current:
+        current = tuple(current)
+        for i, f in enumerate(filters):
+            if same_filter(f, current):
+                index = i
+                break
+        if index < 0:
+            filters.append(current)
+            index = len(filters) - 1
+    return filters, index
+
+
+def build_request(mode, title, options, result_path):
+    filters, current_index = portal_filters(options)
+    current_folder = decode_bytes(options.get("current_folder"))
+    current_file = decode_bytes(options.get("current_file")) if mode == "save" else ""
+    current_name = str(options.get("current_name") or "") if mode == "save" else ""
+    if current_file:
+        if not current_folder:
+            current_folder = os.path.dirname(current_file)
+        if not current_name:
+            current_name = os.path.basename(current_file)
+    files = []
+    if mode == "savefiles":
+        files = [decode_bytes(f) for f in (options.get("files") or [])]
+        files = [f for f in files if f]
+    return {
+        "mode": mode,
+        "title": str(title or "") or DEFAULT_TITLES[mode],
+        "acceptLabel": strip_mnemonic(options.get("accept_label")),
+        "multiple": bool(options.get("multiple", False)) if mode == "open" else False,
+        "directory": bool(options.get("directory", False)) if mode == "open" else mode == "savefiles",
+        "currentFolder": current_folder,
+        "currentName": current_name,
+        "currentFile": current_file,
+        "files": files,
+        "filters": [convert_filter(f) for f in filters],
+        "currentFilter": current_index,
+        "result": result_path,
+    }
+
+
+def parse_result(data, mode, options):
+    if not isinstance(data, dict):
+        return RESPONSE_ERROR, {}
+    if not data.get("ok"):
+        return RESPONSE_CANCELLED, {}
+    paths = data.get("paths")
+    if not isinstance(paths, list):
+        return RESPONSE_ERROR, {}
+    paths = [p for p in paths if isinstance(p, str) and p]
+    if not paths:
+        return RESPONSE_CANCELLED, {}
+    if any(not os.path.isabs(p) for p in paths):
+        return RESPONSE_ERROR, {}
+    if mode == "savefiles":
+        files = [decode_bytes(f) for f in (options.get("files") or [])]
+        files = [f for f in files if f]
+        if files and len(paths) == 1 and (len(files) > 1 or os.path.isdir(paths[0])):
+            paths = [os.path.join(paths[0], name) for name in files]
+    elif mode == "save" or not options.get("multiple", False):
+        paths = paths[:1]
+    results = {"uris": [GLib.filename_to_uri(p, None) for p in paths], "choices": []}
+    filters, _ = portal_filters(options)
+    index = data.get("filter", -1)
+    if isinstance(index, int) and not isinstance(index, bool) and 0 <= index < len(filters):
+        name, entries = filters[index]
+        results["current_filter"] = (str(name), [(int(k), str(v)) for k, v in entries])
+    return RESPONSE_OK, results
+
+
+def results_variant(results):
+    out = {}
+    if "uris" in results:
+        out["uris"] = GLib.Variant("as", results["uris"])
+    if "choices" in results:
+        out["choices"] = GLib.Variant("a(ss)", results["choices"])
+    if "current_filter" in results:
+        out["current_filter"] = GLib.Variant("(sa(us))", results["current_filter"])
+    return out
+
+
+def as_bytes(value):
+    return os.fsencode(value) if isinstance(value, str) else bytes(value)
+
+
+def unpack_options(variant):
+    options = {}
+    for i in range(variant.n_children()):
+        entry = variant.get_child_value(i)
+        key = entry.get_child_value(0).get_string()
+        value = entry.get_child_value(1).get_variant()
+        kind = value.get_type_string()
+        if kind == "ay":
+            options[key] = as_bytes(value.get_bytestring())
+        elif kind == "aay":
+            options[key] = [as_bytes(value.get_child_value(j).get_bytestring())
+                            for j in range(value.n_children())]
+        else:
+            options[key] = value.unpack()
+    return options
+
+
+def runtime_dir():
+    base = os.environ.get("XDG_RUNTIME_DIR") or GLib.get_user_runtime_dir()
+    path = os.path.join(base, "omafile")
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    os.chmod(path, 0o700)
+    return path
+
+
+def remove_quietly(path):
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
+def spawn_shell(args, callback=None):
+    try:
+        proc = Gio.Subprocess.new(
+            ["omarchy-shell", "omafile"] + args,
+            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE)
+    except GLib.Error:
+        if callback:
+            callback(False)
+        return
+
+    def done(proc, res):
+        try:
+            ok, out, _ = proc.communicate_utf8_finish(res)
+        except GLib.Error:
+            ok, out = False, ""
+        ok = ok and proc.get_successful()
+        if ok and (out or "").strip().lower().startswith("error"):
+            ok = False
+        if callback:
+            callback(ok)
+
+    proc.communicate_utf8_async(None, None, done)
+
+
+class Pick:
+    def __init__(self, service, invocation, handle, mode, options, result_path):
+        self.service = service
+        self.invocation = invocation
+        self.handle = handle
+        self.mode = mode
+        self.options = options
+        self.result_path = result_path
+        self.registration = 0
+        self.poll_id = None
+        self.done = False
+
+    def start(self, request):
+        try:
+            self.registration = self.service.connection.register_object(
+                self.handle, self.service.request_node.interfaces[0],
+                self.handle_request_call, None, None)
+        except GLib.Error:
+            self.registration = 0
+        spawn_shell(["pick", json.dumps(request)], self.on_spawned)
+
+    def on_spawned(self, ok):
+        if self.done:
+            return
+        if not ok:
+            self.finish(RESPONSE_ERROR, {})
+            return
+        self.poll_id = GLib.timeout_add(POLL_MS, self.poll)
+        self.poll()
+
+    def poll(self):
+        if self.done:
+            return False
+        if not os.path.exists(self.result_path):
+            return True
+        try:
+            with open(self.result_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            self.finish(RESPONSE_ERROR, {})
+            return False
+        response, results = parse_result(data, self.mode, self.options)
+        self.finish(response, results)
+        return False
+
+    def handle_request_call(self, connection, sender, path, interface, method, params, invocation):
+        if method == "Close":
+            invocation.return_value(None)
+            if not self.done:
+                spawn_shell(["pickcancel", self.result_path])
+                self.finish(RESPONSE_CANCELLED, {})
+            return
+        invocation.return_dbus_error(
+            "org.freedesktop.DBus.Error.UnknownMethod", "Unknown method " + method)
+
+    def finish(self, response, results):
+        if self.done:
+            return
+        self.done = True
+        if self.poll_id is not None:
+            GLib.source_remove(self.poll_id)
+            self.poll_id = None
+        self.invocation.return_value(
+            GLib.Variant("(ua{sv})", (response, results_variant(results))))
+        if self.registration:
+            self.service.connection.unregister_object(self.registration)
+            self.registration = 0
+        remove_quietly(self.result_path)
+        self.service.forget(self)
+
+
+class Portal:
+    def __init__(self, loop):
+        self.loop = loop
+        self.node = Gio.DBusNodeInfo.new_for_xml(INTERFACE)
+        self.request_node = Gio.DBusNodeInfo.new_for_xml(REQUEST_INTERFACE)
+        self.connection = None
+        self.registration = None
+        self.timeout_id = None
+        self.pending = []
+
+    def arm_idle_exit(self):
+        if self.timeout_id is not None:
+            GLib.source_remove(self.timeout_id)
+        self.timeout_id = GLib.timeout_add_seconds(IDLE_SECONDS, self.quit)
+
+    def quit(self):
+        if self.pending:
+            return True
+        self.timeout_id = None
+        self.loop.quit()
+        return False
+
+    def forget(self, pick):
+        if pick in self.pending:
+            self.pending.remove(pick)
+        self.arm_idle_exit()
+
+    def on_bus_acquired(self, connection, name):
+        self.connection = connection
+        self.registration = connection.register_object(
+            OBJECT_PATH, self.node.interfaces[0], self.handle_call, self.get_property, None)
+        self.arm_idle_exit()
+
+    def on_name_lost(self, connection, name):
+        self.loop.quit()
+
+    def get_property(self, connection, sender, path, interface, name):
+        if name == "version":
+            return GLib.Variant("u", VERSION)
+        return None
+
+    def handle_call(self, connection, sender, path, interface, method, params, invocation):
+        self.arm_idle_exit()
+        mode = MODES.get(method)
+        if mode is None:
+            invocation.return_dbus_error(
+                "org.freedesktop.DBus.Error.UnknownMethod", "Unknown method " + method)
+            return
+        handle = params.get_child_value(0).get_string()
+        title = params.get_child_value(3).get_string()
+        options = unpack_options(params.get_child_value(4))
+        try:
+            result_path = os.path.join(runtime_dir(), "pick-%s.json" % uuid.uuid4().hex)
+        except OSError:
+            invocation.return_value(GLib.Variant("(ua{sv})", (RESPONSE_ERROR, {})))
+            return
+        remove_quietly(result_path)
+        request = build_request(mode, title, options, result_path)
+        pick = Pick(self, invocation, handle, mode, options, result_path)
+        self.pending.append(pick)
+        pick.start(request)
+
+
+def main():
+    loop = GLib.MainLoop()
+    service = Portal(loop)
+    Gio.bus_own_name(
+        Gio.BusType.SESSION, BUS_NAME,
+        Gio.BusNameOwnerFlags.NONE,
+        service.on_bus_acquired, None, service.on_name_lost)
+    loop.run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
