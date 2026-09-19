@@ -583,3 +583,89 @@ function tokenizeCommand(text) {
   if (started) out.push(current);
   return out;
 }
+
+function globToRegExp(pattern) {
+  var source = String(pattern || '');
+  var out = '^';
+  for (var i = 0; i < source.length; i++) {
+    var ch = source.charAt(i);
+    if (ch === '*') out += '.*';
+    else if (ch === '?') out += '.';
+    else if (ch === '[') {
+      var close = source.indexOf(']', i + 1);
+      if (close < 0) {
+        out += '\\[';
+        continue;
+      }
+      var body = source.substring(i + 1, close);
+      if (body.charAt(0) === '!') body = '^' + body.substring(1);
+      out += '[' + body.replace(/\\/g, '\\\\') + ']';
+      i = close;
+    } else if ('\\^$.|+(){}'.indexOf(ch) >= 0) out += '\\' + ch;
+    else out += ch;
+  }
+  return new RegExp(out + '$', 'i');
+}
+
+function matchesPatterns(name, patterns) {
+  if (!patterns || !patterns.length) return true;
+  var text = String(name || '');
+  for (var i = 0; i < patterns.length; i++) {
+    var p = String(patterns[i] || '');
+    if (!p || p === '*' || p.indexOf('mime:') === 0) return true;
+    if (globToRegExp(p).test(text)) return true;
+  }
+  return false;
+}
+
+function filterByPatterns(rows, patterns) {
+  if (!patterns || !patterns.length) return rows;
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    if (rawIsDir(rows[i]) || matchesPatterns(rawName(rows[i]), patterns)) out.push(rows[i]);
+  }
+  return out;
+}
+
+var sortPresets = [
+  { key: 'name-asc', label: 'A to Z', sortBy: 'name', descending: false },
+  { key: 'name-desc', label: 'Z to A', sortBy: 'name', descending: true },
+  { key: 'modified-desc', label: 'Last modified', sortBy: 'modified', descending: true },
+  { key: 'modified-asc', label: 'First modified', sortBy: 'modified', descending: false },
+  { key: 'size-desc', label: 'Largest first', sortBy: 'size', descending: true },
+  { key: 'size-asc', label: 'Smallest first', sortBy: 'size', descending: false },
+  { key: 'type-asc', label: 'Type', sortBy: 'type', descending: false }
+];
+
+function sortPreset(key) {
+  for (var i = 0; i < sortPresets.length; i++) if (sortPresets[i].key === key) return sortPresets[i];
+  return null;
+}
+
+function sortPresetKey(sortBy, descending) {
+  return String(sortBy || 'name') + (descending ? '-desc' : '-asc');
+}
+
+var viewModes = [
+  { key: 'list', label: 'List', glyph: 'list' },
+  { key: 'compact', label: 'Compact', glyph: 'columns' },
+  { key: 'grid', label: 'Grid', glyph: 'grid' },
+  { key: 'gallery', label: 'Gallery', glyph: 'grid' }
+];
+
+function isViewMode(key) {
+  for (var i = 0; i < viewModes.length; i++) if (viewModes[i].key === key) return true;
+  return false;
+}
+
+function isImageName(name) {
+  return !!imageExtSet[extOf(String(name || ''))];
+}
+
+function previewKind(entry) {
+  if (!entry) return 'none';
+  if (entry.isDir) return 'folder';
+  if (entry.isBroken) return 'none';
+  if (imageExtSet[String(entry.ext || '').toLowerCase()]) return 'image';
+  return 'text';
+}

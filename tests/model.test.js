@@ -430,3 +430,36 @@ test('tokenizeCommand returns nothing for blank input', function () {
   assert.deepEqual(tokens(null), []);
   assert.deepEqual(tokens(undefined), []);
 });
+
+test('glob patterns match file names case-insensitively', function () {
+  assert.equal(Model.matchesPatterns('photo.PNG', ['*.png']), true);
+  assert.equal(Model.matchesPatterns('photo.jpg', ['*.png', '*.gif']), false);
+  assert.equal(Model.matchesPatterns('a1.txt', ['a?.txt']), true);
+  assert.equal(Model.matchesPatterns('b.txt', ['[ab].txt']), true);
+  assert.equal(Model.matchesPatterns('c.txt', ['[!ab].txt']), true);
+  assert.equal(Model.matchesPatterns('a+b(1).txt', ['a+b(1).*']), true);
+  assert.equal(Model.matchesPatterns('anything', []), true);
+  assert.equal(Model.matchesPatterns('anything', ['mime:image/png']), true);
+});
+
+test('pattern filtering keeps folders', function () {
+  var rows = [['docs', 'd', 0, 0, 0, null], ['a.png', 'f', 1, 0, 0, null], ['b.txt', 'f', 1, 0, 0, null]];
+  var kept = Array.prototype.slice.call(Model.filterByPatterns(rows, ['*.png'])).map(function (r) { return r[0]; });
+  assert.deepEqual(kept, ['docs', 'a.png']);
+});
+
+test('sort presets round trip through their keys', function () {
+  var preset = Model.sortPreset(Model.sortPresetKey('modified', true));
+  assert.equal(preset.sortBy, 'modified');
+  assert.equal(preset.descending, true);
+  assert.equal(Model.sortPreset('nope'), null);
+});
+
+test('preview kind follows the entry', function () {
+  assert.equal(Model.previewKind(Model.decodeEntry(['a.png', 'f', 1, 0, 0, null], '/tmp')), 'image');
+  assert.equal(Model.previewKind(Model.decodeEntry(['a.yml', 'f', 1, 0, 0, null], '/tmp')), 'text');
+  assert.equal(Model.previewKind(Model.decodeEntry(['d', 'd', 0, 0, 0, null], '/tmp')), 'folder');
+  assert.equal(Model.previewKind(null), 'none');
+  assert.equal(Model.isViewMode('gallery'), true);
+  assert.equal(Model.isViewMode('columns'), false);
+});
