@@ -372,7 +372,8 @@ Item {
   function rebuild() {
     var filtered = ((pane.searching || pane.virtualView) || !pane.filter)
       ? entries : Model.filterRaw(entries, pane.filter)
-    if (!pane.searching && Model.isDefaultOrder(pane.sortBy, pane.descending, pane.dirsFirst))
+    if (pane.virtualView
+        || (!pane.searching && Model.isDefaultOrder(pane.sortBy, pane.descending, pane.dirsFirst)))
       rows = filtered
     else
       rows = Model.sortRaw(filtered, pane.sortBy, pane.descending, pane.dirsFirst)
@@ -499,6 +500,7 @@ Item {
   }
 
   function setSort(column) {
+    if (pane.virtualView) return
     if (pane.sortBy === column) pane.descending = !pane.descending
     else {
       pane.sortBy = column

@@ -21,4 +21,4 @@ if ! grep -q 'OMAFILE_PANE_CLICKS_PASSED' "$stage/output.log"; then
   cat "$stage/output.log"
   exit 1
 fi
-printf 'Pane header sorting, row selection, drag selection and grid selection: passed\n'
+printf 'Pane header sorting, recent order, row selection, drag selection and grid selection: passed\n'

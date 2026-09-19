@@ -55,6 +55,14 @@ ShellRoot {
         mouseMove(pane, 150, rowY(1), 50)
         mouseRelease(pane, 150, rowY(1))
         verify(pane.selectedCount > 0)
+        pane.path = "recent:"
+        pane.entries = [["gamma.log","f",20,200,0,null],["alpha.txt","f",30,300,0,null]]
+        pane.rebuild()
+        compare(pane.rows[0][0], "gamma.log")
+        clickHeader("name")
+        compare(pane.sortBy, "modified")
+        compare(pane.rows[0][0], "gamma.log")
+        pane.path = "/tmp"
         pane.view = "grid"
         wait(100)
         mouseClick(pane, 50, 50)
