@@ -226,6 +226,43 @@ class StatTests(HelperTestCase):
         self.assertEqual(items[1]["kind"], "l")
         self.assertEqual(items[1]["linkTarget"], target)
 
+class PeekTests(HelperTestCase):
+    def peek(self, path, limit=None):
+        req = {"id": self.next_id(), "op": "peek", "path": path}
+        if limit:
+            req["limit"] = limit
+        return self.helper.call(req)
+
+    def test_peek_text(self):
+        target = self.path("config.yml")
+        with open(target, "w") as f:
+            f.write("name: omafile\nlist:\n  - one\n")
+        msgs = self.peek(target)
+        peek = [m for m in msgs if m["t"] == "peek"][0]
+        self.assertFalse(peek["binary"])
+        self.assertFalse(peek["truncated"])
+        self.assertEqual(peek["text"], "name: omafile\nlist:\n  - one\n")
+
+    def test_peek_truncates(self):
+        target = self.path("long.txt")
+        with open(target, "w") as f:
+            f.write("x" * 100)
+        peek = [m for m in self.peek(target, 10) if m["t"] == "peek"][0]
+        self.assertTrue(peek["truncated"])
+        self.assertEqual(peek["text"], "x" * 10)
+
+    def test_peek_binary(self):
+        target = self.path("blob.bin")
+        with open(target, "wb") as f:
+            f.write(b"\x7fELF\x00\x01\x02")
+        peek = [m for m in self.peek(target) if m["t"] == "peek"][0]
+        self.assertTrue(peek["binary"])
+        self.assertEqual(peek["text"], "")
+
+    def test_peek_directory_errors(self):
+        msgs = self.peek(self.root)
+        self.assertEqual([m for m in msgs if m["t"] == "error"][0]["code"], "EISDIR")
+
 class SymlinkTests(HelperTestCase):
     def test_symlink_kinds(self):
         target_dir = self.path("realdir")

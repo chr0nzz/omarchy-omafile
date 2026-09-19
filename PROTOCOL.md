@@ -214,6 +214,17 @@ containing a path separator.
 ends with `{"t": "done", "truncated": bool, "scanned": int}`. Skips `.git`, and does not
 cross filesystem boundaries or follow symlinked directories.
 
+### peek
+
+```
+{"id": N, "op": "peek", "path": "/a/config.yml", "limit": 262144}
+```
+
+Replies `{"t": "peek", "text": S, "binary": B, "truncated": T, "size": N}` then `done`.
+Reads at most `limit` bytes, capped at 256 KB, for the preview. A file with a NUL byte
+in its first 8 KB, or one that is mostly not UTF-8, comes back with `binary: true` and
+empty `text`. A directory fails with `EISDIR`.
+
 ### freespace
 
 ```

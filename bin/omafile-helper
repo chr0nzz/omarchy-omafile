@@ -116,6 +116,8 @@ def list_sort_key(entry):
     return (directory_first, natural_key(entry[0]), entry[0])
 
 
+PEEK_LIMIT = 262144
+
 def op_list(req, cancel_event):
     req_id = req["id"]
     path = req.get("path")
@@ -1176,6 +1178,42 @@ def op_search(req, cancel_event):
             continue
     send_done(req_id, truncated=False, scanned=scanned)
 
+def op_peek(req):
+    req_id = req["id"]
+    path = req.get("path")
+    if not isinstance(path, str):
+        send_error(req_id, "EINVAL", "path required")
+        return
+    try:
+        limit = max(1, min(int(req.get("limit") or PEEK_LIMIT), PEEK_LIMIT))
+    except (TypeError, ValueError):
+        limit = PEEK_LIMIT
+    try:
+        b = to_bytes(path)
+        if os.path.isdir(b):
+            send_error(req_id, "EISDIR", "is a directory", path)
+            return
+        with open(b, "rb") as f:
+            data = f.read(limit + 1)
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), path)
+        return
+    truncated = len(data) > limit
+    data = data[:limit]
+    binary = b"\0" in data[:8192]
+    text = ""
+    if not binary:
+        text = data.decode("utf-8", errors="replace")
+        if truncated and text.endswith("\ufffd"):
+            text = text.rstrip("\ufffd")
+        sample = text[:8192]
+        if sample and sample.count("\ufffd") * 10 > len(sample):
+            binary = True
+            text = ""
+    emit({"id": req_id, "t": "peek", "text": text, "binary": binary,
+          "truncated": truncated, "size": len(data)})
+    send_done(req_id)
+
 def op_freespace(req):
     req_id = req["id"]
     path = req.get("path")
@@ -2058,6 +2096,7 @@ CANCELLABLE_OPS = {
 
 SIMPLE_OPS = {
     "stat": op_stat,
+    "peek": op_peek,
     "trash": op_trash,
     "delete": op_delete,
     "restore": op_restore,
