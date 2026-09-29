@@ -31,7 +31,7 @@ Item {
   property var dialogPayload: null
   property string confirmAction: ""
   property string settingsSection: "opening"
-  readonly property real viewScale: clampViewScale(service ? service.setting("viewScale", 1) : 1)
+  readonly property real viewScale: clampViewScale(service ? service.settingNow("viewScale", 1) : 1)
   property bool menuOpen: false
   property int menuCursor: -1
   property var menuActions: []
