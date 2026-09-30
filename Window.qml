@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
+import "Model.js" as Model
 import "components"
 
 Item {
@@ -20,52 +21,112 @@ Item {
   property bool shown: false
   property bool closingFromHost: false
   property bool switchingSurface: false
-  property string pendingPayload: "{}"
+  property var windowSlots: []
+  property var slotPayloads: ({})
+  property var browsers: ({})
+  property string raiseTitle: "Omafile"
+  property string raiseAnchor: ""
+  property int raiseStep: 0
+
+  function normalizePayload(payloadJson) {
+    return payloadJson && String(payloadJson).length > 0 ? String(payloadJson) : "{}"
+  }
+
+  function setSlots(next) {
+    windowSlots = next
+    for (var i = slotModel.count - 1; i >= 0; i--) {
+      if (next.indexOf(slotModel.get(i).slot) < 0) slotModel.remove(i)
+    }
+    for (var j = 0; j < next.length; j++) {
+      var present = false
+      for (var k = 0; k < slotModel.count; k++) {
+        if (slotModel.get(k).slot === next[j]) present = true
+      }
+      if (!present) slotModel.append({ slot: next[j] })
+    }
+  }
+
+  function openWindow(payloadJson) {
+    var slot = Model.nextWindowSlot(windowSlots)
+    slotPayloads[slot] = payloadJson
+    raiseTitle = Model.windowTitle(slot)
+    raiseAnchor = windowSlots.length > 0 ? Model.windowTitle(Math.min.apply(null, windowSlots)) : ""
+    raiseStep = Model.cascadeOffset(windowSlots.length)
+    setSlots(windowSlots.concat([slot]))
+    raiseTimer.restart()
+  }
+
+  function focusExistingWindow(payloadJson) {
+    var slot = Math.min.apply(null, windowSlots)
+    if (browsers[slot]) browsers[slot].open(payloadJson)
+    else slotPayloads[slot] = payloadJson
+    raiseTitle = Model.windowTitle(slot)
+    raiseAnchor = ""
+    raiseTimer.restart()
+  }
+
+  function closeWindow(slot) {
+    var index = windowSlots.indexOf(slot)
+    if (index < 0) return
+    var next = windowSlots.slice()
+    next.splice(index, 1)
+    delete slotPayloads[slot]
+    setSlots(next)
+    if (next.length === 0 && !closingFromHost) requestClose()
+  }
 
   function open(payloadJson) {
     closingFromHost = false
-    pendingPayload = payloadJson && String(payloadJson).length > 0 ? String(payloadJson) : "{}"
-    shown = true
-    Qt.callLater(function () {
-      var item = host.activeBrowser()
-      if (item) item.open(host.pendingPayload)
-      if (!host.asPopup) raiseTimer.restart()
-    })
+    var payload = normalizePayload(payloadJson)
+    if (asPopup) {
+      shown = true
+      Qt.callLater(function () {
+        var item = popupLoader.item
+        if (item) item.open(payload)
+      })
+    } else if (windowSlots.length > 0 && !Model.wantsNewWindow(payload)) {
+      focusExistingWindow(payload)
+    } else {
+      openWindow(payload)
+    }
   }
 
-  readonly property string raiseCommand:
-    "(function() local p = hl.get_cursor_pos() "
-    + "hl.dispatch(hl.dsp.focus({ window = \"title:^Omafile$\" })) "
-    + "return hl.dsp.cursor.move(p) end)()"
+  function raiseCommand() {
+    var target = "title:^" + raiseTitle + "$"
+    var move = raiseAnchor === "" ? "" :
+      "local anchor = nil "
+      + "for _, w in ipairs(hl.get_windows()) do if w.title == \"" + raiseAnchor + "\" then anchor = w end end "
+      + "if anchor then hl.dispatch(hl.dsp.window.move({ x = anchor.at.x + " + raiseStep
+      + ", y = anchor.at.y + " + raiseStep + ", window = \"" + target + "\" })) end "
+    return "(function() local p = hl.get_cursor_pos() " + move
+      + "hl.dispatch(hl.dsp.focus({ window = \"" + target + "\" })) "
+      + "return hl.dsp.cursor.move(p) end)()"
+  }
 
   function raiseWindow() {
     if (host.asPopup) return
-    Hyprland.dispatch(host.raiseCommand)
+    Hyprland.dispatch(host.raiseCommand())
   }
 
   function close() {
     closingFromHost = true
     shown = false
+    setSlots([])
+    slotPayloads = ({})
     closingFromHost = false
   }
 
   function requestClose() {
     if (shell && typeof shell.hide === "function") shell.hide(pluginId)
-    else shown = false
-  }
-
-  function activeBrowser() {
-    if (asPopup) return popupLoader.item
-    return windowLoader.item
+    else close()
   }
 
   onAsPopupChanged: {
-    if (!shown) return
+    if (!shown && windowSlots.length === 0) return
     switchingSurface = true
+    close()
     Qt.callLater(function () {
-      var item = host.activeBrowser()
-      if (item) item.open("{}")
-      if (!host.asPopup) raiseTimer.restart()
+      host.open("{}")
       host.switchingSurface = false
     })
   }
@@ -81,34 +142,47 @@ Item {
     id: browserComponent
 
     Browser {
+      property var windowSlot: null
       shell: host.shell
       manifest: host.manifest
       service: host.service
-      onDismissRequested: host.requestClose()
-      onCloseRequested: host.close()
+      onDismissRequested: windowSlot === null ? host.requestClose() : host.closeWindow(windowSlot)
+      onCloseRequested: windowSlot === null ? host.close() : host.closeWindow(windowSlot)
     }
   }
 
-  FloatingWindow {
-    id: window
-    visible: host.shown && !host.asPopup
-    title: "Omafile"
-    color: Color.background
-    implicitWidth: 1100
-    implicitHeight: 720
-    minimumSize: Qt.size(640, 420)
+  ListModel { id: slotModel }
 
-    onVisibleChanged: {
-      if (visible) return
-      if (host.closingFromHost || host.switchingSurface || host.asPopup) return
-      host.requestClose()
-    }
+  Instantiator {
+    model: slotModel
 
-    Loader {
-      id: windowLoader
-      anchors.fill: parent
-      active: window.visible
-      sourceComponent: browserComponent
+    delegate: FloatingWindow {
+      id: window
+      required property int slot
+      visible: true
+      title: Model.windowTitle(slot)
+      color: Color.background
+      implicitWidth: 1100
+      implicitHeight: 720
+      minimumSize: Qt.size(640, 420)
+
+      onVisibleChanged: {
+        if (visible) return
+        if (host.closingFromHost || host.switchingSurface || host.asPopup) return
+        host.closeWindow(slot)
+      }
+
+      Component.onDestruction: delete host.browsers[slot]
+
+      Loader {
+        anchors.fill: parent
+        sourceComponent: browserComponent
+        onLoaded: {
+          item.windowSlot = window.slot
+          host.browsers[window.slot] = item
+          item.open(host.slotPayloads[window.slot] || "{}")
+        }
+      }
     }
   }
 

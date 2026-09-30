@@ -463,3 +463,35 @@ test('preview kind follows the entry', function () {
   assert.equal(Model.isViewMode('gallery'), true);
   assert.equal(Model.isViewMode('columns'), false);
 });
+
+test('windowTitle keeps the first window plain and numbers the rest', () => {
+  assert.equal(Model.windowTitle(1), 'Omafile');
+  assert.equal(Model.windowTitle(2), 'Omafile 2');
+  assert.equal(Model.windowTitle(10), 'Omafile 10');
+});
+
+test('nextWindowSlot fills the lowest free slot', () => {
+  assert.equal(Model.nextWindowSlot([]), 1);
+  assert.equal(Model.nextWindowSlot([1]), 2);
+  assert.equal(Model.nextWindowSlot([1, 3]), 2);
+  assert.equal(Model.nextWindowSlot([2, 3]), 1);
+});
+
+test('cascadeOffset steps 40 pixels per window and wraps after eight', () => {
+  assert.equal(Model.cascadeOffset(0), 0);
+  assert.equal(Model.cascadeOffset(1), 40);
+  assert.equal(Model.cascadeOffset(7), 280);
+  assert.equal(Model.cascadeOffset(8), 0);
+  assert.equal(Model.cascadeOffset(-3), 0);
+  assert.equal(Model.cascadeOffset('x'), 0);
+});
+
+test('wantsNewWindow is true only for an explicit newWindow flag', () => {
+  assert.equal(Model.wantsNewWindow('{"newWindow":true}'), true);
+  assert.equal(Model.wantsNewWindow('{"newWindow":"yes"}'), false);
+  assert.equal(Model.wantsNewWindow('{"path":"/tmp"}'), false);
+  assert.equal(Model.wantsNewWindow('{}'), false);
+  assert.equal(Model.wantsNewWindow(''), false);
+  assert.equal(Model.wantsNewWindow('not json'), false);
+  assert.equal(Model.wantsNewWindow('null'), false);
+});

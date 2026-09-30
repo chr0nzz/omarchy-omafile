@@ -803,6 +803,10 @@ Item {
     if (shell) shell.summon(pluginId, payload)
   }
 
+  function newWindow() {
+    if (shell) shell.summon(pluginId, JSON.stringify({ newWindow: true }))
+  }
+
   function toggleWindow() {
     if (shell) shell.toggle(pluginId, "{}")
   }
@@ -1028,6 +1032,11 @@ Item {
 
     function toggle(): string {
       root.toggleWindow()
+      return "ok"
+    }
+
+    function newwindow(): string {
+      root.newWindow()
       return "ok"
     }
 

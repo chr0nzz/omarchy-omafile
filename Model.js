@@ -669,3 +669,26 @@ function previewKind(entry) {
   if (imageExtSet[String(entry.ext || '').toLowerCase()]) return 'image';
   return 'text';
 }
+
+function windowTitle(slot) {
+  return slot > 1 ? 'Omafile ' + slot : 'Omafile';
+}
+
+function nextWindowSlot(slots) {
+  var slot = 1;
+  while (slots.indexOf(slot) >= 0) slot++;
+  return slot;
+}
+
+function cascadeOffset(otherWindows) {
+  return (Math.max(0, Number(otherWindows) || 0) % 8) * 40;
+}
+
+function wantsNewWindow(payloadJson) {
+  try {
+    var parsed = JSON.parse(String(payloadJson || ''));
+    return !!parsed && parsed.newWindow === true;
+  } catch (e) {
+    return false;
+  }
+}

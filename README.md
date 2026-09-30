@@ -52,18 +52,25 @@ o.bind("SUPER + E", "Omafile", "omarchy-shell shell toggle xyzlab.omafile '{}'")
 Add to `~/.config/hypr/windows.lua`:
 
 ```lua
-o.window({ class = "^org.quickshell$", title = "^Omafile$" }, { float = true, size = { 1100, 720 }, center = true })
+o.window({ class = "^org.quickshell$", title = "^Omafile( [0-9]+)?$" }, { float = true, size = { 1100, 720 }, center = true })
 ```
 
 Omarchy makes every window slightly transparent, so your wallpaper shows faintly through Omafile the same way it does through every other app. If you would rather Omafile were solid, opt it out of that rule:
 
 ```lua
-o.window({ class = "^org.quickshell$", title = "^Omafile$" }, { tag = "-default-opacity", opacity = "1 1" })
+o.window({ class = "^org.quickshell$", title = "^Omafile( [0-9]+)?$" }, { tag = "-default-opacity", opacity = "1 1" })
 ```
 
 ## Usage
 
 Super+E toggles the window. If it is already open it comes to the front. Escape closes it.
+
+To open another window each time instead, bind `omarchy-shell omafile newwindow`. Extra windows are titled `Omafile 2`, `Omafile 3` and so on, and each opens a little down and to the right of the first. Escape closes only the window you are in.
+
+```lua
+hl.unbind("SUPER + E")
+o.bind("SUPER + E", "Omafile (new window)", "omarchy-shell omafile newwindow")
+```
 
 Moving around is covered in [Keyboard](#keyboard); F1 shows the same list inside the window.
 
@@ -321,6 +328,12 @@ Toggle the window from a keybinding or script:
 
 ```bash
 omarchy-shell omafile toggle
+```
+
+Open an additional window:
+
+```bash
+omarchy-shell omafile newwindow
 ```
 
 Check the helper, running transfers, drives and trash:
