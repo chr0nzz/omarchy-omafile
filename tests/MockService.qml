@@ -31,9 +31,10 @@ QtObject {
     for (var i = calls.length - 1; i >= 0; i--) if (calls[i].name === name) return calls[i]
     return null
   }
+  property var localValues: ({})
   function setting(key, fallback) { return values[key] !== undefined ? values[key] : fallback }
-  function settingNow(key, fallback) { return setting(key, fallback) }
-  function updateSetting(key, value) { var v = values; v[key] = value; values = v }
+  function settingNow(key, fallback) { return localValues[key] !== undefined ? localValues[key] : setting(key, fallback) }
+  function updateSetting(key, value) { var v = {}; for (var k in localValues) v[k] = localValues[k]; v[key] = value; localValues = v }
   function startPath() { return "/tmp" }
   function rememberSession(s) { session = s }
   function listDirectory(path, hidden, onChunk, onDone, onError) {
