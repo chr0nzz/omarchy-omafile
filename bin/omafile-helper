@@ -1787,10 +1787,78 @@ def is_user_volume(target, fstype):
     return False
 
 
+UNMOUNTABLE_FSTYPES = frozenset([
+    "swap", "crypto_LUKS", "LVM2_member", "linux_raid_member", "zfs_member",
+    "bcache", "ddf_raid_member", "isw_raid_member", "BitLocker",
+])
+SYSTEM_PARTITION_TYPES = {
+    "efi_system": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+    "microsoft_reserved": "e3c9e316-0b5c-4db8-817d-f92df00215ae",
+    "windows_recovery": "de94bba4-06d1-4d40-a16a-bfd50179d6ac",
+    "bios_boot": "21686148-6449-6e6f-744e-656564454649",
+}
+HIDDEN_PARTTYPES = frozenset(SYSTEM_PARTITION_TYPES.values())
+
+
+def mountable_device(dev):
+    fstype = dev.get("fstype")
+    if not fstype or fstype in UNMOUNTABLE_FSTYPES:
+        return False
+    if str(dev.get("parttype") or "").lower() in HIDDEN_PARTTYPES:
+        return False
+    return str(dev.get("path") or "").startswith("/dev/")
+
+
+def valid_block_device(value):
+    return isinstance(value, str) and value.startswith("/dev/") and ".." not in value
+
+
+def op_mountdev(req, cancel_event):
+    req_id = req["id"]
+    device = req.get("device")
+    if not valid_block_device(device):
+        send_error(req_id, "EINVAL", "block device required")
+        return
+    try:
+        proc = run_trusted("udisksctl", ["mount", "-b", device], timeout=90)
+    except FileNotFoundError:
+        send_error(req_id, "EUNSUPPORTED", "udisksctl is not installed")
+        return
+    except subprocess.TimeoutExpired:
+        send_error(req_id, "ETIMEDOUT", "mount timed out")
+        return
+    out = (proc.stdout or "").strip()
+    if proc.returncode != 0:
+        send_error(req_id, "EMOUNT", (proc.stderr or out or "could not mount").strip())
+        return
+    path = out.split(" at ", 1)[1].strip().rstrip(".") if " at " in out else ""
+    emit({"id": req_id, "t": "done", "path": path})
+
+
+def op_unmountdev(req, cancel_event):
+    req_id = req["id"]
+    device = req.get("device")
+    if not valid_block_device(device):
+        send_error(req_id, "EINVAL", "block device required")
+        return
+    try:
+        proc = run_trusted("udisksctl", ["unmount", "-b", device], timeout=60)
+    except FileNotFoundError:
+        send_error(req_id, "EUNSUPPORTED", "udisksctl is not installed")
+        return
+    except subprocess.TimeoutExpired:
+        send_error(req_id, "ETIMEDOUT", "unmount timed out")
+        return
+    if proc.returncode != 0:
+        send_error(req_id, "EMOUNT", (proc.stderr or proc.stdout or "could not unmount").strip())
+        return
+    emit({"id": req_id, "t": "done"})
+
+
 def op_drives(req):
     req_id = req["id"]
     drives = []
-    lsblk_data = run_tool(["lsblk", "-J", "-b", "-o", "NAME,PATH,LABEL,SIZE,FSTYPE,MOUNTPOINT,RM"])
+    lsblk_data = run_tool(["lsblk", "-J", "-b", "-o", "NAME,PATH,LABEL,SIZE,FSTYPE,MOUNTPOINT,RM,PARTTYPE"])
     findmnt_data = run_tool(["findmnt", "-J", "-b"])
     space_by_mount = {}
     mounted_volumes = []
@@ -1818,6 +1886,7 @@ def op_drives(req):
                 "name": dev.get("name"), "path": dev.get("path"), "label": dev.get("label"),
                 "size": dev.get("size"), "fstype": dev.get("fstype"), "mount": mount,
                 "removable": bool(dev.get("rm")), "free": free, "total": total,
+                "mountable": not mount and mountable_device(dev),
             })
     seen_mounts = set(d["mount"] for d in drives if d.get("mount"))
     for target, source, fstype in mounted_volumes:
@@ -2089,6 +2158,8 @@ CANCELLABLE_OPS = {
     "copy": lambda r, c: op_copy_move(r, c, False),
     "move": lambda r, c: op_copy_move(r, c, True),
     "mounturi": op_mounturi,
+    "mountdev": op_mountdev,
+    "unmountdev": op_unmountdev,
     "recent": op_recent,
     "setdefaultfm": op_setdefaultfm,
     "unmounturi": op_unmounturi,

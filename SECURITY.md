@@ -17,7 +17,7 @@ Only the latest release on `main` receives fixes.
 | Data | Where | Notes |
 | --- | --- | --- |
 | Settings | `~/.config/omarchy/shell.json` | Written by the settings dialog and `omarchy bar set` |
-| Tabs, bookmarks, hidden drives, server addresses | `~/.local/state/omarchy/omafile/state.json` | Plain text. Server addresses are stored, passwords are not |
+| Tabs, bookmarks, server addresses | `~/.local/state/omarchy/omafile/state.json` | Plain text. Server addresses are stored, passwords are not |
 | Trashed files | `$XDG_DATA_HOME/Trash` and per volume `.Trash-$uid` | The freedesktop trash, shared with every other file manager |
 | Desktop entry | `~/.local/share/applications/xyzlab.omafile.desktop` | Only while Default file manager is on |
 | D-Bus service file | `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service` | Only while Default file manager is on. Overrides the system file so Show in folder reaches Omafile |

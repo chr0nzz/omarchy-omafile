@@ -40,6 +40,7 @@ Item {
   property real menuX: 0
   property real menuY: 0
   property var menuEntry: null
+  property var menuDrive: null
   property string menuKind: ""
   property string statusText: ""
   property string appFilter: ""
@@ -532,6 +533,11 @@ Item {
     afterLaunch()
   }
 
+  function driveNotice(title, m) {
+    Quickshell.execDetached(["notify-send", "-a", "Omafile", "-i", "drive-harddisk",
+      title, String((m && m.message) || "")])
+  }
+
   function afterLaunch() {
     if (popupMode) requestClose()
   }
@@ -586,9 +592,63 @@ Item {
     }
     return items
   }
+  function driveActions(row) {
+    var items = []
+    if (row.mounted !== true) {
+      items.push({ key: "drive:mount", label: "Mount", glyph: Icons.placeGlyph(row.key) })
+      return items
+    }
+    items.push({ key: "drive:open", label: "Open", glyph: Icons.actionGlyph("open") })
+    items.push({ key: "drive:opentab", label: "Open in new tab", glyph: Icons.actionGlyph("add") })
+    items.push({ key: "sep1", label: "", glyph: "" })
+    items.push({ key: "drive:unmount", label: "Unmount", glyph: Icons.actionGlyph("eject"),
+      disabled: row.unmountable !== true })
+    if (row.removable === true)
+      items.push({ key: "drive:eject", label: "Eject", glyph: Icons.actionGlyph("eject") })
+    return items
+  }
+
+  function openDriveMenu(row, source, x, y) {
+    menuKind = "drive"
+    menuEntry = null
+    menuDrive = row
+    menuActions = driveActions(row)
+    menuCursor = -1
+    var pt = source.mapToItem(keyCatcher, x, y)
+    menuX = pt.x
+    menuY = pt.y
+    menuOpen = true
+  }
+
+  function mountDriveAndOpen(device) {
+    if (!service) return
+    service.mountDrive(device, function (m) {
+      if (m.path) sidebar.navigate(String(m.path))
+    }, function (m) {
+      root.driveNotice("Could not mount " + device, m)
+    })
+  }
+
+  function unmountDriveRow(row, powerOff) {
+    if (!service || row.unmountable !== true) return
+    var mount = String(row.path)
+    var p = activePane()
+    if (p && (p.path === mount || p.path.indexOf(mount + "/") === 0))
+      sidebar.navigate(service.home)
+    if (powerOff === true) {
+      service.ejectDrive(row.device)
+      return
+    }
+    service.unmountDrive(row.device, null, function (m) {
+      root.driveNotice("Could not unmount " + mount, m)
+    })
+  }
+
   function runAction(key) {
     var p = activePane()
     var entry = menuEntry
+    var drive = menuDrive
+    menuDrive = null
     menuOpen = false
     menuKind = ""
     if (key.indexOf("sort:") === 0) applySortPreset(key.substring(5))
@@ -610,6 +670,11 @@ Item {
     else if (key === "bookmark") service.togglePinned(entry && entry.isDir ? entry.path : p.path)
     else if (key === "terminal") service.openTerminal(p.path)
     else if (key === "refresh") p.refresh()
+    else if (key === "drive:mount" && drive) mountDriveAndOpen(drive.device)
+    else if (key === "drive:open" && drive) sidebar.navigate(drive.path)
+    else if (key === "drive:opentab" && drive) newTab(activeSide, drive.path)
+    else if (key === "drive:unmount" && drive) unmountDriveRow(drive, false)
+    else if (key === "drive:eject" && drive) unmountDriveRow(drive, true)
   }
   property bool previewOpen: false
   property var previewEntry: null
@@ -1349,14 +1414,14 @@ Item {
           }
           onOpenInNewTab: function (target) { root.newTab(root.activeSide, target) }
           onRemoveBookmark: function (target) { root.service.togglePinned(target) }
-          onHideDrive: function (key) { root.service.toggleHiddenDrive(key) }
-          onShowAllDrives: root.showDialog("settings", "Settings", "", null)
+          onDriveMenu: function (row, source, x, y) { root.openDriveMenu(row, source, x, y) }
           onConnectServer: function (uri) {
             root.showDialog("connect", "Connect to a server", String(uri || ""), null)
           }
           onDisconnectServer: function (path) {
             if (root.service) root.service.disconnectServer(path, null, null)
           }
+          onMountDrive: function (device) { root.mountDriveAndOpen(device) }
         }
 
         Row {
@@ -2436,34 +2501,6 @@ Item {
                     checked: root.boolSetting("showDrives", true)
                     onClicked: root.applySettingNow("showDrives", !checked)
                   }
-
-                  PanelSectionHeader {
-                    width: parent.width
-                    visible: root.hiddenDriveRows().length > 0
-                    text: "Hidden drives"
-                  }
-
-                  Repeater {
-                    model: root.dialogMode === "settings" ? root.hiddenDriveRows() : []
-
-                    delegate: PlaceRow {
-                      required property var modelData
-                      width: settingsColumn.width
-                      label: modelData.path
-                      glyph: Icons.placeGlyph("drive")
-                      trailing: "show"
-                      onClicked: root.service.toggleHiddenDrive(modelData.path)
-                    }
-                  }
-
-                  Text {
-                    width: parent.width
-                    visible: root.hiddenDriveRows().length === 0
-                    text: "No hidden drives"
-                    color: Util.alpha(Color.popups.text, 0.5)
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.caption
-                  }
                 }
               }
             }
@@ -2844,14 +2881,6 @@ Item {
       if (split) paneB.thumbnails = value
     }
     rememberSession()
-  }
-
-  function hiddenDriveRows() {
-    if (!service) return []
-    var out = []
-    var list = service.hiddenDrives
-    for (var i = 0; i < list.length; i++) out.push({ path: String(list[i]) })
-    return out
   }
 
   function conflictMessage() {

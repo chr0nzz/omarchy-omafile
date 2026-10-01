@@ -17,7 +17,6 @@ QtObject {
   property var drives: []
   property var discovered: []
   property var servers: []
-  property var hiddenDrives: []
   property var values: ({})
   property var pickRequest: null
   signal conflictRaised(int jobId, var info)
@@ -46,7 +45,6 @@ QtObject {
   function cancel() {}
   function noteRecent() {}
   function trashFilesPath() { return "/tmp/.trash" }
-  function driveHidden() { return false }
   function networkMounts() { return [] }
   function statPaths(paths, cb) {}
   function peekFile(path, limit, onDone, onError) { record("peekFile", [path]); onDone({ text: "key: value\n", binary: false, truncated: false }) }

@@ -93,7 +93,7 @@ Right click a folder and choose Bookmark this folder to pin it. Remove a bookmar
 
 Recent lists the files you opened most recently, newest first, from the same history the rest of the desktop uses. Opening one goes straight to the file. There is no folder above it, so leave by picking a place or a bookmark.
 
-Hover a drive and click the eye to hide it. Hidden drives come back from Settings.
+Every drive is listed. Unmounted partitions are greyed out, and clicking one mounts it through udisks. Right click a drive to open it, open it in a new tab, unmount it or eject it. System mounts such as `/boot` can't be unmounted from here.
 
 ### Network drives
 

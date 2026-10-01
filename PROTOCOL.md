@@ -239,10 +239,23 @@ Replies `{"t": "space", "total": T, "free": F, "used": U, "mount": M}` then `don
 {"id": N, "op": "drives"}
 ```
 
-Replies `{"t": "drives", "drives": [{"name", "path", "label", "size", "fstype", "mount", "removable", "free", "total"}]}`
+Replies `{"t": "drives", "drives": [{"name", "path", "label", "size", "fstype", "mount", "removable", "free", "total", "mountable"}]}`
 then `done`. Sourced from `lsblk -J -b -o ...` and `findmnt -J -b`. Both tools are part
 of util-linux and are always present. A missing tool yields an empty list, never an
-error.
+error. `mountable` is true for an unmounted partition with a filesystem udisks can mount.
+Swap, LUKS, LVM and RAID members, and EFI, BIOS boot, Microsoft reserved and Windows
+recovery partitions are never mountable.
+
+### mountdev, unmountdev
+
+```
+{"id": N, "op": "mountdev", "device": "/dev/sdb1"}
+{"id": N, "op": "unmountdev", "device": "/dev/sdb1"}
+```
+
+Runs `udisksctl mount -b` or `udisksctl unmount -b`. `device` must be a path under `/dev/`.
+`mountdev` replies `done` with `path`, the new mount point. Errors: `EINVAL` for a bad
+device, `EUNSUPPORTED` without udisksctl, `ETIMEDOUT`, and `EMOUNT` with udisks' message.
 
 ### dirs
 

@@ -800,6 +800,36 @@ class DirsDrivesTests(HelperTestCase):
         drives_msg = [m for m in msgs if m["t"] == "drives"][0]
         self.assertIsInstance(drives_msg["drives"], list)
 
+    def test_mountdev_rejects_paths_outside_dev(self):
+        for device in ["/etc/passwd", "/dev/../etc/passwd", "", 7]:
+            for op in ["mountdev", "unmountdev"]:
+                msgs = self.helper.call({"id": self.next_id(), "op": op, "device": device})
+                err = self.terminal(msgs)
+                self.assertEqual(err["t"], "error")
+                self.assertEqual(err["code"], "EINVAL")
+
+class MountableDeviceTests(unittest.TestCase):
+    def load_helper(self):
+        import importlib.util
+        spec = importlib.util.spec_from_loader(
+            "omafile_helper_mountable",
+            importlib.machinery.SourceFileLoader("omafile_helper_mountable", HELPER_PATH))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_filesystems_are_offered_and_system_partitions_are_not(self):
+        helper = self.load_helper()
+        self.assertTrue(helper.mountable_device({"path": "/dev/sdb1", "fstype": "ntfs"}))
+        self.assertTrue(helper.mountable_device({"path": "/dev/sdc1", "fstype": "ext4", "parttype": None}))
+        self.assertFalse(helper.mountable_device({"path": "/dev/sda2", "fstype": "swap"}))
+        self.assertFalse(helper.mountable_device({"path": "/dev/sda3", "fstype": "crypto_LUKS"}))
+        self.assertFalse(helper.mountable_device({"path": "/dev/sdd", "fstype": None}))
+        self.assertFalse(helper.mountable_device({
+            "path": "/dev/nvme0n1p1", "fstype": "vfat",
+            "parttype": "C12A7328-F81F-11D2-BA4B-00A0C93EC93B"}))
+        self.assertFalse(helper.mountable_device({"path": "sdb1", "fstype": "ext4"}))
+
 class WatchTests(HelperTestCase):
     def test_watch_reports_change_and_unwatch_completes(self):
         watch_dir = self.path("watched")

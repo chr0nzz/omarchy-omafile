@@ -32,7 +32,6 @@ Item {
   property real trashBytes: 0
   property var recent: []
   property var pinned: []
-  property var hiddenDrives: []
   property var servers: []
   property var session: null
   property var pickRequest: null
@@ -747,6 +746,32 @@ Item {
     Quickshell.execDetached(["sh", "-c", "printf %s \"$1\" | wl-copy", "omafile", String(text)])
   }
 
+  function mountDrive(devicePath, onDone, onError) {
+    return request({ op: "mountdev", device: String(devicePath) }, {
+      onDone: function (m) {
+        root.refreshDrives()
+        if (onDone) onDone(m)
+      },
+      onError: function (m) {
+        root.refreshDrives()
+        if (onError) onError(m)
+      }
+    })
+  }
+
+  function unmountDrive(devicePath, onDone, onError) {
+    return request({ op: "unmountdev", device: String(devicePath) }, {
+      onDone: function (m) {
+        root.refreshDrives()
+        if (onDone) onDone(m)
+      },
+      onError: function (m) {
+        root.refreshDrives()
+        if (onError) onError(m)
+      }
+    })
+  }
+
   function ejectDrive(devicePath) {
     Quickshell.execDetached(["sh", "-c",
       "udisksctl unmount -b \"$1\" && udisksctl power-off -b \"$1\"", "omafile", String(devicePath)])
@@ -758,32 +783,6 @@ Item {
       if (recent[i] !== path) next.push(recent[i])
     recent = next
     saveSoon()
-  }
-
-  function driveHidden(key) {
-    var id = String(key || "")
-    for (var i = 0; i < hiddenDrives.length; i++)
-      if (String(hiddenDrives[i]) === id) return true
-    return false
-  }
-
-  function toggleHiddenDrive(key) {
-    var id = String(key || "")
-    if (!id) return
-    var next = []
-    var found = false
-    for (var i = 0; i < hiddenDrives.length; i++) {
-      if (String(hiddenDrives[i]) === id) found = true
-      else next.push(hiddenDrives[i])
-    }
-    if (!found) next.push(id)
-    hiddenDrives = next
-    persist()
-  }
-
-  function showAllDrives() {
-    hiddenDrives = []
-    persist()
   }
 
   function togglePinned(path) {
@@ -865,7 +864,6 @@ Item {
       version: 1,
       recent: recent,
       pinned: pinned,
-      hiddenDrives: hiddenDrives,
       servers: servers,
       previousFileManager: previousFileManager,
       session: session
@@ -883,7 +881,6 @@ Item {
     if (!parsed || typeof parsed !== "object") return
     if (parsed.recent) recent = parsed.recent
     if (parsed.pinned) pinned = parsed.pinned
-    if (parsed.hiddenDrives) hiddenDrives = parsed.hiddenDrives
     if (parsed.servers) servers = parsed.servers
     if (parsed.previousFileManager) previousFileManager = String(parsed.previousFileManager)
     if (parsed.session) session = parsed.session

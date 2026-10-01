@@ -61,6 +61,7 @@ Item {
     if (!row) return
     if (row.connect === true) { sidebar.connectServer(""); return }
     if (row.server === true) { sidebar.connectServer(String(row.uri || "")); return }
+    if (row.localDrive === true && row.mounted !== true) { sidebar.mountDrive(row.device); return }
     if (!row.path) return
     if (inNewTab) sidebar.openInNewTab(row.path)
     else sidebar.navigate(row.path)
@@ -70,8 +71,6 @@ Item {
     var row = cursorRow()
     if (!row) return
     if (row.bookmark === true) sidebar.removeBookmark(row.path)
-    else if (row.key === "drive" || row.key === "usb" || row.key === "networkdrive")
-      sidebar.hideDrive(row.path)
   }
 
 
@@ -79,10 +78,10 @@ Item {
   signal navigate(string target)
   signal openInNewTab(string target)
   signal removeBookmark(string target)
-  signal hideDrive(string key)
-  signal showAllDrives()
+  signal driveMenu(var row, Item source, real x, real y)
   signal connectServer(string uri)
   signal disconnectServer(string path)
+  signal mountDrive(string device)
 
   function usablePlace(value, homePath) {
     var p = String(value || "")
@@ -107,8 +106,14 @@ Item {
     return name
   }
 
+  function userMount(mount) {
+    var m = String(mount || "")
+    return m.indexOf("/run/media/") === 0 || m.indexOf("/media/") === 0
+  }
+
   function mountableDrive(drive) {
-    if (!drive || !drive.mount) return false
+    if (!drive) return false
+    if (!drive.mount) return drive.mountable === true
     var mount = String(drive.mount)
     if (mount.charAt(0) === "[") return false
     if (String(drive.fstype || "") === "swap") return false
@@ -153,12 +158,17 @@ Item {
       for (var d = 0; d < drives.length; d++) {
         var drive = drives[d]
         if (!mountableDrive(drive)) continue
-        if (service && service.driveHidden(String(drive.mount))) continue
+        var isMounted = !!drive.mount
         vols.push({
           key: drive.network === true ? "networkdrive" : (drive.removable ? "usb" : "drive"),
-          label: driveLabel(drive),
-          path: String(drive.mount),
+          label: isMounted ? driveLabel(drive)
+            : String(drive.label || Model.basename(String(drive.path || ""))),
+          path: isMounted ? String(drive.mount) : "",
           device: String(drive.path || ""),
+          localDrive: drive.network !== true,
+          mounted: isMounted,
+          unmountable: isMounted && drive.network !== true
+            && (drive.removable === true || userMount(drive.mount)),
           removable: drive.removable === true,
           free: Number(drive.free) || 0,
           total: Number(drive.total) || 0
@@ -171,7 +181,6 @@ Item {
     var mounted = service ? service.networkMounts() : []
     for (var n = 0; n < mounted.length; n++) {
       var share = mounted[n]
-      if (service && service.driveHidden(String(share.mount))) continue
       net.push({
         key: "networkdrive", label: String(share.label || share.mount),
         path: String(share.mount), mounted: true,
@@ -264,13 +273,10 @@ Item {
                 HoverHandler { id: placeHover }
 
                 MouseArea {
+                  id: placeMouse
                   anchors.fill: parent
                   acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                   onClicked: function (mouse) {
-                    if (modelData.unhide === true) {
-                      sidebar.showAllDrives()
-                      return
-                    }
                     if (modelData.connect === true) {
                       sidebar.connectServer("")
                       return
@@ -279,16 +285,17 @@ Item {
                       sidebar.connectServer(String(modelData.uri || ""))
                       return
                     }
-                    if (mouse.button === Qt.RightButton && modelData.mounted === true) {
-                      sidebar.disconnectServer(modelData.path)
-                      return
-                    }
                     if (mouse.button === Qt.RightButton) {
-                      if (modelData.key === "drive" || modelData.key === "usb"
-                        || modelData.key === "networkdrive")
-                        sidebar.hideDrive(modelData.path)
+                      if (modelData.localDrive === true)
+                        sidebar.driveMenu(modelData, placeMouse, mouse.x, mouse.y)
+                      else if (modelData.mounted === true)
+                        sidebar.disconnectServer(modelData.path)
                       else if (modelData.bookmark === true)
                         sidebar.removeBookmark(modelData.path)
+                      return
+                    }
+                    if (modelData.localDrive === true && modelData.mounted !== true) {
+                      sidebar.mountDrive(modelData.device)
                       return
                     }
                     if (mouse.button === Qt.MiddleButton) sidebar.openInNewTab(modelData.path)
@@ -305,8 +312,9 @@ Item {
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: Icons.placeGlyph(modelData.key)
-                    color: sidebar.currentPath === modelData.path
-                      ? Color.accent : Util.alpha(Color.foreground, 0.6)
+                    color: sidebar.currentPath === modelData.path && modelData.path !== ""
+                      ? Color.accent
+                      : Util.alpha(Color.foreground, modelData.localDrive === true && modelData.mounted !== true ? 0.3 : 0.6)
                     font.family: Style.font.family
                     font.pixelSize: Style.font.iconSmall
                   }
@@ -314,13 +322,12 @@ Item {
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - Style.space(
-                      (modelData.removable === true || modelData.bookmark === true
-                        || modelData.key === "drive" || modelData.key === "usb"
-                        || (modelData.key === "network" && modelData.mounted === true))
-                      ? 46 : 30)
+                      (modelData.mounted === true && modelData.localDrive === true)
+                        || modelData.bookmark === true ? 52 : 30)
                     text: modelData.label
-                    color: sidebar.currentPath === modelData.path
-                      ? Color.foreground : Util.alpha(Color.foreground, 0.75)
+                    color: sidebar.currentPath === modelData.path && modelData.path !== ""
+                      ? Color.foreground
+                      : Util.alpha(Color.foreground, modelData.localDrive === true && modelData.mounted !== true ? 0.4 : 0.75)
                     font.family: Style.font.family
                     font.pixelSize: Style.font.bodySmall
                     elide: Text.ElideMiddle
@@ -344,39 +351,11 @@ Item {
 
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: (modelData.key === "drive" || modelData.key === "usb"
-                      || modelData.key === "networkdrive")
-                      && modelData.connect !== true && modelData.server !== true
-                      && modelData.unhide !== true && placeHover.hovered
-                    text: Icons.actionGlyph("hidden")
-                    color: hideHover.hovered ? Color.urgent : Util.alpha(Color.foreground, 0.35)
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.iconSmall
-
-                    HoverHandler { id: hideHover }
-
-                    MouseArea {
-                      anchors.fill: parent
-                      onClicked: sidebar.hideDrive(modelData.path)
-                    }
-                  }
-
-                  Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: modelData.removable === true
+                    visible: modelData.localDrive === true && modelData.mounted === true
                     text: Icons.actionGlyph("eject")
-                    color: ejectHover.hovered ? Color.accent : Util.alpha(Color.foreground, 0.45)
+                    color: Util.alpha(Color.foreground, 0.45)
                     font.family: Style.font.family
                     font.pixelSize: Style.font.iconSmall
-
-                    HoverHandler { id: ejectHover }
-
-                    MouseArea {
-                      anchors.fill: parent
-                      onClicked: {
-                        if (sidebar.service) sidebar.service.ejectDrive(modelData.device)
-                      }
-                    }
                   }
                 }
               }
