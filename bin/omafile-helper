@@ -478,6 +478,13 @@ def copy_meta(dst_bytes, lst):
     except OSError:
         pass
 
+def same_file(a, b):
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
 def unique_dest_name(dest_dir_bytes, name_bytes):
     if not os.path.lexists(os.path.join(dest_dir_bytes, name_bytes)):
         return name_bytes
@@ -608,7 +615,10 @@ def op_copy_move(req, cancel_event, is_move):
         src_str = to_str(src_bytes)
         final_dst = dst_bytes
         if os.path.lexists(dst_bytes):
-            action = resolve_conflict(req_id, cancel_event, src_str, to_str(dst_bytes), dst_bytes, conflict_mode, job_state)
+            if same_file(src_bytes, dst_bytes):
+                action = "rename"
+            else:
+                action = resolve_conflict(req_id, cancel_event, src_str, to_str(dst_bytes), dst_bytes, conflict_mode, job_state)
             if action == "cancel":
                 raise Cancelled()
             if action == "skip":
@@ -689,7 +699,10 @@ def op_copy_move(req, cancel_event, is_move):
         src_str = to_str(src_bytes)
         final_dst = dst_bytes
         if os.path.lexists(dst_bytes):
-            action = resolve_conflict(req_id, cancel_event, src_str, to_str(dst_bytes), dst_bytes, conflict_mode, job_state)
+            if same_file(src_bytes, dst_bytes):
+                action = "skip"
+            else:
+                action = resolve_conflict(req_id, cancel_event, src_str, to_str(dst_bytes), dst_bytes, conflict_mode, job_state)
             if action == "cancel":
                 raise Cancelled()
             if action == "skip":

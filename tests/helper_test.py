@@ -431,6 +431,30 @@ class CopyTests(HelperTestCase):
         with open(existing) as f:
             self.assertEqual(f.read(), "old content")
 
+    def test_copy_onto_itself_makes_a_copy_even_when_overwriting(self):
+        folder = self.path("same")
+        os.makedirs(folder)
+        src = os.path.join(folder, "file.txt")
+        with open(src, "w") as f:
+            f.write("keep me")
+        msgs = self.helper.call({"id": self.next_id(), "op": "copy", "sources": [src], "dest": folder, "conflict": "overwrite"})
+        self.assertEqual(self.terminal(msgs)["copied"], 1)
+        with open(src) as f:
+            self.assertEqual(f.read(), "keep me")
+        self.assertTrue(os.path.isfile(os.path.join(folder, "file (1).txt")))
+
+    def test_move_onto_itself_is_skipped(self):
+        folder = self.path("stay")
+        os.makedirs(folder)
+        src = os.path.join(folder, "file.txt")
+        with open(src, "w") as f:
+            f.write("keep me")
+        msgs = self.helper.call({"id": self.next_id(), "op": "move", "sources": [src], "dest": folder, "conflict": "overwrite"})
+        self.assertEqual(self.terminal(msgs)["t"], "done")
+        with open(src) as f:
+            self.assertEqual(f.read(), "keep me")
+        self.assertEqual(os.listdir(folder), ["file.txt"])
+
     def test_copy_conflict_ask_resolve_overwrite(self):
         src, dest_dir, existing = self._make_conflict()
         req_id = self.next_id()
