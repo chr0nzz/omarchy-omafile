@@ -20,7 +20,7 @@ Item {
   readonly property bool filterFocused: filterInput.activeFocus
   readonly property bool pathFocused: pathInput.activeFocus
 
-  signal filesDropped(var urls, string target)
+  signal filesDropped(var urls, string target, var position)
 
   function crumbTarget(crumb) {
     return Model.expandTilde(String(crumb.path || ""), bar.home)
@@ -112,7 +112,7 @@ Item {
           objectName: "locationDrop"
           anchors.fill: parent
           target: bar.path.charAt(0) === "/" ? bar.path : ""
-          onFilesDropped: function (urls, target) { bar.filesDropped(urls, target) }
+          onFilesDropped: function (urls, target, position) { bar.filesDropped(urls, target, position) }
         }
 
         MouseArea {
@@ -167,7 +167,7 @@ Item {
                     objectName: "crumbDrop" + index
                     anchors.fill: parent
                     target: bar.virtualView ? "" : bar.crumbTarget(modelData)
-                    onFilesDropped: function (urls, target) { bar.filesDropped(urls, target) }
+                    onFilesDropped: function (urls, target, position) { bar.filesDropped(urls, target, position) }
                   }
 
                   HoverHandler { id: crumbHover }

@@ -5,7 +5,7 @@ DropArea {
 
   property string target: ""
 
-  signal filesDropped(var urls, string target)
+  signal filesDropped(var urls, string target, var position)
 
   function urlsOf(ev) {
     var out = []
@@ -26,7 +26,9 @@ DropArea {
     if (area.target === "") return true
     if (area.target === "trash:") return false
     for (var i = 0; i < urls.length; i++) {
-      if (decodeURIComponent(String(urls[i]).replace(/^file:\/\//, "")) === area.target) return true
+      try {
+        if (decodeURIComponent(String(urls[i]).replace(/^file:\/\//, "")) === area.target) return true
+      } catch (e) { return true }
     }
     return false
   }
@@ -43,6 +45,6 @@ DropArea {
     var urls = urlsOf(drop)
     if (urls.length === 0 || blocked(urls)) return
     drop.accept(Qt.CopyAction)
-    area.filesDropped(urls, area.target)
+    area.filesDropped(urls, area.target, area.mapToGlobal(drop.x, drop.y))
   }
 }

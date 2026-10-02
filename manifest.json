@@ -33,6 +33,7 @@
       "confirmTrash": true,
       "useTrash": true,
       "defaultView": "list",
+      "dropAction": "ask",
       "viewScale": 1,
       "terminal": "",
       "editor": "",
@@ -94,6 +95,12 @@
         "type": "boolean",
         "label": "Delete moves to trash",
         "defaultValue": true
+      },
+      {
+        "key": "dropAction",
+        "type": "string",
+        "label": "Drag and drop: ask, copy or move",
+        "defaultValue": "ask"
       },
       {
         "key": "defaultView",
