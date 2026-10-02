@@ -22,7 +22,7 @@ Only the latest release on `main` receives fixes.
 | Desktop entry | `~/.local/share/applications/xyzlab.omafile.desktop` | Only while Default file manager is on |
 | D-Bus service file | `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service` | Only while Default file manager is on. Overrides the system file so Show in folder reaches Omafile |
 | Default handler | `xdg-mime` for `inode/directory` | Only while Default file manager is on. Turning it off restores the previous handler |
-| Clipboard | `wl-copy` | Only when you choose Copy path |
+| Clipboard | `wl-copy`, `wl-paste` | Written when you choose Copy path, or copy or cut files. Read when you paste |
 
 ## Processes Omafile runs
 
@@ -36,7 +36,7 @@ Only the latest release on `main` receives fixes.
 | `gio list network:///` | Looking for servers the network advertises |
 | `xdg-mime`, `update-desktop-database` | Only when Default file manager is turned on or off |
 | `udisksctl` | Only when you eject a removable drive |
-| `wl-copy` | Only when you choose Copy path |
+| `wl-copy`, `wl-paste` | Only when you choose Copy path, or copy, cut or paste files |
 | `xdg-terminal-exec`, `omarchy-launch-editor` | Only when you choose Open in terminal or Open in editor |
 
 Every one of these is spawned as a fixed argument list. No command Omafile runs is ever assembled into a shell string, so a file name cannot become part of a command.
