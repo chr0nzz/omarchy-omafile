@@ -172,7 +172,7 @@ Omafile follows GNOME Files conventions, so shortcuts you already know work here
 
 | Keys | Action |
 |------|--------|
-| `Enter` / `Ctrl+O` / `Alt+Down` | Open the selected items, folders in new tabs when several are selected |
+| `Enter` / `Ctrl+O` / `Alt+Down` | Open the selected items, folders in new tabs when several are selected. Asks first for more than five |
 | `Backspace` / `Alt+Up` | Go to the parent folder |
 | `Alt+Left` / `Alt+Right` | Back and forward |
 | Mouse back / forward | Back and forward |

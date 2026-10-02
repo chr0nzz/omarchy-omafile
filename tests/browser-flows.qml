@@ -226,6 +226,27 @@ ShellRoot {
         pane().clearSelection()
       }
 
+      function test_9bb_openManyAsksFirst() {
+        waitRows()
+        mock.calls = []
+        var limit = browser.openConfirmLimit
+        browser.openConfirmLimit = 2
+        pane().selectAll()
+        keyClick(Qt.Key_Return)
+        compare(mock.called("openExternally"), null, "asks before opening more than the limit")
+        keyClick(Qt.Key_Escape)
+        compare(mock.called("openExternally"), null, "cancel opens nothing")
+        compare(browser.tabsA.length, 1)
+        keyClick(Qt.Key_Return)
+        keyClick(Qt.Key_Return)
+        var opened = mock.calls.filter(function (c) { return c.name === "openExternally" })
+        compare(opened.length, 2, "confirming opens both files")
+        compare(browser.tabsA.length, 2, "confirming opens the folder in a new tab")
+        browser.openConfirmLimit = limit
+        keyClick(Qt.Key_W, Qt.ControlModifier)
+        pane().clearSelection()
+      }
+
       function test_9c_folderMenu() {
         waitRows()
         keyClick(Qt.Key_F10)

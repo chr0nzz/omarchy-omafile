@@ -934,10 +934,24 @@ Item {
     if (split) paneB.refresh()
   }
 
+  property int openConfirmLimit: 5
+
   function openSelectedItems() {
     var p = activePane()
     var sel = p.selectedEntries
     if (sel.length <= 1 || picking) { p.activateCursor(); return }
+    if (sel.length > openConfirmLimit) {
+      confirmAction = "openmany"
+      confirm.message = "Open " + Model.formatCount(sel.length, "item", "items") + "?"
+      confirm.confirmText = "Open"
+      dialogPayload = sel
+      confirm.opened = true
+      return
+    }
+    openEntries(sel)
+  }
+
+  function openEntries(sel) {
     var dirs = []
     for (var i = 0; i < sel.length; i++) {
       if (sel[i].isDir && !sel[i].isBroken) dirs.push(sel[i].path)
@@ -2774,6 +2788,7 @@ Item {
         root.confirmAction = ""
         if (targets && action === "trash") root.performTrash(targets)
         else if (targets && action === "pickreplace") root.completePick(targets)
+        else if (targets && action === "openmany") root.openEntries(targets)
         else if (targets) root.performDelete(targets)
         keyCatcher.forceActiveFocus()
       }
