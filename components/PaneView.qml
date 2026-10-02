@@ -70,7 +70,7 @@ Item {
   signal newTabRequested(string path)
   signal contextRequested(var entry, real sceneX, real sceneY)
   signal statusChanged()
-  signal dropRequested(var urls, string dest)
+  signal dropRequested(var urls, string dest, var position)
 
   property string dragUriList: ""
   property var dragGrab: null
@@ -840,7 +840,7 @@ Item {
       id: paneDrop
       anchors.fill: parent
       target: pane.virtualView || pane.searching ? "" : pane.path
-      onFilesDropped: function (urls, dest) { pane.dropRequested(urls, dest) }
+      onFilesDropped: function (urls, dest, position) { pane.dropRequested(urls, dest, position) }
     }
 
     MouseArea {
@@ -1039,7 +1039,7 @@ Item {
             id: rowDrop
             anchors.fill: parent
             target: row.entry.isDir && !row.entry.isBroken && !pane.virtualView ? row.entry.path : ""
-            onFilesDropped: function (urls, dest) { pane.dropRequested(urls, dest) }
+            onFilesDropped: function (urls, dest, position) { pane.dropRequested(urls, dest, position) }
           }
 
           DragProxy {
@@ -1242,7 +1242,7 @@ Item {
             id: cellDrop
             anchors.fill: parent
             target: cell.entry.isDir && !cell.entry.isBroken && !pane.virtualView ? cell.entry.path : ""
-            onFilesDropped: function (urls, dest) { pane.dropRequested(urls, dest) }
+            onFilesDropped: function (urls, dest, position) { pane.dropRequested(urls, dest, position) }
           }
 
           DragProxy {

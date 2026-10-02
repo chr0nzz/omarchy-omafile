@@ -83,7 +83,7 @@ Item {
   signal showAllDrives()
   signal connectServer(string uri)
   signal disconnectServer(string path)
-  signal dropRequested(var urls, string dest)
+  signal dropRequested(var urls, string dest, var position)
   signal placeMenuRequested(var row, real x, real y)
   signal bookmarkDropped(var paths)
 
@@ -310,7 +310,7 @@ Item {
                   anchors.fill: parent
                   target: modelData.path && String(modelData.path).indexOf(":") < 0
                     && modelData.connect !== true && modelData.server !== true ? String(modelData.path) : ""
-                  onFilesDropped: function (urls, dest) { sidebar.dropRequested(urls, dest) }
+                  onFilesDropped: function (urls, dest, position) { sidebar.dropRequested(urls, dest, position) }
                 }
 
                 DropArea {
@@ -490,7 +490,7 @@ Item {
             id: trashDrop
             anchors.fill: parent
             target: "trash:"
-            onFilesDropped: function (urls, dest) { sidebar.dropRequested(urls, dest) }
+            onFilesDropped: function (urls, dest, position) { sidebar.dropRequested(urls, dest, position) }
           }
 
           MouseArea {

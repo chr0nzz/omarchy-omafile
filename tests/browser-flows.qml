@@ -195,6 +195,7 @@ ShellRoot {
       }
 
       function test_3e_breadcrumbDrops() {
+        mock.updateSetting("dropAction", "move")
         var bar = findChild(browser, "pathBar")
         verify(bar !== null)
         compare(bar.crumbTarget({ path: "~" }), bar.home || "/")
@@ -203,14 +204,15 @@ ShellRoot {
         mock.calls = []
         var target = findChild(bar, "locationDrop")
         verify(target !== null)
-        target.filesDropped(["file:///tmp/docs/inner.txt"], "/tmp")
+        target.filesDropped(["file:///tmp/docs/inner.txt"], "/tmp", bar.mapToGlobal(20, 20))
         compare(mock.called("beginTransfer").args[0], "move")
         compare(mock.called("beginTransfer").args[2], "/tmp")
         var crumb = findChild(bar, "crumbDrop0")
         verify(crumb !== null)
         mock.calls = []
-        crumb.filesDropped(["file:///tmp/docs/inner.txt"], "/tmp")
+        crumb.filesDropped(["file:///tmp/docs/inner.txt"], "/tmp", bar.mapToGlobal(20, 20))
         compare(mock.called("beginTransfer").args[2], "/tmp")
+        mock.updateSetting("dropAction", "auto")
       }
 
       function test_3f_clipboard() {
@@ -806,21 +808,77 @@ ShellRoot {
       function test_9e_dropMovesOrCopies() {
         waitRows()
         mock.calls = []
-        mock.sameDrive = true
+        mock.updateSetting("dropAction", "move")
         browser.handleDrop(["file:///elsewhere/My%20file.txt", "https://example.com/x"], "/tmp/docs")
         var call = mock.called("beginTransfer")
         compare(call.args[0], "move")
         compare(call.args[1].length, 1)
         compare(call.args[1][0], "/elsewhere/My file.txt")
         mock.calls = []
-        mock.sameDrive = false
+        mock.updateSetting("dropAction", "copy")
         browser.handleDrop(["file:///elsewhere/a.txt"], "/tmp/docs")
         compare(mock.called("beginTransfer").args[0], "copy")
         mock.calls = []
         browser.handleDrop(["file:///tmp/docs"], "/tmp/docs")
         browser.handleDrop(["file:///tmp/alpha.yml"], "/tmp")
         compare(mock.called("beginTransfer"), null, "no drop onto itself or its own folder")
+        mock.updateSetting("dropAction", "auto")
+        var wasSame = mock.sameDrive
         mock.sameDrive = true
+        browser.handleDrop(["file:///elsewhere/a.txt"], "/tmp/docs")
+        compare(mock.called("beginTransfer").args[0], "move", "automatic moves on the same drive")
+        verify(!browser.menuOpen)
+        mock.calls = []
+        mock.sameDrive = false
+        browser.handleDrop(["file:///elsewhere/a.txt"], "/tmp/docs")
+        compare(mock.called("beginTransfer").args[0], "copy", "automatic copies to another drive")
+        verify(!browser.menuOpen)
+        mock.sameDrive = wasSame
+      }
+
+      function test_9f_dropChoices() {
+        mock.updateSetting("dropAction", "ask")
+        mock.calls = []
+        var position = browser.mapToGlobal(320, 220)
+        browser.handleDrop(["file:///elsewhere/a.txt"], "/tmp/docs", position)
+        verify(browser.menuOpen)
+        compare(browser.menuKind, "drop")
+        compare(browser.menuX, 320)
+        compare(browser.menuY, 220)
+        compare(mock.called("beginTransfer"), null)
+        menuItem("Copy")
+        compare(mock.called("beginTransfer").args[0], "copy")
+        verify(!browser.menuOpen)
+        compare(browser.pendingDrop, null)
+        browser.runAction("drop:move")
+        compare(mock.called("beginTransfer").args[0], "copy", "consumed drop cannot run twice")
+        browser.handleDrop(["file:///elsewhere/folder"], "/tmp/docs", position)
+        menuItem("Move")
+        compare(mock.called("beginTransfer").args[0], "move")
+        for (var i = 0; i < 3; i++) {
+          mock.calls = []
+          browser.handleDrop(["file:///elsewhere/a.txt"], "/tmp/docs", position)
+          if (i === 0) menuItem("Cancel")
+          else if (i === 1) keyClick(Qt.Key_Escape)
+          else mouseClick(browser, 10, 10)
+          verify(!browser.menuOpen)
+          compare(browser.pendingDrop, null)
+          compare(mock.called("beginTransfer"), null)
+        }
+        browser.handleDrop(["file:///tmp/docs", "file:///tmp/%ZZ"], "/tmp/docs/child", position)
+        verify(!browser.menuOpen)
+        compare(mock.called("beginTransfer"), null)
+        mock.updateSetting("dropAction", "auto")
+        browser.showDialog("settings", "Settings", "", null)
+        browser.settingsSection = "browsing"
+        var setting = findChild(browser, "dropActionSetting")
+        verify(setting !== null)
+        compare(setting.value, "auto")
+        compare(setting.options[0].value, "auto")
+        setting.changed("copy")
+        compare(mock.settingNow("dropAction", "auto"), "copy")
+        setting.changed("auto")
+        browser.closeDialog()
       }
 
       function test_zz_done() {

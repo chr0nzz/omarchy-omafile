@@ -180,7 +180,7 @@ The same from a terminal:
 
 Copy, cut and paste use the system clipboard, so files copied in GNOME Files, a browser or a chat app paste into Omafile, and files copied in Omafile paste into them. A cut offers GNOME's format, so pasting it in GNOME Files moves the files. Paste an image from the clipboard to save it as a new file. Cut files show dimmed icons and a scissors marker until the clipboard changes or the files are pasted.
 
-Drag files onto a folder, a sidebar place or the pane background to move them there, or out of the window into another app. Dropping on another drive copies instead of moving, as in GNOME Files. Dropping on Trash moves them to the trash. Drag from the space beside a name to draw a selection box instead of dragging the item. Files can also be dropped on the path bar or a breadcrumb folder, using the same move or copy rules as pane and sidebar drops.
+Drag files onto a folder, a sidebar place or the pane background to transfer them there, or out of the window into another app. By default this moves within a drive and copies to another drive, as in GNOME Files. Under Settings > Browsing > Drag and drop, choose Automatic, Always ask, Always copy or Always move. Always ask shows a popup at the drop position with Copy, Move and Cancel, and Escape or a click outside cancels. Dropping on Trash moves them to the trash. Drag from the space beside a name to draw a selection box instead of dragging the item. Files can also be dropped on the path bar or a breadcrumb folder, using the same move or copy rules as pane and sidebar drops.
 
 ### Copying over something that exists
 
