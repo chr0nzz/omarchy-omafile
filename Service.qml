@@ -733,7 +733,7 @@ Item {
 
   function openTerminal(path) {
     var configured = String(setting("terminal", "") || "").trim()
-    if (configured) Quickshell.execDetached(["sh", "-c", "cd \"$1\" && exec " + configured, "omafile", path])
+    if (configured) Quickshell.execDetached(["sh", "-c", "cd \"$1\" && " + configured, "omafile", path])
     else Quickshell.execDetached(["setsid", "uwsm-app", "--", "xdg-terminal-exec", "--dir=" + path])
   }
 
