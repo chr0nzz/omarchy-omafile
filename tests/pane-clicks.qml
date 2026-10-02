@@ -49,6 +49,9 @@ ShellRoot {
         compare(pane.rows[0][0], "alpha.txt")
         mouseClick(pane, 100, rowY(0))
         compare(pane.selectedCount, 1)
+        verify(pane.dragUriList !== "", "a left press readies the drag")
+        mouseClick(pane, 100, rowY(1), Qt.RightButton)
+        compare(pane.dragUriList, "", "a right press drags nothing")
         var below = rowY(pane.rows.length) + pane.rowHeight
         verify(below < pane.height, "empty space below the rows")
         mousePress(pane, 100, below)

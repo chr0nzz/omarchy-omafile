@@ -14,7 +14,7 @@ Item {
   Drag.proposedAction: Qt.MoveAction
   Drag.mimeData: ({ "text/uri-list": view ? view.dragUriList : "" })
   Drag.imageSource: view && view.dragGrab ? view.dragGrab.url : ""
-  Drag.active: active
+  Drag.active: active && view !== null && view.dragUriList !== ""
 
   Drag.onDragFinished: function (action) {
     proxy.x = 0

@@ -865,6 +865,7 @@ Item {
             property bool narrowOnRelease: false
             onPressed: function (mouse) {
               pane.activated()
+              if (mouse.button !== Qt.LeftButton) pane.dragUriList = ""
               if (mouse.button === Qt.RightButton) {
                 if (!pane.selection[row.modelData[0]]) pane.setCursor(row.index, false, false)
                 pane.contextRequested(row.entry, mouse.x + row.x, mouse.y + row.y)
@@ -1039,6 +1040,7 @@ Item {
             property bool narrowOnRelease: false
             onPressed: function (mouse) {
               pane.activated()
+              if (mouse.button !== Qt.LeftButton) pane.dragUriList = ""
               if (mouse.button === Qt.RightButton) {
                 if (!pane.selection[cell.modelData[0]]) pane.setCursor(cell.index, false, false)
                 pane.contextRequested(cell.entry, mouse.x + cell.x, mouse.y + cell.y)
