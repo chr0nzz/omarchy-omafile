@@ -32,6 +32,8 @@ Item {
   property string confirmAction: ""
   property string settingsSection: "opening"
   readonly property real viewScale: clampViewScale(service ? service.settingNow("viewScale", 1) : 1)
+  property var pendingDrop: null
+  onMenuOpenChanged: if (!menuOpen) pendingDrop = null
   property bool menuOpen: false
   property int menuCursor: -1
   property var menuActions: []
@@ -657,13 +659,15 @@ Item {
     })
   }
 
-  function handleDrop(urls, dest) {
+  function handleDrop(urls, dest, position) {
+    closeMenu()
     if (!service) return
     var paths = []
     for (var i = 0; i < urls.length; i++) {
       var u = String(urls[i])
       if (u.indexOf("file://") !== 0) continue
-      var path = decodeURIComponent(u.substring(7))
+      var path
+      try { path = decodeURIComponent(u.substring(7)) } catch (e) { continue }
       if (dest !== "trash:") {
         if (path === dest || dest.indexOf(path + "/") === 0) continue
         if (Model.parentPath(path) === dest) continue
@@ -675,11 +679,31 @@ Item {
       performTrash(paths)
       return
     }
-    service.sameDevice(paths[0], dest, function (same) {
-      service.beginTransfer(same ? "move" : "copy", paths, dest, "ask")
-      root.statusText = (same ? "Moving " : "Copying ") + Model.formatCount(paths.length, "item", "items")
-        + " to " + Model.basename(dest)
-    })
+    var action = service.settingNow("dropAction", "ask")
+    if (action === "copy" || action === "move") {
+      transferDrop(action, paths, dest)
+      return
+    }
+    pendingDrop = { paths: paths, dest: dest }
+    menuEntry = null
+    menuKind = "drop"
+    menuActions = [
+      { key: "drop:copy", label: "Copy", glyph: Icons.actionGlyph("copy") },
+      { key: "drop:move", label: "Move", glyph: Icons.actionGlyph("cut") },
+      { key: "drop:cancel", label: "Cancel" }
+    ]
+    var pt = position ? keyCatcher.mapFromGlobal(position.x, position.y) : Qt.point(width / 2, height / 2)
+    menuX = pt.x
+    menuY = pt.y
+    menuCursor = -1
+    menuOpen = true
+    keyCatcher.forceActiveFocus()
+  }
+
+  function transferDrop(action, paths, dest) {
+    service.beginTransfer(action, paths, dest, "ask")
+    statusText = (action === "move" ? "Moving " : "Copying ") + Model.formatCount(paths.length, "item", "items")
+      + " to " + Model.basename(dest)
   }
   function clampViewScale(value) {
     var n = Number(value)
@@ -978,6 +1002,13 @@ Item {
     })
   }
   function runAction(key) {
+    if (key.indexOf("drop:") === 0) {
+      var drop = pendingDrop
+      var action = key.substring(5)
+      closeMenu()
+      if (drop && (action === "copy" || action === "move")) transferDrop(action, drop.paths, drop.dest)
+      return
+    }
     if (key.indexOf("zoom:") === 0) {
       runZoom(key.substring(5))
       return
@@ -1775,7 +1806,7 @@ Item {
         PathBar {
           id: pathBar
           objectName: "pathBar"
-          onFilesDropped: function (urls, target) { root.handleDrop(urls, target) }
+          onFilesDropped: function (urls, target, position) { root.handleDrop(urls, target, position) }
           anchors.left: navButtons.right
           anchors.right: rightControls.left
           anchors.leftMargin: Style.space(6)
@@ -1836,7 +1867,7 @@ Item {
           }
           onOpenInNewTab: function (target) { root.newTab(root.activeSide, target) }
           onRemoveBookmark: function (target) { root.service.togglePinned(target) }
-          onDropRequested: function (urls, dest) { root.handleDrop(urls, dest) }
+          onDropRequested: function (urls, dest, position) { root.handleDrop(urls, dest, position) }
           onHideDrive: function (key) { root.service.toggleHiddenDrive(key) }
           onPlaceMenuRequested: function (row, x, y) { root.openPlaceMenu(row, x, y) }
           onBookmarkDropped: function (paths) { root.bookmarkFolders(paths) }
@@ -1900,7 +1931,7 @@ Item {
               onOpenRequested: function (entry) { root.handleOpenRequest(entry) }
               onNewTabRequested: function (path) { root.newTab(0, path) }
               onNavigated: function (p) { root.rememberSession() }
-              onDropRequested: function (urls, dest) { root.handleDrop(urls, dest) }
+              onDropRequested: function (urls, dest, position) { root.handleDrop(urls, dest, position) }
               onZoomRequested: function (delta) { root.nudgeViewScale(delta) }
               onContextRequested: function (entry, x, y) {
                 root.menuKind = ""
@@ -1963,7 +1994,7 @@ Item {
               onOpenRequested: function (entry) { root.handleOpenRequest(entry) }
               onNewTabRequested: function (path) { root.newTab(1, path) }
               onNavigated: function (p) { root.rememberSession() }
-              onDropRequested: function (urls, dest) { root.handleDrop(urls, dest) }
+              onDropRequested: function (urls, dest, position) { root.handleDrop(urls, dest, position) }
               onZoomRequested: function (delta) { root.nudgeViewScale(delta) }
               onContextRequested: function (entry, x, y) {
                 root.menuKind = ""
@@ -2219,8 +2250,8 @@ Item {
     Rectangle {
       id: contextMenu
       visible: root.menuOpen
-      x: Math.min(root.menuX, keyCatcher.width - width - Style.space(8))
-      y: Math.min(root.menuY, keyCatcher.height - height - Style.space(8))
+      x: Math.max(0, Math.min(root.menuX, keyCatcher.width - width - Style.space(8)))
+      y: Math.max(0, Math.min(root.menuY, keyCatcher.height - height - Style.space(8)))
       width: root.menuWidth()
       height: menuColumn.implicitHeight + Style.space(8)
       color: Color.menu.background
@@ -2915,6 +2946,19 @@ Item {
                       checked: root.boolSetting(modelData.key, true)
                       onClicked: root.applySettingNow(modelData.key, !checked)
                     }
+                  }
+
+                  Dropdown {
+                    objectName: "dropActionSetting"
+                    width: parent.width
+                    label: "Drag and drop"
+                    value: root.textSetting("dropAction", "ask")
+                    options: [
+                      { label: "Always ask", value: "ask" },
+                      { label: "Always copy", value: "copy" },
+                      { label: "Always move", value: "move" }
+                    ]
+                    onChanged: function (v) { root.applySettingNow("dropAction", v) }
                   }
 
                   PanelSectionHeader {
