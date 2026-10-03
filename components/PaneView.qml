@@ -811,6 +811,7 @@ Item {
       spacing: Style.space(8)
 
       Text {
+        textFormat: Text.PlainText
         id: dragBadgeGlyph
         color: pane.bg
         font.family: Style.font.family
@@ -818,6 +819,7 @@ Item {
       }
 
       Text {
+        textFormat: Text.PlainText
         id: dragBadgeLabel
         color: pane.bg
         font.family: Style.font.family
@@ -965,6 +967,7 @@ Item {
             height: header.height
 
             Text {
+              textFormat: Text.PlainText
               anchors.left: parent.left
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
@@ -1096,6 +1099,7 @@ Item {
                   height: pane.listIconSize
 
                   Text {
+                    textFormat: Text.PlainText
                     anchors.centerIn: parent
                     visible: !rowThumb.visible
                     opacity: row.isCut ? 0.3 : 1
@@ -1120,6 +1124,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText
                     anchors.centerIn: parent
                     visible: row.isCut
                     text: Icons.actionGlyph("cut")
@@ -1130,6 +1135,7 @@ Item {
                 }
 
                 Text {
+                  textFormat: Text.PlainText
                   anchors.verticalCenter: parent.verticalCenter
                   width: parent.width - Style.space(28)
                   text: row.entry.name
@@ -1144,6 +1150,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: header.width * 0.14
               height: parent.height
               verticalAlignment: Text.AlignVCenter
@@ -1156,6 +1163,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: header.width * 0.16
               height: parent.height
               verticalAlignment: Text.AlignVCenter
@@ -1168,6 +1176,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: header.width * 0.18
               height: parent.height
               verticalAlignment: Text.AlignVCenter
@@ -1284,6 +1293,7 @@ Item {
               height: pane.listIconSize
 
               Text {
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 visible: !compactThumb.visible
                 opacity: cell.isCut ? 0.3 : 1
@@ -1309,6 +1319,7 @@ Item {
               }
 
               Text {
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 visible: cell.isCut
                 text: Icons.actionGlyph("cut")
@@ -1319,6 +1330,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - Style.space(26)
               text: cell.entry.name
@@ -1344,6 +1356,7 @@ Item {
               height: pane.gridIconSize
 
               Text {
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 visible: !thumb.visible
                 opacity: cell.isCut ? 0.3 : 1
@@ -1380,6 +1393,7 @@ Item {
                 border.color: Util.alpha(pane.fg, 0.45)
 
                 Text {
+                  textFormat: Text.PlainText
                   anchors.centerIn: parent
                   text: Icons.actionGlyph("cut")
                   color: pane.fg
@@ -1390,6 +1404,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               text: pane.gridLabel(cell.entry.name)
@@ -1410,6 +1425,7 @@ Item {
                 model: pane.shownCaptions
 
                 delegate: Text {
+                  textFormat: Text.PlainText
                   required property var modelData
                   objectName: "caption-" + modelData
                   width: parent.width
@@ -1430,6 +1446,7 @@ Item {
     }
 
     Text {
+      textFormat: Text.PlainText
       anchors.centerIn: parent
       visible: pane.errorMessage !== "" && pane.rows.length === 0
       width: parent.width - Style.space(40)
@@ -1442,6 +1459,7 @@ Item {
     }
 
     Text {
+      textFormat: Text.PlainText
       anchors.centerIn: parent
       visible: !pane.loading && pane.errorMessage === "" && pane.rows.length === 0
       text: pane.searching ? "No matches"
@@ -1453,6 +1471,7 @@ Item {
     }
 
     Text {
+      textFormat: Text.PlainText
       anchors.centerIn: parent
       visible: pane.loading && pane.rows.length === 0
       text: pane.searching ? "Searching" : "Reading"

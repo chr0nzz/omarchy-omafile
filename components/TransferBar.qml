@@ -124,6 +124,7 @@ Item {
         spacing: 0
 
         Text {
+          textFormat: Text.PlainText
           text: "Transfers"
           color: Color.popups.text
           font.family: Style.font.family
@@ -131,6 +132,7 @@ Item {
         }
 
         Text {
+          textFormat: Text.PlainText
           text: transferBar.running > 0
             ? Model.formatCount(transferBar.running, "running", "running")
               + (transferBar.finished > 0 ? ", " + transferBar.finished + " done" : "")
@@ -216,6 +218,7 @@ Item {
               }
 
               Text {
+                textFormat: Text.PlainText
                 id: opGlyph
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
@@ -226,6 +229,7 @@ Item {
               }
 
               Text {
+                textFormat: Text.PlainText
                 anchors.left: opGlyph.right
                 anchors.leftMargin: Style.space(6)
                 anchors.right: rowButtons.left
@@ -245,6 +249,7 @@ Item {
                 spacing: Style.space(8)
 
                 Text {
+                  textFormat: Text.PlainText
                   anchors.verticalCenter: parent.verticalCenter
                   visible: entry.live
                   text: Math.round(transferBar.fraction(entry.item) * 100) + "%"
@@ -254,6 +259,7 @@ Item {
                 }
 
                 Text {
+                  textFormat: Text.PlainText
                   anchors.verticalCenter: parent.verticalCenter
                   text: Icons.actionGlyph(entry.open ? "chevronUp" : "chevronDown")
                   color: Util.alpha(Color.popups.text, 0.5)
@@ -293,6 +299,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: transferBar.statusLine(entry.item)
               color: entry.item.state === "failed" ? Color.urgent : Util.alpha(Color.popups.text, 0.5)
@@ -316,6 +323,7 @@ Item {
                   spacing: Style.space(6)
 
                   Text {
+                    textFormat: Text.PlainText
                     width: Style.space(58)
                     text: modelData.key
                     color: Util.alpha(Color.popups.text, 0.45)
@@ -324,6 +332,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText
                     width: parent.width - Style.space(64)
                     text: modelData.value
                     color: Util.alpha(Color.popups.text, 0.8)

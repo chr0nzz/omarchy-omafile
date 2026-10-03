@@ -159,6 +159,7 @@ Panel {
         spacing: Style.space(6)
 
         Text {
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           text: Icons.actionGlyph("app")
           color: Color.accent
@@ -167,6 +168,7 @@ Panel {
         }
 
         Text {
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - Style.space(30)
           text: "Omafile"
@@ -261,6 +263,7 @@ Panel {
               }
 
               Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 text: Model.formatSize(modelData.free) + " free"
                 color: Util.alpha(Color.popups.text, 0.45)
@@ -294,6 +297,7 @@ Panel {
             spacing: Style.space(6)
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - Style.space(30)
               text: transferRow.item.label
@@ -304,6 +308,7 @@ Panel {
             }
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               visible: transferRow.item.state === "running" || transferRow.item.state === "paused"
               text: Icons.actionGlyph("cancel")
@@ -368,6 +373,7 @@ Panel {
         visible: root.totalBytes > 0
 
         Text {
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           text: Icons.placeGlyph("drive")
           color: Util.alpha(Color.popups.text, 0.5)
@@ -376,6 +382,7 @@ Panel {
         }
 
         Text {
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           text: Model.formatSize(root.freeBytes) + " free of " + Model.formatSize(root.totalBytes)
           color: Util.alpha(Color.popups.text, 0.5)

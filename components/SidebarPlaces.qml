@@ -265,6 +265,7 @@ Item {
             spacing: Style.space(1)
 
             Text {
+              textFormat: Text.PlainText
               text: modelData.title
               leftPadding: Style.space(12)
               topPadding: Style.space(8)
@@ -366,6 +367,7 @@ Item {
                   anchors.rightMargin: Style.space(6)
 
                   Text {
+                    textFormat: Text.PlainText
                     id: placeIcon
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
@@ -377,6 +379,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText
                     anchors.left: placeIcon.right
                     anchors.leftMargin: Style.space(8)
                     anchors.right: trailing.left
@@ -400,6 +403,7 @@ Item {
                     spacing: Style.space(6)
 
                     Text {
+                      textFormat: Text.PlainText
                       anchors.verticalCenter: parent.verticalCenter
                       visible: modelData.bookmark === true
                       text: Icons.actionGlyph("close")
@@ -416,6 +420,7 @@ Item {
                     }
 
                     Text {
+                      textFormat: Text.PlainText
                       objectName: "placeHide"
                       anchors.verticalCenter: parent.verticalCenter
                       visible: (modelData.key === "drive" || modelData.key === "usb"
@@ -436,6 +441,7 @@ Item {
                     }
 
                     Text {
+                      textFormat: Text.PlainText
                       anchors.verticalCenter: parent.verticalCenter
                       visible: modelData.removable === true || modelData.mounted === true
                       text: Icons.actionGlyph("eject")
@@ -499,6 +505,7 @@ Item {
             spacing: Style.space(8)
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               text: Icons.placeGlyph("trash")
               color: Util.alpha(Color.foreground, 0.6)
@@ -507,6 +514,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               text: "Trash"
               color: Util.alpha(Color.foreground, 0.75)
@@ -516,6 +524,7 @@ Item {
           }
 
           Text {
+            textFormat: Text.PlainText
             anchors.right: parent.right
             anchors.rightMargin: Style.space(8)
             anchors.verticalCenter: parent.verticalCenter

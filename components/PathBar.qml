@@ -148,6 +148,7 @@ Item {
                 spacing: 0
 
                 Text {
+                  textFormat: Text.PlainText
                   anchors.verticalCenter: parent.verticalCenter
                   visible: index > 0
                   text: " " + Icons.actionGlyph("chevronRight") + " "
@@ -173,6 +174,7 @@ Item {
                   HoverHandler { id: crumbHover }
 
                   Text {
+                    textFormat: Text.PlainText
                     id: crumbLabel
                     anchors.centerIn: parent
                     text: modelData.label
@@ -240,6 +242,7 @@ Item {
           HoverHandler { id: iconHover }
 
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: Icons.actionGlyph("search")
             color: Util.alpha(Color.foreground, iconHover.hovered ? 0.8 : 0.45)
@@ -279,6 +282,7 @@ Item {
         visible: bar.filterOpen
 
         Text {
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           text: Icons.actionGlyph("search")
           color: bar.findMode ? Color.urgent : Util.alpha(Color.foreground, 0.6)
@@ -292,6 +296,7 @@ Item {
           height: Style.space(20)
 
           Text {
+            textFormat: Text.PlainText
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             visible: filterInput.text.length === 0
@@ -335,6 +340,7 @@ Item {
         }
 
         Text {
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           text: Icons.actionGlyph("close")
           color: closeHover.hovered ? Color.urgent : Util.alpha(Color.foreground, 0.45)

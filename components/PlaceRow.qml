@@ -39,6 +39,7 @@ Item {
       spacing: Style.space(8)
 
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         visible: place.glyph !== ""
         text: place.glyph
@@ -48,6 +49,7 @@ Item {
       }
 
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         width: parent.width - Style.space(place.trailing === "" ? 30 : 90)
         text: place.label
@@ -59,6 +61,7 @@ Item {
     }
 
     Text {
+      textFormat: Text.PlainText
       anchors.right: parent.right
       anchors.rightMargin: Style.space(8)
       anchors.verticalCenter: parent.verticalCenter

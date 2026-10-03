@@ -65,7 +65,7 @@ Server passwords are written to the standard input of `gio mount`, never passed 
 
 ## Trust model
 
-- File and directory names are attacker controlled on a shared or network filesystem. They are rendered as plain text and never interpreted.
+- File and directory names, symlink targets, and everything else read from disk are attacker controlled on a shared, removable, or network filesystem. Every `Text` in Omafile sets `textFormat: Text.PlainText`, so none of it is parsed as rich text or can load a remote image. `tests/plain-text.test.js` fails on any `Text` without it.
 - Paths are passed to the helper as JSON on standard input, never through a shell, and names that are not valid UTF-8 round trip as surrogate escapes.
 - The helper runs with your permissions and never escalates.
 - The only privileged step is installing `omafile.portal` when you turn on Pick files for other apps. `bin/omafile-portal-setup` runs `pkexec install -Dm644 /dev/stdin /usr/share/xdg-desktop-portal/portals/omafile.portal`, or `sudo` when run from a terminal without `pkexec`, as a fixed argument list with the fixed file contents on standard input. It is skipped when the file is already in place. Nothing else in Omafile uses `sudo`, `pkexec`, or polkit.

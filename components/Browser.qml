@@ -2004,6 +2004,7 @@ Item {
           spacing: Style.space(10)
 
           Text {
+            textFormat: Text.PlainText
             id: pickTitleText
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, pickLeft.width * (root.pickNeedsName ? 0.35 : 1))
@@ -2079,6 +2080,7 @@ Item {
           spacing: Style.space(12)
 
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             text: {
               var p = root.activePane()
@@ -2098,6 +2100,7 @@ Item {
           }
 
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             text: root.statusText
             color: Util.alpha(Color.foreground, 0.45)
@@ -2133,6 +2136,7 @@ Item {
             spacing: Style.space(6)
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               text: Icons.actionGlyph(root.runningTransfers > 0 ? "copy" : "check")
               color: root.runningTransfers > 0 ? Color.accent : Util.alpha(Color.foreground, 0.55)
@@ -2157,6 +2161,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               text: root.runningTransfers > 0
                 ? Model.formatCount(root.runningTransfers, "transfer", "transfers")
@@ -2167,6 +2172,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               text: Icons.actionGlyph(root.transfersOpen ? "chevronDown" : "chevronUp")
               color: Util.alpha(Color.foreground, 0.45)
@@ -2177,6 +2183,7 @@ Item {
         }
 
         Text {
+          textFormat: Text.PlainText
           id: helperErrorText
           anchors.right: parent.right
           anchors.rightMargin: Style.space(10)
@@ -2258,6 +2265,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               anchors.left: parent.left
               anchors.leftMargin: Style.space(8)
               anchors.bottom: parent.bottom
@@ -2284,6 +2292,7 @@ Item {
                 spacing: Style.space(8)
 
                 Text {
+                  textFormat: Text.PlainText
                   anchors.verticalCenter: parent.verticalCenter
                   width: Style.space(16)
                   horizontalAlignment: Text.AlignHCenter
@@ -2294,6 +2303,7 @@ Item {
                 }
 
                 Text {
+                  textFormat: Text.PlainText
                   anchors.verticalCenter: parent.verticalCenter
                   text: modelData.label
                   color: modelData.disabled
@@ -2305,6 +2315,7 @@ Item {
               }
 
               Text {
+                textFormat: Text.PlainText
                 anchors.right: parent.right
                 anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
@@ -2348,6 +2359,7 @@ Item {
                     HoverHandler { id: zoomHover }
 
                     Text {
+                      textFormat: Text.PlainText
                       anchors.centerIn: parent
                       text: modelData.wide ? Math.round(root.viewScale * 100) + "%" : modelData.text
                       color: Util.alpha(menuRow.highlighted ? Color.menu.selectedText : Color.menu.text,
@@ -2411,6 +2423,7 @@ Item {
             spacing: Style.space(2)
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: root.previewEntry ? root.previewEntry.name : ""
               color: Color.popups.text
@@ -2420,6 +2433,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: root.previewDetails()
               color: Util.alpha(Color.popups.text, 0.55)
@@ -2503,6 +2517,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               y: previewTextItem.implicitHeight + Style.space(8)
               visible: root.previewTruncated
               text: "Showing the first 256 KB"
@@ -2520,6 +2535,7 @@ Item {
               || (root.previewKind === "image" && previewImage.status === Image.Error)
 
             Text {
+              textFormat: Text.PlainText
               anchors.horizontalCenter: parent.horizontalCenter
               text: Icons.glyphFor(root.previewEntry)
               color: root.previewEntry && root.previewEntry.isDir ? Color.accent : Util.alpha(Color.popups.text, 0.7)
@@ -2528,6 +2544,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               anchors.horizontalCenter: parent.horizontalCenter
               text: root.previewLoading ? "Reading"
                 : (root.previewKind === "folder" ? "Folder. Press Enter to open it."
@@ -2580,6 +2597,7 @@ Item {
           spacing: Style.space(10)
 
           Text {
+            textFormat: Text.PlainText
             text: root.dialogTitle
             color: Color.popups.text
             font.family: Style.font.family
@@ -2598,6 +2616,7 @@ Item {
           }
 
           Text {
+            textFormat: Text.PlainText
             width: parent.width
             visible: root.dialogError !== ""
             text: root.dialogError
@@ -2631,6 +2650,7 @@ Item {
             HoverHandler { id: runHover }
 
             Text {
+              textFormat: Text.PlainText
               anchors.left: parent.left
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
@@ -2673,6 +2693,7 @@ Item {
               HoverHandler { id: appHover }
 
               Text {
+                textFormat: Text.PlainText
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
@@ -2715,6 +2736,7 @@ Item {
                   height: modelData.section ? Style.space(26) : Style.space(20)
 
                   Text {
+                    textFormat: Text.PlainText
                     anchors.left: parent.left
                     anchors.bottom: parent.bottom
                     visible: modelData.section !== undefined
@@ -2725,6 +2747,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     visible: modelData.section === undefined
@@ -2736,6 +2759,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText
                     anchors.left: parent.left
                     anchors.leftMargin: Style.space(196)
                     anchors.right: parent.right
@@ -2781,6 +2805,7 @@ Item {
                   HoverHandler { id: navHover }
 
                   Text {
+                    textFormat: Text.PlainText
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
@@ -2869,6 +2894,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText
                     width: parent.width
                     visible: root.service ? root.service.filePickerError !== "" : false
                     text: root.service ? root.service.filePickerError : ""
@@ -2891,6 +2917,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText
                     width: parent.width
                     text: "Press Enter to save"
                     color: Util.alpha(Color.popups.text, 0.5)
@@ -2959,6 +2986,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText
                     width: parent.width
                     text: "Currently " + Math.round(root.viewScale * 100) + " percent. Ctrl with plus, minus, zero or the scroll wheel also works."
                     color: Util.alpha(Color.popups.text, 0.6)
@@ -2988,6 +3016,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText
                     width: parent.width
                     text: "Extra lines under names in grid view. More of them appear as you zoom in."
                     color: Util.alpha(Color.popups.text, 0.6)
@@ -3064,6 +3093,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText
                     width: parent.width
                     text: "For example alacritty -e nvim. Press Enter to save."
                     color: Util.alpha(Color.popups.text, 0.5)
@@ -3159,6 +3189,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText
                     width: parent.width
                     visible: root.hiddenDriveRows().length === 0
                     text: "No hidden drives"
@@ -3177,6 +3208,7 @@ Item {
             spacing: Style.space(8)
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: "Address, for example smb://server/share, sftp://user@host or dav://host/path"
               color: Util.alpha(Color.popups.text, 0.6)
@@ -3230,6 +3262,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               visible: root.connectStatus !== ""
               text: root.connectStatus
@@ -3254,6 +3287,7 @@ Item {
                 spacing: Style.space(10)
 
                 Text {
+                  textFormat: Text.PlainText
                   width: Style.space(110)
                   text: modelData.label
                   color: Util.alpha(Color.popups.text, 0.55)
@@ -3262,6 +3296,7 @@ Item {
                 }
 
                 Text {
+                  textFormat: Text.PlainText
                   width: parent.width - Style.space(120)
                   text: modelData.value
                   color: Color.popups.text
@@ -3279,6 +3314,7 @@ Item {
             spacing: Style.space(8)
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: root.conflictMessage()
               color: Color.popups.text

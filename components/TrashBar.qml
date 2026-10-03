@@ -33,6 +33,7 @@ Rectangle {
     clip: true
 
     Text {
+      textFormat: Text.PlainText
       anchors.verticalCenter: parent.verticalCenter
       text: Icons.placeGlyph(trashBar.full ? "trashfull" : "trash")
       color: Util.alpha(Color.foreground, 0.6)
@@ -41,6 +42,7 @@ Rectangle {
     }
 
     Text {
+      textFormat: Text.PlainText
       anchors.verticalCenter: parent.verticalCenter
       text: "Trash"
       color: Color.foreground
@@ -49,6 +51,7 @@ Rectangle {
     }
 
     Text {
+      textFormat: Text.PlainText
       objectName: "trashSummary"
       anchors.verticalCenter: parent.verticalCenter
       text: {

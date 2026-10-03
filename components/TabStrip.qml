@@ -59,6 +59,7 @@ Item {
             spacing: Style.space(4)
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - Style.space(28)
               text: Model.basename(modelData.path) || "/"
@@ -69,6 +70,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               visible: strip.tabs.length > 1 && (tabHover.hovered || index === strip.activeIndex)
               text: Icons.actionGlyph("close")
@@ -96,6 +98,7 @@ Item {
         HoverHandler { id: addHover }
 
         Text {
+          textFormat: Text.PlainText
           anchors.centerIn: parent
           text: Icons.actionGlyph("add")
           color: addHover.hovered ? Color.accent : Util.alpha(Color.foreground, 0.6)
