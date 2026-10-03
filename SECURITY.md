@@ -63,6 +63,7 @@ Server passwords are written to the standard input of `gio mount`, never passed 
 - The helper runs with your permissions and never escalates. There is no `sudo`, no `pkexec`, and no polkit action anywhere in Omafile.
 - The `omarchy-shell omafile` IPC commands are available to any process running as your user.
 - Deleting permanently is irreversible. It is confirmed by default, and turning the confirmation off is a deliberate setting.
+- A drive's trash is used only when `.Trash-$uid`, its `files` and its `info` are real folders owned by you. A symlink in their place is ignored, and emptying the trash never follows a symlink, so a crafted drive cannot point Empty trash at files outside it.
 
 ## Out of scope
 

@@ -828,14 +828,40 @@ def find_mount_point(path_bytes):
             return p
         p = parent
 
-def volume_trash_dirs(path_bytes):
-    top = find_mount_point(os.path.dirname(path_bytes) or b"/")
-    uid = os.getuid()
-    vol = os.path.join(top, (".Trash-%d" % uid).encode())
+def volume_trash_name():
+    return (".Trash-%d" % os.getuid()).encode()
+
+def owned_real_dir(path_bytes):
+    try:
+        st = os.lstat(path_bytes)
+    except OSError:
+        return False
+    return stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid()
+
+def checked_volume_trash(top):
+    vol = os.path.join(top, volume_trash_name())
     files_dir = os.path.join(vol, b"files")
     info_dir = os.path.join(vol, b"info")
-    os.makedirs(files_dir, mode=0o700, exist_ok=True)
-    os.makedirs(info_dir, mode=0o700, exist_ok=True)
+    if owned_real_dir(vol) and owned_real_dir(files_dir) and owned_real_dir(info_dir):
+        return files_dir, info_dir
+    return None
+
+def make_private_dir(path_bytes):
+    try:
+        os.mkdir(path_bytes, 0o700)
+    except FileExistsError:
+        pass
+    if not owned_real_dir(path_bytes):
+        raise OSError(errno.EPERM, "the trash on this drive is not a folder you own", to_str(path_bytes))
+
+def volume_trash_dirs(path_bytes):
+    top = find_mount_point(os.path.dirname(path_bytes) or b"/")
+    vol = os.path.join(top, volume_trash_name())
+    make_private_dir(vol)
+    files_dir = os.path.join(vol, b"files")
+    info_dir = os.path.join(vol, b"info")
+    make_private_dir(files_dir)
+    make_private_dir(info_dir)
     return files_dir, info_dir, top
 
 def trash_dirs_for(path_bytes):
@@ -938,9 +964,8 @@ def op_delete(req):
             results.append({"path": p, "ok": False, "message": e.strerror or str(e)})
     send_done(req_id, results=results)
 
-def list_trash_roots():
-    roots = [home_trash_dirs()]
-    seen = {os.path.dirname(roots[0][0])}
+def volume_mounts():
+    mounts = []
     try:
         with open("/proc/mounts", "rb") as f:
             for line in f:
@@ -948,15 +973,23 @@ def list_trash_roots():
                 if len(parts) < 2:
                     continue
                 mnt = parts[1].replace(rb"\040", b" ")
-                uid = os.getuid()
-                cand = os.path.join(mnt, (".Trash-%d" % uid).encode())
-                if cand in seen:
-                    continue
-                seen.add(cand)
-                if os.path.isdir(os.path.join(cand, b"files")):
-                    roots.append((os.path.join(cand, b"files"), os.path.join(cand, b"info")))
+                if mnt not in mounts:
+                    mounts.append(mnt)
     except OSError:
         pass
+    return mounts
+
+def list_trash_roots():
+    roots = [home_trash_dirs()]
+    seen = {os.path.dirname(roots[0][0])}
+    for mnt in volume_mounts():
+        cand = os.path.join(mnt, volume_trash_name())
+        if cand in seen:
+            continue
+        seen.add(cand)
+        checked = checked_volume_trash(mnt)
+        if checked:
+            roots.append(checked)
     return roots
 
 def op_restore(req):
@@ -1054,24 +1087,58 @@ def op_trashinfo(req):
           "items": items, "infoDirs": watch_dirs})
     send_done(req_id)
 
+DIR_OPEN_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+
+def open_dir_chain(base, names):
+    fd = os.open(base, DIR_OPEN_FLAGS)
+    try:
+        for name in names:
+            nxt = os.open(name, DIR_OPEN_FLAGS | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+            if os.fstat(fd).st_uid != os.getuid():
+                raise OSError(errno.EPERM, "trash folder is not yours", to_str(name))
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+def empty_dir_fd(fd):
+    for name in os.listdir(fd):
+        try:
+            st = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            if stat.S_ISDIR(st.st_mode):
+                shutil.rmtree(name, dir_fd=fd)
+            else:
+                os.unlink(name, dir_fd=fd)
+        except OSError:
+            pass
+
+def trash_dir_chains():
+    home_files, home_info = home_trash_dirs()
+    chains = [(home_files, []), (home_info, [])]
+    seen = {os.path.dirname(home_files)}
+    for mnt in volume_mounts():
+        cand = os.path.join(mnt, volume_trash_name())
+        if cand in seen:
+            continue
+        seen.add(cand)
+        if checked_volume_trash(mnt):
+            chains.append((mnt, [volume_trash_name(), b"files"]))
+            chains.append((mnt, [volume_trash_name(), b"info"]))
+    return chains
+
 def op_emptytrash(req):
     req_id = req["id"]
-    roots = list_trash_roots()
-    for files_dir, info_dir in roots:
-        for d in (files_dir, info_dir):
-            try:
-                names = os.listdir(d)
-            except OSError:
-                continue
-            for n in names:
-                full = os.path.join(d, n)
-                try:
-                    if os.path.isdir(full) and not os.path.islink(full):
-                        shutil.rmtree(full)
-                    else:
-                        os.unlink(full)
-                except OSError:
-                    pass
+    for base, names in trash_dir_chains():
+        try:
+            fd = open_dir_chain(base, names)
+        except OSError:
+            continue
+        try:
+            empty_dir_fd(fd)
+        finally:
+            os.close(fd)
     send_done(req_id)
 
 def op_mkdir(req):

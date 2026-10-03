@@ -1001,6 +1001,67 @@ class TrashTests(HelperTestCase):
         finally:
             shutil.rmtree(volume, ignore_errors=True)
 
+    def symlinked_volume_trash(self, link_whole_trash):
+        volume = tempfile.mkdtemp()
+        outside = tempfile.mkdtemp()
+        os.makedirs(os.path.join(outside, "files"))
+        os.makedirs(os.path.join(outside, "info"))
+        private = os.path.join(outside, "files", "private.txt")
+        with open(private, "w") as f:
+            f.write("keep")
+        with open(os.path.join(outside, "info", "private.txt.trashinfo"), "w") as f:
+            f.write("[Trash Info]\nPath=private.txt\nDeletionDate=2026-10-01T00:00:00\n")
+        trash = os.path.join(volume, ".Trash-%d" % os.getuid())
+        if link_whole_trash:
+            os.symlink(outside, trash)
+        else:
+            os.makedirs(trash)
+            os.symlink(os.path.join(outside, "files"), os.path.join(trash, "files"))
+            os.symlink(os.path.join(outside, "info"), os.path.join(trash, "info"))
+        mounts = os.path.join(volume, "mounts")
+        with open(mounts, "w") as f:
+            f.write("tmpfs %s tmpfs rw 0 0\n" % volume)
+        self.helper.close()
+        self.helper = Helper(env={"XDG_DATA_HOME": self.data_home}, overrides={"mounts_file": mounts})
+        return volume, outside, private
+
+    def check_symlinked_volume_trash_is_ignored(self, link_whole_trash):
+        volume, outside, private = self.symlinked_volume_trash(link_whole_trash)
+        try:
+            msgs = self.helper.call({"id": self.next_id(), "op": "trashinfo"})
+            info = [m for m in msgs if m["t"] == "trash"][0]
+            self.assertNotIn("private.txt", [item["name"] for item in info["items"]])
+            self.assertEqual(self.terminal(self.helper.call({"id": self.next_id(), "op": "emptytrash"}))["t"], "done")
+            self.assertTrue(os.path.exists(private), "emptying the trash never follows a symlinked drive trash")
+            msgs = self.helper.call({"id": self.next_id(), "op": "restore", "items": ["private.txt"]})
+            self.assertFalse(self.terminal(msgs)["results"][0]["ok"])
+            self.assertTrue(os.path.exists(private))
+        finally:
+            shutil.rmtree(volume, ignore_errors=True)
+            shutil.rmtree(outside, ignore_errors=True)
+
+    def test_emptytrash_ignores_a_symlinked_files_folder_on_a_drive(self):
+        self.check_symlinked_volume_trash_is_ignored(False)
+
+    def test_emptytrash_ignores_a_symlinked_trash_folder_on_a_drive(self):
+        self.check_symlinked_volume_trash_is_ignored(True)
+
+    def test_emptytrash_removes_symlinks_inside_the_trash_without_following_them(self):
+        outside = tempfile.mkdtemp()
+        try:
+            private = os.path.join(outside, "private.txt")
+            with open(private, "w") as f:
+                f.write("keep")
+            files_dir = os.path.join(self.data_home, "Trash", "files")
+            os.makedirs(files_dir, exist_ok=True)
+            link = os.path.join(files_dir, "link")
+            os.symlink(outside, link)
+            self.helper.call({"id": self.next_id(), "op": "emptytrash"})
+            self.assertFalse(os.path.lexists(link))
+            self.assertTrue(os.path.exists(private))
+        finally:
+            shutil.rmtree(outside, ignore_errors=True)
+
 class TrashInfoDirsTests(HelperTestCase):
     def test_trashinfo_reports_the_directories_to_watch(self):
         req = self.next_id()
