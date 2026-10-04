@@ -110,6 +110,34 @@ ShellRoot {
         compare(pane().view, "list")
       }
 
+      function test_3ab_folderViews() {
+        pane().navigate("/tmp")
+        waitRows()
+        mock.folderViews = ({})
+        browser.setView("grid")
+        pane().navigate("/tmp/docs")
+        tryVerify(function () { return pane().path === "/tmp/docs" })
+        compare(pane().view, "list", "a folder without a saved view opens in the default view")
+        browser.setView("gallery")
+        pane().goBack()
+        tryVerify(function () { return pane().path === "/tmp" })
+        compare(pane().view, "grid", "a folder opens in its own view")
+        pane().goForward()
+        tryVerify(function () { return pane().path === "/tmp/docs" })
+        compare(pane().view, "gallery")
+        mock.updateSetting("rememberFolderViews", false)
+        browser.setView("compact")
+        pane().navigate("/tmp")
+        tryVerify(function () { return pane().path === "/tmp" })
+        compare(pane().view, "compact", "with the setting off the tab keeps its view")
+        compare(mock.folderViews["/tmp/docs"], "gallery", "with the setting off nothing new is saved")
+        mock.updateSetting("rememberFolderViews", true)
+        mock.folderViews = ({})
+        browser.setView("list")
+        mock.folderViews = ({})
+        waitRows()
+      }
+
       function test_3b_zoomAndMenus() {
         waitRows()
         browser.setViewScale(1)

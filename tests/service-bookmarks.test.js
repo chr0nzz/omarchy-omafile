@@ -15,7 +15,7 @@ function service(saved = {}) {
     bookmarksDirty: false, bookmarksError: '', _legacyPinned: [], _bookmarkWatchId: 0,
     _bookmarkReadPending: false, _bookmarkWritePending: false, _bookmarkRevision: 0,
     _bookmarkGeneration: 0, _stateLoaded: false, recent: [], hiddenDrives: [], servers: [],
-    serverSettings: {}, previousFileManager: '', session: null, _queue: [], _pending: {},
+    serverSettings: {}, folderViews: {}, previousFileManager: '', session: null, _queue: [], _pending: {},
     helperRestarts: 0, helperReady: true, helperError: '', _thumbWaiting: {},
     restartTimer: { restart() {} }, bookmarkReloadTimer: { restart() {} },
     stateFile: { setText(text) { writes.push(JSON.parse(text)); } },
@@ -116,4 +116,14 @@ test('pending removal survives restart without reintroducing GTK entry', () => {
   const next = service(writes.at(-1));
   read(next.requests[0], [{ path: '/keep' }, { path: '/remove' }]);
   assert.deepEqual(plain(next.requests[1].payload.items), [{ path: '/keep', label: '' }]);
+});
+
+test('folder views are saved with the state and read back after a restart', () => {
+  const first = service({});
+  first.context.folderViews = { '/photos': 'gallery' };
+  first.context.persist();
+  const saved = first.writes.at(-1);
+  assert.deepEqual(plain(saved.folderViews), { '/photos': 'gallery' });
+  const second = service(saved);
+  assert.deepEqual(plain(second.context.folderViews), { '/photos': 'gallery' });
 });

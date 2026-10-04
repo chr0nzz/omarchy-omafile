@@ -1,4 +1,5 @@
 import QtQuick
+import "../Model.js" as Model
 
 QtObject {
   id: mock
@@ -44,6 +45,9 @@ QtObject {
     return null
   }
   property var localValues: ({})
+  property var folderViews: ({})
+  function viewForFolder(path, fallback) { return Model.folderViewFor(folderViews, path, fallback) }
+  function rememberFolderView(path, view) { record("rememberFolderView", [path, view]); folderViews = Model.rememberFolderView(folderViews, path, view) }
   function setting(key, fallback) { return values[key] !== undefined ? values[key] : fallback }
   function settingNow(key, fallback) { return localValues[key] !== undefined ? localValues[key] : setting(key, fallback) }
   function updateSetting(key, value) { var v = {}; for (var k in localValues) v[k] = localValues[k]; v[key] = value; localValues = v }

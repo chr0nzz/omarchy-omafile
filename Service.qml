@@ -47,6 +47,7 @@ Item {
   property var hiddenDrives: []
   property var servers: []
   property var serverSettings: ({})
+  property var folderViews: ({})
   property var session: null
   property var pickRequest: null
   property bool filePicker: false
@@ -1251,6 +1252,15 @@ Item {
     saveTimer.restart()
   }
 
+  function viewForFolder(path, fallback) {
+    return Model.folderViewFor(folderViews, path, fallback)
+  }
+
+  function rememberFolderView(path, view) {
+    folderViews = Model.rememberFolderView(folderViews, path, view)
+    saveSoon()
+  }
+
   function persist() {
     var payload = {
       version: 1,
@@ -1262,6 +1272,7 @@ Item {
       hiddenDrives: hiddenDrives,
       servers: servers,
       serverSettings: serverSettings,
+      folderViews: folderViews,
       previousFileManager: previousFileManager,
       session: session
     }
@@ -1295,6 +1306,7 @@ Item {
     if (parsed.hiddenDrives) hiddenDrives = parsed.hiddenDrives
     if (parsed.servers) servers = parsed.servers
     if (parsed.serverSettings && typeof parsed.serverSettings === "object") serverSettings = parsed.serverSettings
+    if (parsed.folderViews && typeof parsed.folderViews === "object") folderViews = parsed.folderViews
     if (parsed.previousFileManager) previousFileManager = String(parsed.previousFileManager)
     if (parsed.session) session = parsed.session
   }

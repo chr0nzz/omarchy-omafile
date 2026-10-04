@@ -774,6 +774,25 @@ function normalizeViewMode(key) {
   return isViewMode(key) ? key : 'list';
 }
 
+var folderViewLimit = 500;
+
+function folderViewFor(saved, path, fallback) {
+  var view = saved ? saved[String(path || '')] : undefined;
+  return isViewMode(view) ? view : normalizeViewMode(fallback);
+}
+
+function rememberFolderView(saved, path, view) {
+  var key = String(path || '');
+  var current = saved || {};
+  if (key === '' || !isViewMode(view)) return current;
+  var keys = Object.keys(current).filter(function (k) { return k !== key; });
+  keys = keys.slice(Math.max(0, keys.length - (folderViewLimit - 1)));
+  var out = {};
+  for (var i = 0; i < keys.length; i++) out[keys[i]] = current[keys[i]];
+  out[key] = view;
+  return out;
+}
+
 function isImageName(name) {
   return !!imageExtSet[extOf(String(name || ''))];
 }

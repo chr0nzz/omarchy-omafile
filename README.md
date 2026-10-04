@@ -88,6 +88,8 @@ The Sort by section of the View menu sorts by A to Z, Z to A, last modified, fir
 
 The View button in the toolbar opens one menu for the layout, zoom, sorting and hidden files. It switches between list, compact, grid and gallery. Compact packs names into columns. Gallery shows large image previews. Ctrl+1 to Ctrl+4 pick them from the keyboard.
 
+Each folder remembers the view you last picked in it, and folders you have not set open in the default view. Turn off **Remember the view for each folder** in Settings, under Browsing, to keep one view per tab instead. Omafile keeps the last 500 folders.
+
 Grid view can show captions under each name, like GNOME Files: pick up to three from Size (item count for folders), Type, Modified and Permissions under Settings, View, or with Grid captions in the View menu. The first shows at any size, the second from 90 percent zoom and the third from 130 percent.
 
 Zoom scales rows, icons and grid cells from 50 to 300 percent. Use the minus and plus buttons in the View menu, Ctrl with the scroll wheel over a pane, or Ctrl+Plus, Ctrl+Minus and Ctrl+0. Click the percentage to go back to 100 percent.
@@ -313,6 +315,7 @@ Configure these keys through the Omarchy bar widget settings:
 | `confirmDelete` | Prompt before deleting items |
 | `useTrash` | Send deleted items to trash (vs. permanent deletion) |
 | `defaultView` | Start in `list`, `compact`, `grid` or `gallery` view |
+| `rememberFolderViews` | Open each folder in the view last picked there, and other folders in `defaultView` |
 | `terminal` | Terminal command to open in the current directory |
 | `editor` | Text editor command to open selected files |
 | `showTransferBadge` | Show a progress ring on the bar icon while a transfer runs |

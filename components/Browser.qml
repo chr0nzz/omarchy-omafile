@@ -1164,7 +1164,18 @@ Item {
     var p = activePane()
     if (!p || !Model.isViewMode(mode)) return
     p.view = mode
+    if (service && folderViewsOn()) service.rememberFolderView(p.path, mode)
     rememberSession()
+  }
+
+  function folderViewsOn() {
+    return boolSetting("rememberFolderViews", true)
+  }
+
+  function applyFolderView(side) {
+    if (!service || !folderViewsOn()) return
+    var p = paneFor(side)
+    p.view = service.viewForFolder(p.path, String(service.settingNow("defaultView", "list")))
   }
 
   function viewGlyph() {
@@ -1900,7 +1911,7 @@ Item {
               }
               onOpenRequested: function (entry) { root.handleOpenRequest(entry) }
               onNewTabRequested: function (path) { root.newTab(0, path) }
-              onNavigated: function (p) { root.rememberSession() }
+              onNavigated: function (p) { root.applyFolderView(0); root.rememberSession() }
               onDropRequested: function (urls, dest) { root.handleDrop(urls, dest) }
               onZoomRequested: function (delta) { root.nudgeViewScale(delta) }
               onContextRequested: function (entry, x, y) {
@@ -1963,7 +1974,7 @@ Item {
               }
               onOpenRequested: function (entry) { root.handleOpenRequest(entry) }
               onNewTabRequested: function (path) { root.newTab(1, path) }
-              onNavigated: function (p) { root.rememberSession() }
+              onNavigated: function (p) { root.applyFolderView(1); root.rememberSession() }
               onDropRequested: function (urls, dest) { root.handleDrop(urls, dest) }
               onZoomRequested: function (delta) { root.nudgeViewScale(delta) }
               onContextRequested: function (entry, x, y) {
@@ -3555,7 +3566,9 @@ Item {
       { key: "sortDirsFirst", label: "Folders first",
         description: "List folders above files whatever the sort order" },
       { key: "thumbnails", label: "Previews and thumbnails",
-        description: "Show images, video frames and document pages instead of a generic icon" }
+        description: "Show images, video frames and document pages instead of a generic icon" },
+      { key: "rememberFolderViews", label: "Remember the view for each folder",
+        description: "A folder opens in the view you last picked there. Other folders open in the default view" }
     ]
   }
 

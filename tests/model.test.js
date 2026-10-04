@@ -496,6 +496,23 @@ test('wantsNewWindow is true only for an explicit newWindow flag', () => {
   assert.equal(Model.wantsNewWindow('not json'), false);
   assert.equal(Model.wantsNewWindow('null'), false);
 });
+test('folder views fall back to the default and keep the latest folders', function () {
+  assert.equal(Model.folderViewFor({}, '/a', 'grid'), 'grid');
+  assert.equal(Model.folderViewFor({ '/a': 'gallery' }, '/a', 'grid'), 'gallery');
+  assert.equal(Model.folderViewFor({ '/a': 'bogus' }, '/a', 'nope'), 'list');
+  var saved = Model.rememberFolderView({ '/a': 'grid', '/b': 'list' }, '/a', 'compact');
+  assert.deepEqual(Object.keys(saved), ['/b', '/a']);
+  assert.equal(saved['/a'], 'compact');
+  assert.deepEqual(Model.rememberFolderView(saved, '/c', 'bogus'), saved);
+  assert.deepEqual(Model.rememberFolderView(saved, '', 'grid'), saved);
+  var many = {};
+  for (var i = 0; i < Model.folderViewLimit + 20; i++) many['/f' + i] = 'grid';
+  var trimmed = Model.rememberFolderView(many, '/new', 'list');
+  assert.equal(Object.keys(trimmed).length, Model.folderViewLimit);
+  assert.equal(trimmed['/new'], 'list');
+  assert.equal(trimmed['/f0'], undefined);
+});
+
 test('saved views keep known modes and fall back to list', function () {
   assert.equal(Model.normalizeViewMode('gallery'), 'gallery');
   assert.equal(Model.normalizeViewMode('compact'), 'compact');

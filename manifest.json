@@ -33,6 +33,7 @@
       "confirmTrash": true,
       "useTrash": true,
       "defaultView": "list",
+      "rememberFolderViews": true,
       "viewScale": 1,
       "terminal": "",
       "editor": "",
@@ -100,6 +101,12 @@
         "type": "string",
         "label": "Default view: list, compact, grid or gallery",
         "defaultValue": "list"
+      },
+      {
+        "key": "rememberFolderViews",
+        "type": "boolean",
+        "label": "Remember the view for each folder",
+        "defaultValue": true
       },
       {
         "key": "viewScale",
