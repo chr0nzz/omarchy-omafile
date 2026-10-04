@@ -761,7 +761,8 @@ function sortPresetKey(sortBy, descending) {
 var viewModes = [
   { key: 'list', label: 'List', glyph: 'list' },
   { key: 'grid', label: 'Grid', glyph: 'grid' },
-  { key: 'compact', label: 'Compact', glyph: 'columns' }
+  { key: 'compact', label: 'Compact', glyph: 'columns' },
+  { key: 'gallery', label: 'Gallery', glyph: 'image' }
 ];
 
 function isViewMode(key) {
@@ -770,7 +771,6 @@ function isViewMode(key) {
 }
 
 function normalizeViewMode(key) {
-  if (key === 'gallery') return 'grid';
   return isViewMode(key) ? key : 'list';
 }
 

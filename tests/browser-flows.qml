@@ -72,7 +72,7 @@ ShellRoot {
 
       function test_3_viewMenu() {
         waitRows()
-        var modes = [["Compact", "compact"], ["Grid", "grid"], ["List", "list"]]
+        var modes = [["Compact", "compact"], ["Gallery", "gallery"], ["Grid", "grid"], ["List", "list"]]
         for (var i = 0; i < modes.length; i++) {
           mouseClick(findChild(browser, "viewButton"))
           compare(browser.menuKind, "view")
@@ -95,6 +95,19 @@ ShellRoot {
         for (var i = 0; i < mock.calls.length; i++)
           if (mock.calls[i].name === "thumbnailFor") verify(mock.calls[i].args[0] !== "/tmp/beta.png", "images load directly")
         browser.setView("list")
+      }
+
+      function test_3aa_galleryView() {
+        waitRows()
+        keyClick(Qt.Key_4, Qt.ControlModifier)
+        compare(pane().view, "gallery", "Ctrl+4 opens the gallery")
+        waitForRendering(browser)
+        var bucket = ""
+        for (var i = 0; i < mock.calls.length; i++)
+          if (mock.calls[i].name === "thumbnailFor" && mock.calls[i].args[0] === "/tmp/alpha.yml") bucket = mock.calls[i].args[2]
+        compare(bucket, "x-large", "the gallery asks for large previews")
+        keyClick(Qt.Key_1, Qt.ControlModifier)
+        compare(pane().view, "list")
       }
 
       function test_3b_zoomAndMenus() {

@@ -1193,7 +1193,7 @@ Item {
       return items
     }
     var mode = p ? p.view : "list"
-    var viewHints = { list: "Ctrl+1", grid: "Ctrl+2", compact: "Ctrl+3" }
+    var viewHints = { list: "Ctrl+1", grid: "Ctrl+2", compact: "Ctrl+3", gallery: "Ctrl+4" }
     for (var j = 0; j < Model.viewModes.length; j++) {
       var view = Model.viewModes[j]
       items.push({ key: "view:" + view.key, label: view.label, hint: viewHints[view.key] || "",
@@ -1594,6 +1594,7 @@ Item {
     if (ctrl && event.key === Qt.Key_1) { setView("list"); return true }
     if (ctrl && event.key === Qt.Key_2) { setView("grid"); return true }
     if (ctrl && event.key === Qt.Key_3) { setView("compact"); return true }
+    if (ctrl && event.key === Qt.Key_4) { setView("gallery"); return true }
     if (ctrl && event.key === Qt.Key_PageDown) { cycleTab(1); return true }
     if (ctrl && event.key === Qt.Key_PageUp) { cycleTab(-1); return true }
     if (ctrl && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) { openCursorInNewTab(); return true }
@@ -2969,7 +2970,8 @@ Item {
                     options: [
                       { label: "List", value: "list" },
                       { label: "Compact", value: "compact" },
-                      { label: "Grid", value: "grid" }
+                      { label: "Grid", value: "grid" },
+                      { label: "Gallery", value: "gallery" }
                     ]
                     onChanged: function (v) { root.applySettingNow("defaultView", v) }
                   }
@@ -3475,7 +3477,7 @@ Item {
       { keys: "Tab", label: "Switch the active pane, while split" },
       { keys: "Ctrl+Shift+C / Ctrl+Shift+M", label: "Copy and move to the other pane" },
       { section: "View" },
-      { keys: "Ctrl+1 / Ctrl+2 / Ctrl+3", label: "List, grid and compact" },
+      { keys: "Ctrl+1 / Ctrl+2 / Ctrl+3 / Ctrl+4", label: "List, grid, compact and gallery" },
       { keys: "Ctrl+Plus / Ctrl+Minus", label: "Zoom in and out, also Ctrl with the scroll wheel" },
       { keys: "Ctrl+0", label: "Reset the zoom to 100 percent" },
       { keys: "Space", label: "Preview the item under the cursor" },

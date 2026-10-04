@@ -22,7 +22,8 @@ Item {
 
   readonly property int rowHeight: Math.round(Style.space(22) * viewScale)
   readonly property int listIconSize: Math.round(Style.space(18) * viewScale)
-  readonly property int gridIconSize: Math.round(Style.space(48) * viewScale)
+  readonly property bool galleryView: view === "gallery"
+  readonly property int gridIconSize: Math.round(Style.space(galleryView ? 150 : 48) * viewScale)
   readonly property bool compactView: view === "compact"
 
   function scaled(value) {
@@ -646,7 +647,7 @@ Item {
   property var _countQueue: ({})
   property var _countPending: ({})
   readonly property var shownCaptions: {
-    if (pane.view !== "grid") return []
+    if (pane.view !== "grid" && !pane.galleryView) return []
     var list = []
     for (var i = 0; i < captions.length; i++)
       if (captions[i] && captions[i] !== "none" && list.indexOf(captions[i]) < 0) list.push(String(captions[i]))
@@ -1199,9 +1200,9 @@ Item {
         model: pane.rows
         visible: pane.view !== "list"
         cellWidth: pane.compactView ? Math.round(Style.space(230) * pane.viewScale)
-          : Math.round(Style.space(110) * pane.viewScale)
+          : Math.round(Style.space(pane.galleryView ? 190 : 110) * pane.viewScale)
         cellHeight: pane.compactView ? pane.rowHeight + Style.space(2)
-          : Math.round(Style.space(96) * pane.viewScale) + pane.shownCaptions.length * pane.captionLineHeight
+          : Math.round(Style.space(pane.galleryView ? 196 : 96) * pane.viewScale) + pane.shownCaptions.length * pane.captionLineHeight
         cacheBuffer: 600
         boundsBehavior: Flickable.StopAtBounds
 
@@ -1352,7 +1353,7 @@ Item {
             Item {
               id: gridIcon
               anchors.horizontalCenter: parent.horizontalCenter
-              width: pane.gridIconSize
+              width: pane.galleryView ? parent.width : pane.gridIconSize
               height: pane.gridIconSize
 
               Text {
@@ -1364,7 +1365,7 @@ Item {
                 color: cell.entry.isBroken ? Color.urgent
                   : (cell.entry.isDir ? pane.accent : Util.alpha(pane.fg, 0.8))
                 font.family: Style.font.family
-                font.pixelSize: pane.scaled(Style.font.displayLarge)
+                font.pixelSize: pane.scaled(pane.galleryView ? Style.font.displayLarge * 2 : Style.font.displayLarge)
               }
 
               ThumbImage {
@@ -1379,7 +1380,7 @@ Item {
                 direct: pane.previewable(cell.entry)
                 generated: pane.thumbable(cell.entry)
                 requestSize: pane.gridIconSize * 2
-                sourceSize.width: pane.gridIconSize * 2
+                sourceSize.width: pane.galleryView ? Math.round(Style.space(360) * pane.viewScale) : pane.gridIconSize * 2
                 sourceSize.height: pane.gridIconSize * 2
               }
 
@@ -1407,13 +1408,14 @@ Item {
               textFormat: Text.PlainText
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
-              text: pane.gridLabel(cell.entry.name)
+              text: pane.galleryView ? cell.entry.name : pane.gridLabel(cell.entry.name)
               opacity: cell.isCut ? 0.55 : 1
               color: pane.fg
               font.family: Style.font.family
               font.pixelSize: pane.scaled(Style.font.caption)
-              maximumLineCount: 2
-              wrapMode: Text.WrapAnywhere
+              maximumLineCount: pane.galleryView ? 1 : 2
+              wrapMode: pane.galleryView ? Text.NoWrap : Text.WrapAnywhere
+              elide: pane.galleryView ? Text.ElideMiddle : Text.ElideNone
             }
 
             Column {
