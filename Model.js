@@ -546,6 +546,14 @@ function kindLabel(entry) {
   return extensionLabel(entry.ext);
 }
 
+function alwaysOpenLabel(entry) {
+  var ext = String((entry && entry.ext) || '').toLowerCase();
+  if (ext === '') return 'Always open this type of file with this app';
+  var known = extensionLabel(ext);
+  var pattern = '(*.' + ext + ')';
+  return 'Always open ' + (known === 'Unknown' ? pattern : known + ' ' + pattern) + ' with this app';
+}
+
 function categoryFor(entry) {
   if (!entry) return 'file';
   if (entry.isBroken) return 'broken';

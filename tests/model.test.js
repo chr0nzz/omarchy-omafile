@@ -598,3 +598,10 @@ test('server addresses collapse to one entry per user and host', function () {
   assert.equal(Model.serverLabel('smb://me@nas/media'), 'me@nas');
   assert.equal(Model.serverLabel('not a uri'), 'not a uri');
 });
+
+test('alwaysOpenLabel names the type and its extension', function () {
+  assert.equal(Model.alwaysOpenLabel({ ext: 'md' }), 'Always open ' + Model.extensionLabel('md') + ' (*.md) with this app');
+  assert.equal(Model.alwaysOpenLabel({ ext: 'zzqq' }), 'Always open (*.zzqq) with this app');
+  assert.equal(Model.alwaysOpenLabel({ ext: '' }), 'Always open this type of file with this app');
+  assert.equal(Model.alwaysOpenLabel(null), 'Always open this type of file with this app');
+});

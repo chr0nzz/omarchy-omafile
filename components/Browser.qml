@@ -110,6 +110,12 @@ Item {
     }
   }
   property string appFilter: ""
+  property bool appAlways: false
+  readonly property bool appChoiceReady: {
+    var count = filteredApps().length
+    if (canRunTyped && (appCursor < 0 || count === 0)) return true
+    return appCursor >= 0 && appCursor < count
+  }
   readonly property bool canRunTyped: dialogMode === "openwith"
     && Model.tokenizeCommand(appFilter).length > 0
   property bool findMode: false
@@ -499,6 +505,7 @@ Item {
     dialogPayload = payload || null
     dialogError = ""
     appFilter = ""
+    appAlways = false
     Qt.callLater(function () {
       if (dialogMode === "rename" || dialogMode === "newfolder" || dialogMode === "newfile" || dialogMode === "path"
           || dialogMode === "bookmarkname") {
@@ -1088,7 +1095,7 @@ Item {
     else if (key.indexOf("view:") === 0) setView(key.substring(5))
     else if (key === "preview") showPreview(entry)
     else if (key === "open") p.openEntry(entry)
-    else if (key === "openwith") showDialog("openwith", "Open with", "", entry)
+    else if (key === "openwith") showDialog("openwith", "Open " + (entry ? entry.name : "") + " with", "", entry)
     else if (key === "opentab") newTab(activeSide, entry.path)
     else if (key === "copy") doCopy()
     else if (key === "cut") doCut()
@@ -1567,6 +1574,10 @@ Item {
     closeDialog()
     if (!entry || !service) return
     service.openWith(command, entry.path, inTerminal)
+    if (appAlways && app.id && !entry.isDir)
+      service.setDefaultApp(entry.path, String(app.id), null, function (m) {
+        root.statusText = "Could not set the default app: " + String((m && m.message) || "")
+      })
     afterLaunch()
   }
 
@@ -2707,7 +2718,7 @@ Item {
         width: Math.min(root.width - Style.space(24), root.dialogMode === "settings" ? Style.space(780)
           : (root.dialogMode === "shortcuts" ? Style.space(470)
           : (root.dialogMode === "properties" ? Style.space(460)
-          : (root.dialogMode === "openwith" ? Style.space(420) : Style.space(360)))))
+          : (root.dialogMode === "openwith" ? Style.space(540) : Style.space(360)))))
         height: dialogColumn.implicitHeight + Style.space(28)
         color: Color.popups.background
         border.width: Math.max(1, Style.space(1))
@@ -2729,6 +2740,8 @@ Item {
           Text {
             textFormat: Text.PlainText
             visible: root.dialogMode !== "properties"
+            width: parent.width
+            elide: Text.ElideMiddle
             text: root.dialogTitle
             color: Color.popups.text
             font.family: Style.font.family
@@ -2796,7 +2809,11 @@ Item {
 
             MouseArea {
               anchors.fill: parent
-              onClicked: root.runTypedCommand()
+              onClicked: {
+                root.appCursor = -1
+                appField.forceActiveFocus()
+              }
+              onDoubleClicked: root.runTypedCommand()
             }
           }
 
@@ -2823,9 +2840,25 @@ Item {
 
               HoverHandler { id: appHover }
 
+              Image {
+                id: appIcon
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                width: Style.space(18)
+                height: Style.space(18)
+                sourceSize.width: width * 2
+                sourceSize.height: height * 2
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                source: String(modelData.icon || "").charAt(0) === "/"
+                  ? "file://" + modelData.icon
+                  : Quickshell.iconPath(String(modelData.icon || ""), "application-x-executable")
+              }
+
               Text {
                 textFormat: Text.PlainText
-                anchors.left: parent.left
+                anchors.left: appIcon.right
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: Style.space(8)
@@ -2838,9 +2871,23 @@ Item {
 
               MouseArea {
                 anchors.fill: parent
-                onClicked: root.launchApp(modelData)
+                onClicked: {
+                  root.appCursor = index
+                  appField.forceActiveFocus()
+                }
+                onDoubleClicked: root.launchApp(modelData)
               }
             }
+          }
+
+          Toggle {
+            objectName: "appAlwaysToggle"
+            width: parent.width
+            visible: root.dialogMode === "openwith" && !(root.dialogPayload && root.dialogPayload.isDir)
+            label: Model.alwaysOpenLabel(root.dialogPayload)
+            titleSize: Style.font.bodySmall
+            checked: root.appAlways
+            onClicked: root.appAlways = !root.appAlways
           }
 
           Flickable {
@@ -3500,11 +3547,16 @@ Item {
             visible: root.dialogMode !== "conflict"
 
             Button {
+              objectName: "dialogConfirmButton"
+              enabled: root.dialogMode !== "openwith" || root.appChoiceReady
+              opacity: enabled ? 1 : 0.4
               text: root.isReadOnlyDialog() ? "Close"
-                : (root.dialogMode === "connect" ? "Connect" : "Confirm")
+                : (root.dialogMode === "connect" ? "Connect"
+                  : (root.dialogMode === "openwith" ? "Open" : "Confirm"))
               bordered: true
               onClicked: {
                 if (root.isReadOnlyDialog()) root.closeDialog()
+                else if (root.dialogMode === "openwith") root.chooseApp()
                 else if (root.dialogMode === "connect") root.submitConnect()
                 else root.submitDialog()
               }
@@ -3634,8 +3686,7 @@ Item {
   }
 
   function isReadOnlyDialog() {
-    return dialogMode === "properties" || dialogMode === "openwith"
-      || dialogMode === "shortcuts" || dialogMode === "settings"
+    return dialogMode === "properties" || dialogMode === "shortcuts" || dialogMode === "settings"
   }
 
   readonly property bool popupMode: service ? service.windowMode === "popup" : false

@@ -995,6 +995,17 @@ Item {
     Quickshell.execDetached(argv)
   }
 
+  function setDefaultApp(path, desktopId, onDone, onError) {
+    var id = desktopId.slice(-8) === ".desktop" ? desktopId : desktopId + ".desktop"
+    return openerFor(path, function (m) {
+      if (!m.mime) {
+        if (onError) onError({ message: "unknown file type" })
+        return
+      }
+      root.setOpener(String(m.mime), id, onDone, onError)
+    })
+  }
+
   function runCommandOn(text, path) {
     var argv = Model.tokenizeCommand(text)
     if (argv.length === 0) return false

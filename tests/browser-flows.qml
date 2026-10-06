@@ -45,10 +45,106 @@ ShellRoot {
         var list = findChild(browser, "openWithList")
         wait(200)
         mouseClick(list.itemAtIndex(0))
+        compare(browser.dialogMode, "openwith")
+        compare(mock.called("openWith"), null, "single click only selects")
+        mouseDoubleClickSequence(list.itemAtIndex(0))
         var call = mock.called("openWith")
         verify(call !== null, "openWith called by click")
         compare(call.args[1], "/tmp/alpha.yml")
         compare(browser.dialogMode, "")
+      }
+
+      function openWithDialogFor(index) {
+        if (browser.dialogMode !== "") browser.closeDialog()
+        mock.calls = []
+        waitRows()
+        tryVerify(function () { return DesktopEntries.applications.values.length > 0 }, 10000)
+        pane().setCursor(index, false, false)
+        browser.menuEntry = pane().cursorEntry()
+        browser.runAction("openwith")
+        compare(browser.dialogMode, "openwith")
+        wait(200)
+      }
+
+      function test_1b_openButtonLaunchesSelection() {
+        openWithDialogFor(0)
+        var list = findChild(browser, "openWithList")
+        var button = findChild(browser, "dialogConfirmButton")
+        compare(button.text, "Open")
+        verify(button.enabled)
+        mouseClick(list.itemAtIndex(1))
+        compare(browser.appCursor, 1)
+        compare(mock.called("openWith"), null, "selecting does not launch")
+        mouseClick(button)
+        var call = mock.called("openWith")
+        verify(call !== null, "Open button launches")
+        compare(call.args[1], "/tmp/alpha.yml")
+        compare(mock.called("setDefaultApp"), null, "no default without the toggle")
+        compare(browser.dialogMode, "")
+      }
+
+      function test_1c_alwaysSetsDefault() {
+        openWithDialogFor(0)
+        var list = findChild(browser, "openWithList")
+        var toggle = findChild(browser, "appAlwaysToggle")
+        verify(toggle.visible)
+        compare(toggle.label, "Always open " + Model.extensionLabel("yml") + " (*.yml) with this app")
+        mouseClick(toggle)
+        verify(browser.appAlways)
+        var chosen = String(list.model[1].id)
+        mouseClick(list.itemAtIndex(1))
+        mouseClick(findChild(browser, "dialogConfirmButton"))
+        var call = mock.called("setDefaultApp")
+        verify(call !== null, "setDefaultApp called")
+        compare(call.args[0], "/tmp/alpha.yml")
+        compare(call.args[1], chosen)
+        verify(mock.called("openWith") !== null, "app still launches")
+      }
+
+      function test_1d_toggleResetsEachTime() {
+        openWithDialogFor(0)
+        mouseClick(findChild(browser, "appAlwaysToggle"))
+        verify(browser.appAlways)
+        browser.closeDialog()
+        openWithDialogFor(0)
+        verify(!browser.appAlways)
+        browser.closeDialog()
+      }
+
+      function test_1e_openDisabledWithoutChoice() {
+        openWithDialogFor(0)
+        var button = findChild(browser, "dialogConfirmButton")
+        verify(button.enabled)
+        browser.appFilter = "   "
+        compare(browser.filteredApps().length, 0)
+        verify(!button.enabled, "disabled with nothing to open")
+        mouseClick(button)
+        compare(browser.dialogMode, "openwith", "dialog stays open")
+        compare(mock.called("openWith"), null)
+        browser.appFilter = "zzqq-not-an-app"
+        verify(button.enabled, "enabled again for a typed command")
+        browser.closeDialog()
+      }
+
+      function test_1f_typedCommandIgnoresToggle() {
+        openWithDialogFor(0)
+        mouseClick(findChild(browser, "appAlwaysToggle"))
+        browser.appFilter = "zzqq-not-an-app"
+        browser.appCursor = -1
+        mouseClick(findChild(browser, "dialogConfirmButton"))
+        verify(mock.called("runCommandOn") !== null, "typed command runs")
+        compare(mock.called("setDefaultApp"), null, "typed command sets no default")
+      }
+
+      function test_1g_noToggleForFolders() {
+        openWithDialogFor(2)
+        verify(!findChild(browser, "appAlwaysToggle").visible)
+        var list = findChild(browser, "openWithList")
+        browser.appAlways = true
+        mouseClick(list.itemAtIndex(0))
+        mouseClick(findChild(browser, "dialogConfirmButton"))
+        verify(mock.called("openWith") !== null, "folder still opens with the app")
+        compare(mock.called("setDefaultApp"), null, "folders never get a default")
       }
 
       function test_2_sortMenu() {
