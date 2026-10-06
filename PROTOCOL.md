@@ -97,8 +97,48 @@ unavailable. `unwatch` ends the subscription and replies `done` on the watch's o
 
 Replies `{"t": "stat", "items": [{...}]}` then `done`. Each item carries `path`,
 `name`, `kind`, `size`, `mtime`, `atime`, `ctime`, `mode`, `uid`, `gid`, `owner`,
-`group`, `nlink`, `inode`, `dev`, `mime`, `linkTarget`. A path that cannot be stat'd
+`group`, `nlink`, `disk`, `inode`, `dev`, `mime`, `linkTarget`. A path that cannot be stat'd
 yields an item with `error` set instead of the metadata fields.
+
+### identity
+
+```
+{"id": N, "op": "identity"}
+```
+
+Replies `{"t": "identity", "uid", "user", "groups": [...], "root"}` then `done`. `groups` are the groups the caller belongs to. When the helper runs as root, `users` lists every account and `groups` every group.
+
+### opener
+
+```
+{"id": N, "op": "opener", "path": "/a"}
+```
+
+Replies `{"t": "opener", "mime", "handler"}` then `done`. `handler` is the desktop file id that `xdg-mime` reports as the default for the file's type, or empty.
+
+### setopener
+
+```
+{"id": N, "op": "setopener", "mime": "text/plain", "handler": "app.desktop"}
+```
+
+Makes `handler` the default for `mime` through `xdg-mime default`.
+
+### chmod
+
+```
+{"id": N, "op": "chmod", "path": "/a", "set": 420, "clear": 18, "recursive": false}
+```
+
+Adds the `set` bits and removes the `clear` bits from the permission bits of `path`, and of everything under it when `recursive`. Symlinks are skipped. Replies `done` with `changed`.
+
+### chown
+
+```
+{"id": N, "op": "chown", "path": "/a", "owner": "name", "group": "name", "recursive": false}
+```
+
+`owner` and `group` are optional but one is required. Names or numeric ids. Symlinks are not followed. Replies `done` with `changed`, or `EPERM` when the caller may not make the change.
 
 ### du
 

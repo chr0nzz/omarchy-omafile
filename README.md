@@ -106,6 +106,10 @@ Copies and moves run in the background. Quick ones finish silently. Anything sti
 
 Videos, PDFs, office documents and other files get a thumbnail from the thumbnailers your system already has, the same ones GNOME Files uses. Omarchy ships ffmpegthumbnailer for video and Evince for PDF. Thumbnails are stored in `~/.cache/thumbnails` and shared with GNOME Files, so anything it has already thumbnailed shows up straight away. The cache only holds copies you can read yourself, but it keeps them after the original moves, so clear it if a folder is private. Only root-owned, non-writable-by-others definitions in `/usr/share/thumbnailers` and `/usr/local/share/thumbnailers` are used. User thumbnailers and definitions supplied through XDG data directories are ignored. Turn thumbnails off with the `thumbnails` setting.
 
+### Properties
+
+`Ctrl+I` opens a dialog with two tabs. General shows the type, the application that opens the file, location, size and size on disk, and the modified, accessed and changed times. **Opens with** changes the default application for that file type through `xdg-mime`. Security shows the owner and group, and a read, write and execute grid for owner, group and others. The grid is editable when you own the file, and folders can apply a change to everything inside. The group can be set to any group you belong to. Changing the owner needs the helper to run as root, so it is read only otherwise.
+
 ### The sidebar
 
 Places, then your bookmarks, then drives, then Network, then Trash.

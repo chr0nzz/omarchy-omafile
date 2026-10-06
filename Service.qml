@@ -297,6 +297,36 @@ Item {
     })
   }
 
+  function identity(onResult) {
+    return request({ op: "identity" }, {
+      onData: function (m) { if (m.t === "identity" && onResult) onResult(m) }
+    })
+  }
+
+  function openerFor(path, onResult) {
+    return request({ op: "opener", path: path }, {
+      onData: function (m) { if (m.t === "opener" && onResult) onResult(m) }
+    })
+  }
+
+  function setOpener(mime, handler, onDone, onError) {
+    return request({ op: "setopener", mime: mime, handler: handler }, { onDone: onDone, onError: onError })
+  }
+
+  function changeMode(path, setBits, clearBits, recursive, onDone, onError) {
+    return request({ op: "chmod", path: path, set: setBits, clear: clearBits, recursive: !!recursive }, {
+      onDone: onDone,
+      onError: onError
+    })
+  }
+
+  function changeOwner(path, owner, group, recursive, onDone, onError) {
+    var req = { op: "chown", path: path, recursive: !!recursive }
+    if (owner) req.owner = owner
+    if (group) req.group = group
+    return request(req, { onDone: onDone, onError: onError })
+  }
+
   function peekFile(path, limit, onDone, onError) {
     var result = null
     return request({ op: "peek", path: path, limit: limit }, {

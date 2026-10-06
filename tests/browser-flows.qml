@@ -938,6 +938,60 @@ ShellRoot {
         browser.closeDialog()
       }
 
+      function test_9g_propertiesPermissions() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+          mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" } }
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        compare(browser.dialogMode, "properties")
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        var mode = findChild(browser, "modeText")
+        tryVerify(function () { return mode.text.indexOf("644") === 0 }, 3000)
+        var boxes = []
+        function collect(item) {
+          if (item.objectName === "permBox") boxes.push(item)
+          for (var i = 0; i < item.children.length; i++) collect(item.children[i])
+        }
+        collect(findChild(browser, "dialogCard"))
+        compare(boxes.length, 9)
+        mouseClick(boxes[0])
+        tryVerify(function () { return mode.text.indexOf("244") === 0 }, 3000)
+        wait(150)
+        mouseClick(findChild(browser, "applyPermissions"))
+        var call = mock.called("changeMode")
+        verify(call !== null, "changeMode called")
+        compare(call.args[0], "/tmp/alpha.yml")
+        compare(call.args[1], 0)
+        compare(call.args[2], 256)
+        browser.closeDialog()
+      }
+
+      function test_9h_propertiesReadOnlyForOthers() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+          mode: 33188, uid: 0, gid: 0, owner: "root", group: "root", mime: "text/yaml" } }
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        var boxes = []
+        function collect(item) {
+          if (item.objectName === "permBox") boxes.push(item)
+          for (var i = 0; i < item.children.length; i++) collect(item.children[i])
+        }
+        collect(findChild(browser, "dialogCard"))
+        mouseClick(boxes[0])
+        compare(findChild(browser, "modeText").text.indexOf("644"), 0)
+        compare(findChild(browser, "applyPermissions").visible, false)
+        browser.closeDialog()
+      }
+
       function test_zz_done() {
         if (failures > 0) return
         console.log("OMAFILE_BROWSER_FLOWS_PASSED")

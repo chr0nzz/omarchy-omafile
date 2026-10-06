@@ -234,6 +234,30 @@ function formatMode(mode) {
   return typeChar + perms;
 }
 
+function formatOctal(mode) {
+  var bits = (Number(mode) || 0) & 4095;
+  var text = bits.toString(8);
+  while (text.length < 3) text = '0' + text;
+  return text;
+}
+
+function formatExactSize(bytes) {
+  var n = Math.max(0, Math.round(Number(bytes) || 0));
+  var digits = String(n);
+  var out = '';
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 === 0) out += ',';
+    out += digits.charAt(i);
+  }
+  return out + (n === 1 ? ' byte' : ' bytes');
+}
+
+function modeChange(oldMode, newMode) {
+  var before = (Number(oldMode) || 0) & 4095;
+  var after = (Number(newMode) || 0) & 4095;
+  return { set: after & ~before, clear: before & ~after };
+}
+
 function formatRate(bytesPerSecond) {
   return formatSize(bytesPerSecond) + '/s';
 }

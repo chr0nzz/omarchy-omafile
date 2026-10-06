@@ -159,6 +159,29 @@ test('formatMode against real st_mode integers', function () {
   assert.equal(Model.formatMode(0o120777), 'lrwxrwxrwx');
 });
 
+test('formatOctal pads and drops the file type', function () {
+  assert.equal(Model.formatOctal(0o100644), '644');
+  assert.equal(Model.formatOctal(0o40700), '700');
+  assert.equal(Model.formatOctal(0o100004), '004');
+  assert.equal(Model.formatOctal(0o104755), '4755');
+});
+
+test('formatExactSize groups digits', function () {
+  assert.equal(Model.formatExactSize(0), '0 bytes');
+  assert.equal(Model.formatExactSize(1), '1 byte');
+  assert.equal(Model.formatExactSize(1624), '1,624 bytes');
+  assert.equal(Model.formatExactSize(1234567), '1,234,567 bytes');
+});
+
+test('modeChange reports bits to add and remove', function () {
+  var change = Model.modeChange(0o100644, 0o100755);
+  assert.equal(change.set, 0o111);
+  assert.equal(change.clear, 0);
+  change = Model.modeChange(0o100644, 0o100600);
+  assert.equal(change.set, 0);
+  assert.equal(change.clear, 0o044);
+});
+
 test('formatRate appends a per second suffix', function () {
   assert.equal(Model.formatRate(0), '0 B/s');
   assert.equal(Model.formatRate(4 * 1024 * 1024), '4.0 MB/s');

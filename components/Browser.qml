@@ -1202,22 +1202,49 @@ Item {
   property int propsFiles: 0
   property int propsDirs: 0
   property int propsDuId: 0
+  property bool propsUsageDone: false
+  property var propsIdentity: null
+  property string propsOpenerMime: ""
+  property string propsOpenerHandler: ""
+  function refreshOpener(path) {
+    service.openerFor(path, function (m) {
+      if (root.dialogMode !== "properties") return
+      root.propsOpenerMime = String(m.mime || "")
+      root.propsOpenerHandler = String(m.handler || "")
+    })
+  }
+  function chooseOpener(handler) {
+    if (!handler || propsOpenerMime === "") return
+    service.setOpener(propsOpenerMime, handler, function () {
+      root.propsOpenerHandler = handler
+    }, function (m) {
+      root.statusText = "Could not change the default application"
+    })
+  }
+  function refreshPropsInfo(path) {
+    service.statPaths([path], function (items) {
+      if (items && items.length > 0 && root.dialogMode === "properties") root.propsInfo = items[0]
+    })
+  }
   function showProperties(entry) {
     if (!entry) return
     propsInfo = null
     propsBytes = 0
     propsFiles = 0
     propsDirs = 0
+    propsUsageDone = false
+    propsOpenerMime = ""
+    propsOpenerHandler = ""
     showDialog("properties", "Properties", "", entry)
-    service.statPaths([entry.path], function (items) {
-      if (items && items.length > 0) root.propsInfo = items[0]
-    })
+    refreshPropsInfo(entry.path)
+    if (!entry.isDir) refreshOpener(entry.path)
+    if (!propsIdentity) service.identity(function (m) { root.propsIdentity = m })
     if (entry.isDir && !entry.skipUsage) {
       propsDuId = service.diskUsage(entry.path, function (m) {
         root.propsBytes = Number(m.bytes) || 0
         root.propsFiles = Number(m.files) || 0
         root.propsDirs = Number(m.dirs) || 0
-      }, null)
+      }, function () { root.propsUsageDone = true })
     }
   }
   function enterFind() {
@@ -2679,8 +2706,8 @@ Item {
         anchors.centerIn: parent
         width: Math.min(root.width - Style.space(24), root.dialogMode === "settings" ? Style.space(780)
           : (root.dialogMode === "shortcuts" ? Style.space(470)
-          : ((root.dialogMode === "openwith" || root.dialogMode === "properties")
-            ? Style.space(420) : Style.space(360))))
+          : (root.dialogMode === "properties" ? Style.space(460)
+          : (root.dialogMode === "openwith" ? Style.space(420) : Style.space(360)))))
         height: dialogColumn.implicitHeight + Style.space(28)
         color: Color.popups.background
         border.width: Math.max(1, Style.space(1))
@@ -2691,6 +2718,7 @@ Item {
 
         Column {
           id: dialogColumn
+          objectName: "dialogColumn"
           anchors.left: parent.left
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
@@ -2700,6 +2728,7 @@ Item {
 
           Text {
             textFormat: Text.PlainText
+            visible: root.dialogMode !== "properties"
             text: root.dialogTitle
             color: Color.popups.text
             font.family: Style.font.family
@@ -3390,38 +3419,33 @@ Item {
             }
           }
 
-          Column {
+          Flickable {
+            id: propsFlick
+            objectName: "propsFlick"
             width: parent.width
             visible: root.dialogMode === "properties"
-            spacing: Style.space(6)
+            height: Math.min(propsPanel.implicitHeight, Math.max(Style.space(120), root.dialogRoom - Style.space(60)))
+            implicitHeight: height
+            contentHeight: propsPanel.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
 
-            Repeater {
-              model: root.dialogMode === "properties" ? root.propertyRows() : []
-
-              delegate: Row {
-                required property var modelData
-                width: parent.width
-                spacing: Style.space(10)
-
-                Text {
-                  textFormat: Text.PlainText
-                  width: Style.space(110)
-                  text: modelData.label
-                  color: Util.alpha(Color.popups.text, 0.55)
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.bodySmall
-                }
-
-                Text {
-                  textFormat: Text.PlainText
-                  width: parent.width - Style.space(120)
-                  text: modelData.value
-                  color: Color.popups.text
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.bodySmall
-                  elide: Text.ElideMiddle
-                }
-              }
+            PropertiesPanel {
+              id: propsPanel
+              objectName: "propsPanel"
+              width: propsFlick.width
+              entry: root.dialogMode === "properties" ? root.dialogPayload : null
+              info: root.propsInfo
+              identity: root.propsIdentity
+              service: root.service
+              bytes: root.propsBytes
+              files: root.propsFiles
+              dirs: root.propsDirs
+              usageDone: root.propsUsageDone
+              openerMime: root.propsOpenerMime
+              openerHandler: root.propsOpenerHandler
+              onOpenerChosen: function (handler) { root.chooseOpener(handler) }
+              onApplied: if (root.dialogPayload) root.refreshPropsInfo(root.dialogPayload.path)
             }
           }
 
@@ -3607,30 +3631,6 @@ Item {
       { section: "When a file already exists" },
       { keys: "R / K / S / A", label: "Replace, keep both, skip, skip all" }
     ]
-  }
-
-  function propertyRows() {
-    var entry = dialogPayload
-    var info = propsInfo
-    if (!entry) return []
-    var rows = []
-    rows.push({ label: "Name", value: entry.placeLabel || entry.name })
-    rows.push({ label: "Location", value: Model.dirname(entry.path) })
-    rows.push({ label: "Type", value: Model.kindLabel(entry) })
-    if (!entry.isDir) {
-      rows.push({ label: "Size", value: Model.formatSize(entry.size) })
-    } else if (!entry.skipUsage) {
-      rows.push({ label: "Contents", value: propsFiles + " files, " + propsDirs + " folders" })
-      rows.push({ label: "Size", value: Model.formatSize(propsBytes) })
-    }
-    rows.push({ label: "Modified", value: Model.formatFullDate(entry.mtime) })
-    if (info) {
-      rows.push({ label: "Permissions", value: Model.formatMode(info.mode) })
-      rows.push({ label: "Owner", value: String(info.owner || "") + ":" + String(info.group || "") })
-      if (info.mime) rows.push({ label: "MIME type", value: String(info.mime) })
-    }
-    if (entry.linkTarget) rows.push({ label: "Links to", value: String(entry.linkTarget) })
-    return rows
   }
 
   function isReadOnlyDialog() {

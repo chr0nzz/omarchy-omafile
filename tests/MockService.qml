@@ -79,6 +79,18 @@ QtObject {
     })
     if (cb) cb(items)
   }
+  property var identityInfo: ({ uid: 1000, user: "me", groups: ["me", "wheel"], root: false })
+  function identity(cb) { record("identity", []); if (cb) cb(identityInfo) }
+  function openerFor(path, cb) { record("openerFor", [path]); if (cb) cb({ mime: "text/yaml", handler: "" }) }
+  function setOpener(mime, handler, onDone, onError) { record("setOpener", [mime, handler]); if (onDone) onDone({}) }
+  function changeMode(path, setBits, clearBits, recursive, onDone, onError) {
+    record("changeMode", [path, setBits, clearBits, recursive])
+    if (onDone) onDone({})
+  }
+  function changeOwner(path, owner, group, recursive, onDone, onError) {
+    record("changeOwner", [path, owner, group, recursive])
+    if (onDone) onDone({})
+  }
   function beginTransfer(op, sources, dest, conflict) { record("beginTransfer", [op, sources, dest, conflict]); return 1 }
   function trashPaths(paths, onDone, onError) { record("trashPaths", [paths]); if (onDone) onDone() }
   function deletePaths(paths, onDone, onError) { record("deletePaths", [paths]); if (onDone) onDone({ results: [] }) }
