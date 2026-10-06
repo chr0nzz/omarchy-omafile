@@ -285,6 +285,58 @@ class PermissionTests(HelperTestCase):
         msgs = self.helper.call({"id": self.next_id(), "op": "setopener",
                                  "mime": "text/plain", "handler": "../evil"})
         self.assertEqual(msgs[-1]["code"], "EINVAL")
+        msgs = self.helper.call({"id": self.next_id(), "op": "setopener",
+                                 "mime": "inode/directory", "handler": "other.desktop"})
+        self.assertEqual(msgs[-1]["code"], "EINVAL", "the folder handler is never changed here")
+        msgs = self.helper.call({"id": self.next_id(), "op": "setopener",
+                                 "mime": "-x/y", "handler": "app.desktop"})
+        self.assertEqual(msgs[-1]["code"], "EINVAL")
+
+    @unittest.skipUnless(os.path.isfile("/usr/bin/gio"), "gio is not installed")
+    def test_opener_uses_the_type_gio_open_uses(self):
+        target = self.path("readme.md")
+        with open(target, "w") as f:
+            f.write("# title\n")
+        msgs = self.helper.call({"id": self.next_id(), "op": "opener", "path": target})
+        opener = [m for m in msgs if m["t"] == "opener"][0]
+        self.assertEqual(opener["mime"], "text/markdown")
+
+    @unittest.skipUnless(os.path.isfile("/usr/bin/gio"), "gio is not installed")
+    def test_setopener_saves_the_default_where_gio_reads_it(self):
+        config = self.path("config")
+        apps = self.path("data", "applications")
+        os.makedirs(config)
+        os.makedirs(apps)
+        with open(os.path.join(apps, "omafile-test-viewer.desktop"), "w") as f:
+            f.write("[Desktop Entry]\nType=Application\nName=Viewer\nExec=true %f\nMimeType=text/markdown;\n")
+        self.helper.close()
+        self.helper = Helper(env={"XDG_CONFIG_HOME": config, "XDG_DATA_HOME": self.path("data")})
+        msgs = self.helper.call({"id": self.next_id(), "op": "setopener",
+                                 "mime": "text/markdown", "handler": "omafile-test-viewer.desktop"})
+        self.assertEqual(msgs[-1]["t"], "done", msgs[-1])
+        with open(os.path.join(config, "mimeapps.list")) as f:
+            self.assertIn("text/markdown=omafile-test-viewer.desktop", f.read())
+        target = self.path("readme.md")
+        with open(target, "w") as f:
+            f.write("# title\n")
+        msgs = self.helper.call({"id": self.next_id(), "op": "opener", "path": target})
+        self.assertEqual([m for m in msgs if m["t"] == "opener"][0]["handler"], "omafile-test-viewer.desktop")
+
+    def test_recursive_chmod_never_follows_a_symlink(self):
+        outside = self.path("outside.txt")
+        with open(outside, "w") as f:
+            f.write("x")
+        os.chmod(outside, 0o600)
+        os.makedirs(self.path("tree"))
+        with open(self.path("tree", "inner.txt"), "w") as f:
+            f.write("x")
+        os.chmod(self.path("tree", "inner.txt"), 0o600)
+        os.symlink(outside, self.path("tree", "link"))
+        msgs = self.helper.call({"id": self.next_id(), "op": "chmod", "path": self.path("tree"),
+                                 "set": 0o044, "clear": 0, "recursive": True})
+        self.assertEqual(msgs[-1]["t"], "done")
+        self.assertEqual(stat.S_IMODE(os.stat(self.path("tree", "inner.txt")).st_mode), 0o644)
+        self.assertEqual(stat.S_IMODE(os.stat(outside).st_mode), 0o600)
 
     def test_stat_reports_disk_usage(self):
         target = self.path("disk.txt")

@@ -1232,14 +1232,18 @@ def op_chmod(req):
     changed = 0
     try:
         for target in walk_targets(to_bytes(path), bool(req.get("recursive"))):
-            lst = os.lstat(target)
-            if stat.S_ISLNK(lst.st_mode):
-                continue
-            current = stat.S_IMODE(lst.st_mode)
-            updated = (current | add) & ~drop & mask
-            if updated != current:
-                os.chmod(target, updated)
-                changed += 1
+            fd = os.open(target, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                lst = os.fstat(fd)
+                if stat.S_ISLNK(lst.st_mode):
+                    continue
+                current = stat.S_IMODE(lst.st_mode)
+                updated = (current | add) & ~drop & mask
+                if updated != current:
+                    os.chmod("/proc/self/fd/%d" % fd, updated)
+                    changed += 1
+            finally:
+                os.close(fd)
         send_done(req_id, path=path, changed=changed)
     except OSError as e:
         send_error(req_id, errno_code(e), e.strerror or str(e), path)
@@ -1283,45 +1287,77 @@ def op_chown(req):
     except OSError as e:
         send_error(req_id, errno_code(e), e.strerror or str(e), path)
 
-def run_text(argv):
+MIME_TYPE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]*/[A-Za-z0-9][A-Za-z0-9.+_-]*$")
+DESKTOP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]*\.desktop$")
+MIME_ENV_PASSTHROUGH = ("XDG_CONFIG_HOME", "XDG_CONFIG_DIRS", "XDG_DATA_HOME", "XDG_DATA_DIRS")
+
+
+def run_gio_mime(args):
+    extra = {key: os.environ[key] for key in MIME_ENV_PASSTHROUGH if os.environ.get(key)}
+    return run_trusted("gio", args, timeout=10, extra_env=extra)
+
+
+def gio_content_type(path):
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=10, shell=False)
+        proc = run_gio_mime(["info", "-a", "standard::content-type", path])
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
-    return (proc.stdout or "").strip() if proc.returncode == 0 else ""
+    if proc.returncode != 0:
+        return ""
+    for line in (proc.stdout or "").splitlines():
+        key, _, value = line.strip().partition(": ")
+        if key == "standard::content-type" and MIME_TYPE_RE.match(value.strip()):
+            return value.strip()
+    return ""
+
+
+def gio_default_app(mime):
+    try:
+        proc = run_gio_mime(["mime", mime])
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    for line in (proc.stdout or "").splitlines():
+        if line.startswith("Default application for"):
+            handler = line.rpartition(": ")[2].strip()
+            return handler if DESKTOP_ID_RE.match(handler) else ""
+    return ""
+
 
 def op_opener(req):
     req_id = req["id"]
     path = req.get("path")
-    if not isinstance(path, str):
-        send_error(req_id, "EINVAL", "path required")
+    if not isinstance(path, str) or not os.path.isabs(path):
+        send_error(req_id, "EINVAL", "absolute path required")
         return
-    mime = run_text(["xdg-mime", "query", "filetype", path])
-    if not mime or mime == "application/octet-stream":
-        mime = mimetypes.guess_type(to_str(os.path.basename(to_bytes(path))))[0] or mime
-    handler = run_text(["xdg-mime", "query", "default", mime]) if mime else ""
+    mime = gio_content_type(path)
+    if not mime:
+        mime = mimetypes.guess_type(to_str(os.path.basename(to_bytes(path))))[0] or ""
+    handler = gio_default_app(mime) if mime else ""
     emit({"id": req_id, "t": "opener", "mime": mime, "handler": handler})
     send_done(req_id)
+
 
 def op_setopener(req):
     req_id = req["id"]
     mime = req.get("mime")
     handler = req.get("handler")
-    if (not isinstance(mime, str) or not isinstance(handler, str) or "/" not in mime
-            or not handler.endswith(".desktop") or "/" in handler or mime.startswith("-")):
+    if (not isinstance(mime, str) or not isinstance(handler, str)
+            or not MIME_TYPE_RE.match(mime) or not DESKTOP_ID_RE.match(handler)
+            or mime == "inode/directory"):
         send_error(req_id, "EINVAL", "mime and handler required")
         return
-    if not shutil.which("xdg-mime"):
-        send_error(req_id, "EUNSUPPORTED", "xdg-mime is not installed")
-        return
     try:
-        proc = subprocess.run(["xdg-mime", "default", handler, mime],
-                              capture_output=True, text=True, timeout=10, shell=False)
+        proc = run_gio_mime(["mime", mime, handler])
+    except FileNotFoundError:
+        send_error(req_id, "EUNSUPPORTED", "gio is not installed")
+        return
     except subprocess.TimeoutExpired:
-        send_error(req_id, "ETIMEDOUT", "xdg-mime timed out")
+        send_error(req_id, "ETIMEDOUT", "gio mime timed out")
         return
     if proc.returncode != 0:
-        send_error(req_id, "EINTERNAL", (proc.stderr or "xdg-mime failed").strip())
+        send_error(req_id, "EINTERNAL", (proc.stderr or proc.stdout or "gio mime failed").strip())
         return
     send_done(req_id, mime=mime, handler=handler)
 
@@ -2136,15 +2172,18 @@ def kill_process_group(proc):
         pass
 
 
-def run_trusted(name, args, stdin_text=None, timeout=30, limit=MAX_CAPTURE_BYTES):
+def run_trusted(name, args, stdin_text=None, timeout=30, limit=MAX_CAPTURE_BYTES, extra_env=None):
     program = trusted_program(name)
     argv = [program] + list(args)
+    env = trusted_env()
+    if extra_env:
+        env.update(extra_env)
     proc = subprocess.Popen(
         argv,
         stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env=trusted_env(),
+        env=env,
         shell=False,
         close_fds=True,
         start_new_session=True)

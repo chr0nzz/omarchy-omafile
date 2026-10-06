@@ -23,6 +23,8 @@ Only the latest release on `main` receives fixes.
 | Desktop entry | `~/.local/share/applications/xyzlab.omafile.desktop` | Only while Default file manager is on |
 | D-Bus service file | `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service` | Only while Default file manager is on. Overrides the system file so Show in folder reaches Omafile |
 | Default handler | `xdg-mime` for `inode/directory` | Only while Default file manager is on. Turning it off restores the previous handler |
+| Default apps | `~/.config/mimeapps.list` (or `$XDG_CONFIG_HOME/mimeapps.list`) through `gio mime` | Only when you change Opens with in Properties. Never for `inode/directory` |
+| Permissions, owner and group | The file or folder you edit in Properties | Only when you press Apply. Recursive changes skip symlinks and never follow them. Changing the owner only works when the helper runs as root, which Omafile never arranges |
 | Portal backend file | `/usr/share/xdg-desktop-portal/portals/omafile.portal` | Installed once, with your password, when Pick files for other apps is turned on. Fixed contents. Left in place when it is turned off, where it does nothing on its own |
 | Portal D-Bus service file | `~/.local/share/dbus-1/services/org.freedesktop.impl.portal.desktop.omafile.service` | Only while Pick files for other apps is on |
 | Portal preference | `~/.config/xdg-desktop-portal/hyprland-portals.conf` | Only while Pick files for other apps is on. One `org.freedesktop.impl.portal.FileChooser=omafile` line, the rest of the file is kept |
@@ -40,6 +42,7 @@ Only the latest release on `main` receives fixes.
 | `gio open` | Opening a file with its default application |
 | `gio mount` | Connecting to or disconnecting from a network server |
 | `gio list network:///` | Looking for servers the network advertises |
+| `gio info`, `gio mime` | Reading a file's type and its default app when Properties opens, and saving a new default when you change Opens with |
 | `xdg-mime`, `update-desktop-database` | Only when Default file manager is turned on or off |
 | `bin/omafile-portal` | Only while Pick files for other apps is on. Started by D-Bus when another app asks for a file chooser |
 | `bin/omafile-portal-setup` | Only when Pick files for other apps is turned on or off |

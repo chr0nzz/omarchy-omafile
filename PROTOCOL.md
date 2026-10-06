@@ -114,7 +114,7 @@ Replies `{"t": "identity", "uid", "user", "groups": [...], "root"}` then `done`.
 {"id": N, "op": "opener", "path": "/a"}
 ```
 
-Replies `{"t": "opener", "mime", "handler"}` then `done`. `handler` is the desktop file id that `xdg-mime` reports as the default for the file's type, or empty.
+Replies `{"t": "opener", "mime", "handler"}` then `done`. `mime` is the type `gio info` reports, the same one `gio open` uses, and `handler` is the desktop file id `gio mime` reports as its default, or empty. `path` must be absolute.
 
 ### setopener
 
@@ -122,7 +122,7 @@ Replies `{"t": "opener", "mime", "handler"}` then `done`. `handler` is the deskt
 {"id": N, "op": "setopener", "mime": "text/plain", "handler": "app.desktop"}
 ```
 
-Makes `handler` the default for `mime` through `xdg-mime default`.
+Makes `handler` the default for `mime` through `gio mime`. `inode/directory` is refused, so Omafile's own folder handler is only changed by Default file manager.
 
 ### chmod
 
@@ -130,7 +130,7 @@ Makes `handler` the default for `mime` through `xdg-mime default`.
 {"id": N, "op": "chmod", "path": "/a", "set": 420, "clear": 18, "recursive": false}
 ```
 
-Adds the `set` bits and removes the `clear` bits from the permission bits of `path`, and of everything under it when `recursive`. Symlinks are skipped. Replies `done` with `changed`.
+Adds the `set` bits and removes the `clear` bits from the permission bits of `path`, and of everything under it when `recursive`. Symlinks are skipped and never followed: each item is opened with `O_NOFOLLOW` and changed through that handle. Replies `done` with `changed`.
 
 ### chown
 
