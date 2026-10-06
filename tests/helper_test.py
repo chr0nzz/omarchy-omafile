@@ -1065,6 +1065,66 @@ class ExtractTests(HelperTestCase):
         self.assertEqual(err["t"], "error")
         self.assertEqual(err["code"], "EINVAL")
 
+FAKE_BSDTAR = """#!/usr/bin/env python3
+import os, sys, time
+archive, work = sys.argv[2], sys.argv[4]
+with open(archive, "rb", buffering=0) as f:
+    f.read(os.path.getsize(archive) // 2)
+    sys.stderr.write("x first.txt\\n")
+    sys.stderr.flush()
+    time.sleep(30 if "slow" in archive else 0.8)
+    f.read()
+open(os.path.join(work, "first.txt"), "w").close()
+sys.stderr.write("x second.txt\\n")
+"""
+
+
+class ExtractProgressTests(HelperTestCase):
+    def setUp(self):
+        super().setUp()
+        script = self.path("fake-bsdtar")
+        with open(script, "w") as f:
+            f.write(FAKE_BSDTAR)
+        os.chmod(script, 0o755)
+        self.helper.close()
+        self.helper = Helper(overrides={"programs": {"bsdtar": script}})
+
+    def archive(self, name):
+        target = self.path(name)
+        with open(target, "wb") as f:
+            f.write(b"x" * 4096)
+        return target
+
+    def test_extraction_reports_how_far_it_has_read(self):
+        msgs = self.helper.call({"id": self.next_id(), "op": "extract", "path": self.archive("pack.zip")}, timeout=10)
+        progress = [m for m in msgs if m["t"] == "progress"]
+        self.assertTrue(progress, "progress is reported while extracting")
+        halfway = [m for m in progress if m["bytes"] == 2048]
+        self.assertTrue(halfway, "bytes read so far in the archive")
+        self.assertEqual(halfway[-1]["total"], 4096)
+        self.assertEqual(halfway[-1]["files"], 1)
+        self.assertEqual(halfway[-1]["current"], "first.txt")
+        self.assertTrue(all(m["bytes"] <= 4096 for m in progress))
+        self.assertEqual(msgs[-1]["t"], "done")
+        self.assertEqual(msgs[-1]["path"], self.path("first.txt"))
+
+    def test_cancel_stops_the_extraction_and_leaves_nothing(self):
+        req_id = self.next_id()
+        self.helper.send({"id": req_id, "op": "extract", "path": self.archive("slow.zip")})
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            obj = self.helper.q.get(timeout=5)
+            if obj.get("t") == "progress":
+                break
+        self.helper.send({"id": self.next_id(), "op": "cancel", "target": req_id})
+        start = time.time()
+        msgs = self.helper.collect_until(req_id, timeout=5)
+        self.assertEqual(msgs[-1]["code"], "ECANCELED")
+        self.assertLess(time.time() - start, 3)
+        self.assertEqual([n for n in os.listdir(self.root) if n.startswith(".omafile-extract-")], [])
+        self.assertFalse(os.path.exists(self.path("first.txt")))
+
+
 class TrashTests(HelperTestCase):
     def setUp(self):
         super().setUp()

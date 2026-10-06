@@ -1132,6 +1132,27 @@ ShellRoot {
         browser.closeDialog()
       }
 
+      function test_9i_extractInTransfers() {
+        var panel = findChild(browser, "transferPanel")
+        var job = { id: 9, op: "extract", label: "photos.zip", dest: "/home/me/Downloads", from: "/home/me/Downloads",
+          state: "running", bytes: 50, total: 200, files: 3, filesTotal: 0, current: "a.jpg", rate: 10,
+          errors: [], startedMs: Date.now() - 2000, finishedMs: 0, count: 1 }
+        var details = panel.details(job)
+        compare(details[0].value, "Extracting photos.zip")
+        verify(details.some(function (d) { return d.key === "Files" && d.value === "3" }))
+        verify(details.some(function (d) { return d.key === "Read" }))
+        verify(panel.statusLine(job).indexOf("of") > 0)
+        job.total = 0
+        compare(panel.statusLine(job), "Extracting")
+        mock.calls = []
+        mock.transfers = [job]
+        tryVerify(function () { return panel.visible && findChild(panel, "transfer-9") !== null }, 3000)
+        var row = findChild(panel, "transfer-9")
+        mouseClick(findChild(row, "cancelTransfer"))
+        compare(mock.called("cancelTransfer").args[0], 9, "an extraction can be cancelled from the panel")
+        mock.transfers = []
+      }
+
       function test_zz_done() {
         if (failures > 0) return
         console.log("OMAFILE_BROWSER_FLOWS_PASSED")
