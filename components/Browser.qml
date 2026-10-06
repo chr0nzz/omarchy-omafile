@@ -899,7 +899,8 @@ Item {
           finished()
         }, function (m) {
           failed++
-          root.statusText = "Could not extract " + entry.name + ": " + String((m && m.message) || "")
+          root.statusText = m && m.code === "ECANCELED" ? "Extraction of " + entry.name + " cancelled"
+            : "Could not extract " + entry.name + ": " + String((m && m.message) || "")
           finished()
         })
       })(entries[i])

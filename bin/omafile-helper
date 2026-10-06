@@ -3151,21 +3151,96 @@ def archive_stem(name):
 
 
 def extract_argv(path, work):
-    return [trusted_program("bsdtar"), "-xf", path, "-C", work]
+    return [trusted_program("bsdtar"), "-xvf", path, "-C", work]
 
 
-def run_until_cancelled(argv, cancel_event):
+def archive_read_position(pid, archive):
+    fd_dir = "/proc/%d/fd" % pid
+    try:
+        names = os.listdir(fd_dir)
+    except OSError:
+        return None
+    for name in names:
+        try:
+            if os.readlink(os.path.join(fd_dir, name)) != archive:
+                continue
+            with open("/proc/%d/fdinfo/%s" % (pid, name)) as f:
+                for line in f:
+                    if line.startswith("pos:"):
+                        return int(line.split()[1])
+        except (OSError, ValueError, IndexError):
+            continue
+    return None
+
+
+def run_extract(argv, archive, req_id, cancel_event):
+    total = os.path.getsize(archive)
+    real = os.path.realpath(archive)
     proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                             stderr=subprocess.PIPE, env=trusted_env(), close_fds=True,
                             start_new_session=True)
-    while True:
-        try:
-            _, err = proc.communicate(timeout=0.25)
-            return proc.returncode, (err or b"")[:MAX_CAPTURE_BYTES].decode("utf-8", "replace").strip()
-        except subprocess.TimeoutExpired:
+    stream = proc.stderr.fileno()
+    pending = b""
+    errors = []
+    error_bytes = 0
+    files = 0
+    current = ""
+    done_bytes = 0
+    started = time.monotonic()
+    last_report = started
+    reading = True
+
+    def take(line):
+        nonlocal files, current, error_bytes
+        text = line.decode("utf-8", "replace").rstrip("\r")
+        if text.startswith("x "):
+            files += 1
+            current = text[2:]
+        elif text and error_bytes < MAX_CAPTURE_BYTES:
+            errors.append(text)
+            error_bytes += len(text)
+
+    try:
+        while True:
             if cancel_event.is_set():
                 kill_process_group(proc)
+                proc.wait()
                 return -1, "cancelled"
+            if reading:
+                ready, _, _ = select.select([stream], [], [], 0.25)
+                if ready:
+                    chunk = os.read(stream, 65536)
+                    if chunk:
+                        lines = (pending + chunk).split(b"\n")
+                        pending = lines.pop()
+                        for line in lines:
+                            take(line)
+                    else:
+                        reading = False
+            elif proc.poll() is not None:
+                break
+            else:
+                time.sleep(0.05)
+            now = time.monotonic()
+            if now - last_report >= 0.25:
+                last_report = now
+                position = archive_read_position(proc.pid, real)
+                if position is not None:
+                    done_bytes = max(done_bytes, min(position, total))
+                elapsed = now - started
+                if pending.startswith(b"x "):
+                    current = pending[2:].decode("utf-8", "replace")
+                emit({"id": req_id, "t": "progress", "bytes": done_bytes, "total": total,
+                      "files": files, "filesTotal": 0, "current": current,
+                      "rate": done_bytes / elapsed if elapsed > 0 else 0})
+        if pending:
+            take(pending)
+        return proc.returncode, "\n".join(errors).strip()
+    except BaseException:
+        kill_process_group(proc)
+        raise
+    finally:
+        proc.stderr.close()
 
 
 def op_extract(req, cancel_event):
@@ -3186,8 +3261,9 @@ def op_extract(req, cancel_event):
         except FileNotFoundError:
             send_error(req_id, "EUNSUPPORTED", "bsdtar is not installed", path)
             return
-        code, err = run_until_cancelled(argv, cancel_event)
+        code, err = run_extract(argv, path, req_id, cancel_event)
         if code != 0:
+            shutil.rmtree(work, ignore_errors=True)
             send_error(req_id, "ECANCELED" if code == -1 else "EFAIL", err or "could not extract", path)
             return
         items = os.listdir(work)
@@ -3202,6 +3278,8 @@ def op_extract(req, cancel_event):
             work = None
         send_done(req_id, path=to_str(final))
     except OSError as e:
+        if work:
+            shutil.rmtree(work, ignore_errors=True)
         send_error(req_id, errno_code(e), e.strerror or str(e), path)
     finally:
         if work and os.path.isdir(work):

@@ -386,8 +386,11 @@ device, `EUNSUPPORTED` without udisksctl, `ETIMEDOUT`, and `EMOUNT` with udisks'
 {"id": N, "op": "extract", "path": "/home/me/Downloads/photos.zip"}
 ```
 
-Cancellable. Extracts the archive into a temporary folder next to it with `bsdtar -xf`,
-then moves the result into place. A single
+Cancellable. Extracts the archive into a temporary folder next to it with `bsdtar -xvf`,
+then moves the result into place. While it runs it emits
+`{"t": "progress", "bytes", "total", "files", "filesTotal": 0, "current", "rate"}` about four
+times a second: `bytes` is how far bsdtar has read into the archive, from its file position in
+`/proc/<pid>/fdinfo`, `total` is the archive size, and `files` counts entries extracted so far. A single
 top-level item lands next to the archive as is; several go into a new folder named after
 the archive without its suffix. Clashing names get ` (1)`, ` (2)` and so on. Replies `done`
 with `path`, the extracted item or folder. bsdtar keeps entries inside the folder: absolute

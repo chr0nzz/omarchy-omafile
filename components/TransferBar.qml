@@ -70,6 +70,7 @@ Item {
     if (t.state === "failed") return String(t.message || "Failed")
     if (t.state === "cancelled") return "Cancelled"
     if (t.state === "paused") return "Waiting for a decision"
+    if (t.op === "extract" && t.total <= 0) return "Extracting"
     var line = Model.formatSize(t.bytes) + " of " + Model.formatSize(t.total)
     if (t.rate > 0) {
       line += "   " + Model.formatRate(t.rate)
@@ -80,12 +81,19 @@ Item {
 
   function details(t) {
     var out = []
-    var verb = t.op === "move" ? "Moving" : "Copying"
-    out.push({ key: "What", value: verb + " " + Model.formatCount(Number(t.count) || 1, "item", "items") })
-    if (t.from) out.push({ key: "From", value: shortPath(t.from) })
-    out.push({ key: "To", value: shortPath(t.dest) })
-    if (t.filesTotal > 0) out.push({ key: "Files", value: t.files + " of " + t.filesTotal })
-    if (t.total > 0) out.push({ key: "Size", value: Model.formatSize(t.bytes) + " of " + Model.formatSize(t.total) })
+    if (t.op === "extract") {
+      out.push({ key: "What", value: "Extracting " + String(t.label || "") })
+      out.push({ key: "To", value: shortPath(t.result || t.dest) })
+      if (t.files > 0) out.push({ key: "Files", value: String(t.files) })
+      if (t.total > 0) out.push({ key: "Read", value: Model.formatSize(t.bytes) + " of " + Model.formatSize(t.total) })
+    } else {
+      var verb = t.op === "move" ? "Moving" : "Copying"
+      out.push({ key: "What", value: verb + " " + Model.formatCount(Number(t.count) || 1, "item", "items") })
+      if (t.from) out.push({ key: "From", value: shortPath(t.from) })
+      out.push({ key: "To", value: shortPath(t.dest) })
+      if (t.filesTotal > 0) out.push({ key: "Files", value: t.files + " of " + t.filesTotal })
+      if (t.total > 0) out.push({ key: "Size", value: Model.formatSize(t.bytes) + " of " + Model.formatSize(t.total) })
+    }
     if (active(t) && t.current) out.push({ key: "Now", value: Model.basename(t.current) })
     var end = t.finishedMs || Date.now()
     if (t.startedMs) out.push({ key: active(t) ? "Running" : "Took", value: Model.formatEta((end - t.startedMs) / 1000) })
@@ -222,7 +230,7 @@ Item {
                 id: opGlyph
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: Icons.actionGlyph(entry.item.op === "move" ? "cut" : "copy")
+                text: Icons.actionGlyph(entry.item.op === "extract" ? "extract" : (entry.item.op === "move" ? "cut" : "copy"))
                 color: Util.alpha(Color.popups.text, 0.6)
                 font.family: Style.font.family
                 font.pixelSize: Style.font.iconSmall
