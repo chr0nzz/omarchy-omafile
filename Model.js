@@ -322,6 +322,20 @@ function normalizePath(path) {
 var extractSuffixes = ['.tar.gz', '.tar.xz', '.tar.bz2', '.tar.zst', '.tar.lz', '.tar', '.tgz', '.txz',
   '.tbz', '.tbz2', '.tzst', '.zip', '.7z', '.rar'];
 
+function compressName(entries) {
+  if (!entries || entries.length !== 1) return 'Archive';
+  var entry = entries[0];
+  var name = String(entry.name || '');
+  if (entry.isDir) return name || 'Archive';
+  var lower = name.toLowerCase();
+  for (var i = 0; i < extractSuffixes.length; i++) {
+    var suffix = extractSuffixes[i];
+    if (lower.length > suffix.length && lower.slice(-suffix.length) === suffix) return name.slice(0, -suffix.length);
+  }
+  var dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(0, dot) : (name || 'Archive');
+}
+
 function isArchive(entry) {
   if (!entry || entry.isDir || entry.isBroken) return false;
   var lower = String(entry.name || '').toLowerCase();

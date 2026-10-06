@@ -49,7 +49,7 @@ Only the latest release on `main` receives fixes.
 | `pkexec install`, or `sudo install` from a terminal | Once, when Pick files for other apps is turned on and `omafile.portal` is missing or different |
 | `gdbus` `ReloadConfig`, `systemctl --user restart xdg-desktop-portal.service` | When Pick files for other apps is turned on or off, so the portal picks up the change |
 | `udisksctl` | Only when you mount, unmount or eject a drive |
-| `bsdtar` | Only when you extract an archive. It refuses absolute paths and `..` entries, and extracts into a temporary folder that is moved into place only when it succeeds |
+| `bsdtar` | Only when you extract or compress. Extracting refuses absolute paths and `..` entries and goes into a temporary folder that is moved into place only when it succeeds. Compressing reads item names from standard input, never follows symlinks, and never replaces an existing file |
 | `wl-copy`, `wl-paste` | Copy path, copy/cut files, paste files or images, and clipboard checks while cut markers are active |
 | `xdg-terminal-exec`, `omarchy-launch-editor` | Only when you choose Open in terminal or Open in editor |
 

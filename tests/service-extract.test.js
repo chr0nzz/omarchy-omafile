@@ -12,7 +12,7 @@ function service() {
   const requests = [];
   const c = vm.createContext({ transfers: [], Model: loadModule('Model.js'), Date });
   c.root = c;
-  for (const name of ['extractArchive', 'updateTransfer', 'transferActive', 'cancelTransfer']) {
+  for (const name of ['extractArchive', 'compressPaths', 'updateTransfer', 'transferActive', 'cancelTransfer']) {
     const match = source.match(new RegExp('^  function ' + name + '\\([^]*?^  }', 'm'));
     vm.runInContext(match[0], c);
   }
@@ -53,4 +53,20 @@ test('cancelling an extraction cancels the helper request and marks it cancelled
   requests[0].handlers.onError({ id, code: 'ECANCELED', message: 'cancelled' });
   assert.equal(c.transfers[0].state, 'cancelled');
   assert.equal(error, 'ECANCELED');
+});
+
+test('compressing is a transfer named after the archive', () => {
+  const { c, requests } = service();
+  let result = null;
+  const id = c.compressPaths(['/home/me/photos', '/home/me/notes.txt'], 'Archive.zip', (m) => { result = m.path; });
+  assert.deepEqual(JSON.parse(JSON.stringify(requests[0].payload)), { op: 'compress', paths: ['/home/me/photos', '/home/me/notes.txt'], name: 'Archive.zip' });
+  assert.equal(c.transfers[0].op, 'compress');
+  assert.equal(c.transfers[0].label, 'Archive.zip');
+  assert.equal(c.transfers[0].dest, '/home/me');
+  assert.equal(c.transfers[0].count, 2);
+  requests[0].handlers.onData({ id, t: 'progress', bytes: 10, total: 40, files: 2 });
+  assert.equal(c.transfers[0].bytes, 10);
+  requests[0].handlers.onDone({ id, path: '/home/me/Archive.zip' });
+  assert.equal(c.transfers[0].state, 'done');
+  assert.equal(result, '/home/me/Archive.zip');
 });

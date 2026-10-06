@@ -508,7 +508,7 @@ Item {
     appAlways = false
     Qt.callLater(function () {
       if (dialogMode === "rename" || dialogMode === "newfolder" || dialogMode === "newfile" || dialogMode === "path"
-          || dialogMode === "bookmarkname") {
+          || dialogMode === "bookmarkname" || dialogMode === "compress") {
         dialogField.text = root.dialogValue
         dialogField.forceActiveFocus()
         if (dialogMode === "rename") {
@@ -616,6 +616,13 @@ Item {
     }
     if (value.indexOf("/") >= 0) {
       dialogError = "Name cannot contain a slash"
+      return
+    }
+    if (dialogMode === "compress") {
+      var targets = dialogPayload || []
+      var archiveName = value + compressFormat
+      closeDialog()
+      if (targets.length > 0) compressNow(targets, archiveName)
       return
     }
     if (dialogMode === "newfolder") {
@@ -907,6 +914,48 @@ Item {
     }
   }
 
+  property string compressFormat: ".zip"
+
+  function compressTargets(entry) {
+    var p = activePane()
+    if (!entry || !p || p.virtualView || paneInTrash(p)) return []
+    var sel = p.selectedEntries
+    var inSelection = false
+    for (var i = 0; i < sel.length; i++) if (sel[i].path === entry.path) inSelection = true
+    var list = inSelection ? sel : [entry]
+    var folder = Model.parentPath(list[0].path)
+    for (var j = 1; j < list.length; j++) if (Model.parentPath(list[j].path) !== folder) return []
+    var out = []
+    for (var k = 0; k < list.length; k++) out.push(list[k])
+    return out
+  }
+
+  function askCompress(entry) {
+    var targets = compressTargets(entry)
+    if (targets.length === 0) return
+    showDialog("compress", "Compress " + (targets.length === 1 ? targets[0].name : Model.formatCount(targets.length, "item", "items")),
+      Model.compressName(targets), targets)
+  }
+
+  function compressNow(targets, name) {
+    var p = activePane()
+    var paths = []
+    for (var i = 0; i < targets.length; i++) paths.push(targets[i].path)
+    statusText = "Compressing " + name
+    service.compressPaths(paths, name, function (m) {
+      var out = String(m.path || "")
+      root.statusText = "Compressed to " + Model.basename(out)
+      if (p.path !== Model.parentPath(out)) return
+      p.refresh()
+      selectTimer.pendingName = Model.basename(out)
+      selectTimer.pendingPane = p
+      selectTimer.restart()
+    }, function (m) {
+      root.statusText = m && m.code === "ECANCELED" ? "Compressing " + name + " cancelled"
+        : "Could not compress: " + String((m && m.message) || "")
+    })
+  }
+
   function afterLaunch() {
     if (popupMode) requestClose()
   }
@@ -926,6 +975,8 @@ Item {
       if (!entry.isDir) items.push({ key: "preview", label: "Preview", glyph: Icons.actionGlyph("search") })
       if (archiveTargets(entry).length > 0)
         items.push({ key: "extract", label: "Extract here", glyph: Icons.actionGlyph("extract") })
+      if (compressTargets(entry).length > 0)
+        items.push({ key: "compress", label: "Compress\u2026", glyph: Icons.actionGlyph("extract") })
       if (entry.isDir) {
         items.push({ key: "opentab", label: "Open in new tab", glyph: Icons.actionGlyph("add") })
         items.push({
@@ -1163,6 +1214,7 @@ Item {
     else if (key === "emptytrash") askEmptyTrash()
     else if (key === "copypath") service.copyToClipboardText(entry ? entry.path : p.path)
     else if (key === "extract") extractArchives(archiveTargets(entry))
+    else if (key === "compress") askCompress(entry)
     else if (key === "properties") showProperties(entry)
     else if (key === "newfolder") showDialog("newfolder", "New folder", "untitled folder", null)
     else if (key === "newfile") showDialog("newfile", "New file", "untitled", null)
@@ -2814,9 +2866,24 @@ Item {
             width: parent.width
             visible: root.dialogMode === "rename" || root.dialogMode === "newfolder"
               || root.dialogMode === "newfile" || root.dialogMode === "path"
-              || root.dialogMode === "bookmarkname"
+              || root.dialogMode === "bookmarkname" || root.dialogMode === "compress"
             onAccepted: root.submitDialog()
             Keys.onEscapePressed: root.closeDialog()
+          }
+
+          Dropdown {
+            objectName: "compressFormat"
+            width: parent.width
+            visible: root.dialogMode === "compress"
+            label: "Format"
+            value: root.compressFormat
+            options: [
+              { label: ".zip, opens anywhere", value: ".zip" },
+              { label: ".tar.xz, smaller, for Linux and macOS", value: ".tar.xz" },
+              { label: ".tar.gz, for Linux and macOS", value: ".tar.gz" },
+              { label: ".7z, smallest, needs 7-Zip on Windows", value: ".7z" }
+            ]
+            onChanged: function (v) { root.compressFormat = v }
           }
 
           Text {
@@ -3612,7 +3679,8 @@ Item {
               opacity: enabled ? 1 : 0.4
               text: root.isReadOnlyDialog() ? "Close"
                 : (root.dialogMode === "connect" ? "Connect"
-                  : (root.dialogMode === "openwith" ? "Open" : "Confirm"))
+                  : (root.dialogMode === "openwith" ? "Open"
+                    : (root.dialogMode === "compress" ? "Compress" : "Confirm")))
               bordered: true
               onClicked: {
                 if (root.isReadOnlyDialog()) root.closeDialog()
