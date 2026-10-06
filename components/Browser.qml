@@ -849,8 +849,61 @@ Item {
       else if (!pickSaving && !pick.directory) acceptPick([entry])
       return
     }
+    if (extractsOnOpen(entry)) {
+      extractArchives([entry])
+      return
+    }
     service.openExternally(entry.path)
     afterLaunch()
+  }
+
+  function extractsOnOpen(entry) {
+    return boolSetting("extractOnOpen", false) && Model.isArchive(entry)
+  }
+
+  function archiveTargets(entry) {
+    var p = activePane()
+    var sel = p ? p.selectedEntries : []
+    var list = []
+    var inSelection = false
+    for (var i = 0; i < sel.length; i++) if (entry && sel[i].path === entry.path) inSelection = true
+    var source = inSelection ? sel : (entry ? [entry] : [])
+    for (var j = 0; j < source.length; j++) if (Model.isArchive(source[j])) list.push(source[j])
+    return list
+  }
+
+  function extractArchives(entries) {
+    if (!service || entries.length === 0) return
+    var p = activePane()
+    var pending = entries.length
+    var failed = 0
+    var last = ""
+    statusText = entries.length === 1 ? "Extracting " + entries[0].name
+      : "Extracting " + Model.formatCount(entries.length, "archive", "archives")
+    function finished() {
+      pending--
+      if (pending > 0 || last === "") return
+      root.statusText = failed > 0
+        ? "Extracted to " + Model.basename(last) + ", " + Model.formatCount(failed, "archive failed", "archives failed")
+        : "Extracted to " + Model.basename(last)
+      if (p.path !== Model.parentPath(last)) return
+      p.refresh()
+      selectTimer.pendingName = Model.basename(last)
+      selectTimer.pendingPane = p
+      selectTimer.restart()
+    }
+    for (var i = 0; i < entries.length; i++) {
+      (function (entry) {
+        service.extractArchive(entry.path, function (m) {
+          last = String(m.path || "")
+          finished()
+        }, function (m) {
+          failed++
+          root.statusText = "Could not extract " + entry.name + ": " + String((m && m.message) || "")
+          finished()
+        })
+      })(entries[i])
+    }
   }
 
   function afterLaunch() {
@@ -870,6 +923,8 @@ Item {
       items.push({ key: "open", label: entry.isDir ? "Open" : "Open", glyph: Icons.actionGlyph("open") })
       items.push({ key: "openwith", label: "Open with", glyph: Icons.actionGlyph("open") })
       if (!entry.isDir) items.push({ key: "preview", label: "Preview", glyph: Icons.actionGlyph("search") })
+      if (archiveTargets(entry).length > 0)
+        items.push({ key: "extract", label: "Extract here", glyph: Icons.actionGlyph("extract") })
       if (entry.isDir) {
         items.push({ key: "opentab", label: "Open in new tab", glyph: Icons.actionGlyph("add") })
         items.push({
@@ -1106,6 +1161,7 @@ Item {
     else if (key === "restore") doRestore()
     else if (key === "emptytrash") askEmptyTrash()
     else if (key === "copypath") service.copyToClipboardText(entry ? entry.path : p.path)
+    else if (key === "extract") extractArchives(archiveTargets(entry))
     else if (key === "properties") showProperties(entry)
     else if (key === "newfolder") showDialog("newfolder", "New folder", "untitled folder", null)
     else if (key === "newfile") showDialog("newfile", "New file", "untitled", null)
@@ -1452,12 +1508,15 @@ Item {
 
   function openEntries(sel) {
     var dirs = []
+    var archives = []
     for (var i = 0; i < sel.length; i++) {
       if (sel[i].isDir && !sel[i].isBroken) dirs.push(sel[i].path)
+      else if (extractsOnOpen(sel[i])) archives.push(sel[i])
       else if (service) service.openExternally(sel[i].path)
     }
     for (var d = 0; d < dirs.length; d++) newTab(activeSide, dirs[d])
-    afterLaunch()
+    extractArchives(archives)
+    if (archives.length < sel.length) afterLaunch()
   }
 
   function openFolderMenu() {
@@ -3117,7 +3176,7 @@ Item {
                       width: settingsColumn.width
                       label: modelData.label
                       description: modelData.description
-                      checked: root.boolSetting(modelData.key, true)
+                      checked: root.boolSetting(modelData.key, modelData.fallback !== false)
                       onClicked: root.applySettingNow(modelData.key, !checked)
                     }
                   }
@@ -3723,7 +3782,9 @@ Item {
       { key: "thumbnails", label: "Previews and thumbnails",
         description: "Show images, video frames and document pages instead of a generic icon" },
       { key: "rememberFolderViews", label: "Remember the view for each folder",
-        description: "A folder opens in the view you last picked there. Other folders open in the default view" }
+        description: "A folder opens in the view you last picked there. Other folders open in the default view" },
+      { key: "extractOnOpen", label: "Extract archives when opened", fallback: false,
+        description: "Double click or Enter extracts zip, tar, 7z and rar files next to themselves instead of opening them in your default app" }
     ]
   }
 

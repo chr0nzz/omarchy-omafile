@@ -984,6 +984,10 @@ Item {
     persist()
   }
 
+  function extractArchive(path, onDone, onError) {
+    return request({ op: "extract", path: path }, { onDone: onDone, onError: onError })
+  }
+
   function openExternally(path) {
     Quickshell.execDetached(["gio", "open", path])
   }

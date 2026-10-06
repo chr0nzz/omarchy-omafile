@@ -34,6 +34,7 @@
       "useTrash": true,
       "defaultView": "list",
       "rememberFolderViews": true,
+      "extractOnOpen": false,
       "dropAction": "auto",
       "viewScale": 1,
       "terminal": "",
@@ -114,6 +115,12 @@
         "type": "boolean",
         "label": "Remember the view for each folder",
         "defaultValue": true
+      },
+      {
+        "key": "extractOnOpen",
+        "type": "boolean",
+        "label": "Extract archives when opened",
+        "defaultValue": false
       },
       {
         "key": "viewScale",

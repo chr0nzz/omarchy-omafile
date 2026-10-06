@@ -14,6 +14,7 @@ import threading
 import time
 import unittest
 import urllib.parse
+import zipfile
 
 HELPER_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin", "omafile-helper")
 
@@ -998,6 +999,71 @@ class MoveTests(HelperTestCase):
         finally:
             shutil.rmtree(src_root, ignore_errors=True)
             shutil.rmtree(dest_root, ignore_errors=True)
+
+@unittest.skipUnless(os.path.isfile("/usr/bin/bsdtar"), "bsdtar is not installed")
+class ExtractTests(HelperTestCase):
+    def make_zip(self, name, members):
+        path = self.path(name)
+        with zipfile.ZipFile(path, "w") as z:
+            for member, data in members.items():
+                z.writestr(member, data)
+        return path
+
+    def extract(self, path):
+        return self.terminal(self.helper.call({"id": self.next_id(), "op": "extract", "path": path}, timeout=20))
+
+    def leftovers(self):
+        return [n for n in os.listdir(self.root) if n.startswith(".omafile-extract-")]
+
+    def test_single_top_level_item_lands_next_to_the_archive(self):
+        archive = self.make_zip("one.zip", {"photos/a.txt": "a", "photos/b.txt": "b"})
+        done = self.extract(archive)
+        self.assertEqual(done["t"], "done")
+        self.assertEqual(done["path"], self.path("photos"))
+        self.assertEqual(sorted(os.listdir(self.path("photos"))), ["a.txt", "b.txt"])
+        self.assertEqual(self.leftovers(), [])
+
+    def test_several_items_go_into_a_folder_named_after_the_archive(self):
+        archive = self.make_zip("Holiday.ZIP", {"a.txt": "a", "b.txt": "b"})
+        done = self.extract(archive)
+        self.assertEqual(done["t"], "done")
+        self.assertEqual(done["path"], self.path("Holiday"))
+        self.assertEqual(sorted(os.listdir(self.path("Holiday"))), ["a.txt", "b.txt"])
+
+    def test_existing_names_are_kept(self):
+        archive = self.make_zip("notes.zip", {"notes.txt": "new"})
+        with open(self.path("notes.txt"), "w") as f:
+            f.write("old")
+        done = self.extract(archive)
+        self.assertEqual(done["path"], self.path("notes (1).txt"))
+        with open(self.path("notes.txt")) as f:
+            self.assertEqual(f.read(), "old")
+        with open(self.path("notes (1).txt")) as f:
+            self.assertEqual(f.read(), "new")
+
+    def test_a_broken_archive_errors_and_cleans_up(self):
+        with open(self.path("broken.zip"), "w") as f:
+            f.write("not an archive")
+        err = self.extract(self.path("broken.zip"))
+        self.assertEqual(err["t"], "error")
+        self.assertEqual(err["code"], "EFAIL")
+        self.assertEqual(self.leftovers(), [])
+
+    def test_entries_cannot_escape_the_folder(self):
+        os.makedirs(self.path("inside"))
+        archive = os.path.join(self.path("inside"), "evil.zip")
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("../escaped.txt", "x")
+            z.writestr("/tmp/omafile-absolute-test.txt", "x")
+        self.extract(archive)
+        self.assertFalse(os.path.exists(self.path("escaped.txt")))
+        self.assertFalse(os.path.exists("/tmp/omafile-absolute-test.txt"))
+
+    def test_a_folder_is_rejected(self):
+        os.makedirs(self.path("folder.zip"))
+        err = self.extract(self.path("folder.zip"))
+        self.assertEqual(err["t"], "error")
+        self.assertEqual(err["code"], "EINVAL")
 
 class TrashTests(HelperTestCase):
     def setUp(self):

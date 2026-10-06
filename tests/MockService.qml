@@ -131,6 +131,13 @@ QtObject {
   function setDefaultApp(path, desktopId) { record("setDefaultApp", [path, desktopId]) }
   function runCommandOn(text, path) { record("runCommandOn", [text, path]); return true }
   function openExternally(path) { record("openExternally", [path]) }
+  property var extractResults: ({})
+  function extractArchive(path, onDone, onError) {
+    record("extractArchive", [path])
+    var out = extractResults[path]
+    if (out && out.error) { if (onError) onError({ message: out.error }) }
+    else if (onDone) onDone({ path: out ? out.path : path.replace(/\.zip$/, "") })
+  }
   function thumbnailFor(path, mtime, bucket, onReady) { record("thumbnailFor", [path, mtime, bucket]); onReady(""); return null }
   function releaseThumbnail(ticket) {}
   function finishPick(result, request) { record("finishPick", [result, request]); pickRequest = null }

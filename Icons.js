@@ -105,7 +105,8 @@ var actionGlyphs = {
   keyboard: '',
   window: '',
   popup: '',
-  app: ''
+  app: '',
+  extract: ''
 };
 
 var FALLBACK_CATEGORY = '';

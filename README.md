@@ -100,6 +100,8 @@ Press Space on a file to preview it without opening another app. Images are show
 
 Open with in the right click menu lists your apps with their icons. Click an app to select it, then double click it or press Open. Turn on **Always open ... with this app** to make it the default for that file type, the same default double click and Opens with in Properties use. It is not offered for folders.
 
+Right click an archive and choose **Extract here** to extract it next to itself. It works on several selected archives at once. Zip, tar, 7z and rar files are supported. An archive with one item at the top, such as a single folder, extracts as that item. Anything else goes into a new folder named after the archive. Existing files are never overwritten: a clashing name gets a number. The extracted item is selected when it is done. Double click and Enter open an archive in your default app, unless you turn on **Extract archives when opened** in Settings, under Browsing, which makes them extract it instead, as GNOME Files does.
+
 ### Transfers
 
 Copies and moves run in the background. Quick ones finish silently. Anything still running after about a second opens a small Transfers panel in the bottom right with progress, speed and time left. Click a transfer to see where it goes, how many files are done and any errors. Minimize the panel into the status bar and it stays there, with a progress bar, until you click it again. Finished transfers stay in the list so you can check them later: clear them one by one, or all at once with Clear completed.
@@ -322,6 +324,7 @@ Configure these keys through the Omarchy bar widget settings:
 | `useTrash` | Send deleted items to trash (vs. permanent deletion) |
 | `defaultView` | Start in `list`, `compact`, `grid` or `gallery` view |
 | `rememberFolderViews` | Open each folder in the view last picked there, and other folders in `defaultView` |
+| `extractOnOpen` | Double click and Enter extract archives instead of opening them. Off by default |
 | `terminal` | Terminal command to open in the current directory |
 | `editor` | Text editor command to open selected files |
 | `showTransferBadge` | Show a progress ring on the bar icon while a transfer runs |

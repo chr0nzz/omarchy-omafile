@@ -380,6 +380,21 @@ Runs `udisksctl mount -b` or `udisksctl unmount -b`. `device` must be a path und
 `mountdev` replies `done` with `path`, the new mount point. Errors: `EINVAL` for a bad
 device, `EUNSUPPORTED` without udisksctl, `ETIMEDOUT`, and `EMOUNT` with udisks' message.
 
+### extract
+
+```
+{"id": N, "op": "extract", "path": "/home/me/Downloads/photos.zip"}
+```
+
+Cancellable. Extracts the archive into a temporary folder next to it with `bsdtar -xf`,
+then moves the result into place. A single
+top-level item lands next to the archive as is; several go into a new folder named after
+the archive without its suffix. Clashing names get ` (1)`, ` (2)` and so on. Replies `done`
+with `path`, the extracted item or folder. bsdtar keeps entries inside the folder: absolute
+paths and `..` are refused. Errors: `EINVAL` when `path` is not a file, `EUNSUPPORTED`
+without bsdtar, `ECANCELED`, and `EFAIL` with the tool's message. The temporary folder is
+removed on failure.
+
 ### dirs
 
 ```
@@ -417,7 +432,7 @@ Writes to stdout are serialized behind a single lock so lines never interleave.
 
 The helper runs with the invoking user's permissions and never escalates. It contains
 no `sudo`, no `pkexec`, no shell invocation, no network access and no third-party
-imports. Every subprocess it does spawn is a fixed argv list of a util-linux tool.
+imports. Every subprocess it does spawn is a fixed argv list of a trusted system tool, such as util-linux, udisksctl or bsdtar.
 
 ### clipimage
 

@@ -319,6 +319,17 @@ function normalizePath(path) {
   return joined === '' ? '.' : joined;
 }
 
+var extractSuffixes = ['.tar.gz', '.tar.xz', '.tar.bz2', '.tar.zst', '.tar.lz', '.tar', '.tgz', '.txz',
+  '.tbz', '.tbz2', '.tzst', '.zip', '.7z', '.rar'];
+
+function isArchive(entry) {
+  if (!entry || entry.isDir || entry.isBroken) return false;
+  var lower = String(entry.name || '').toLowerCase();
+  for (var i = 0; i < extractSuffixes.length; i++)
+    if (lower.length > extractSuffixes[i].length && lower.slice(-extractSuffixes[i].length) === extractSuffixes[i]) return true;
+  return false;
+}
+
 function parentPath(path) {
   var p = normalizePath(path);
   if (p === '/') return '/';

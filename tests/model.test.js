@@ -605,3 +605,16 @@ test('alwaysOpenLabel names the type and its extension', function () {
   assert.equal(Model.alwaysOpenLabel({ ext: '' }), 'Always open this type of file with this app');
   assert.equal(Model.alwaysOpenLabel(null), 'Always open this type of file with this app');
 });
+
+test('isArchive covers archives but not other files or folders', () => {
+  var file = function (name) { return { name: name, isDir: false }; };
+  assert.equal(Model.isArchive(file('photos.zip')), true);
+  assert.equal(Model.isArchive(file('Src.TAR.GZ')), true);
+  assert.equal(Model.isArchive(file('bundle.7z')), true);
+  assert.equal(Model.isArchive(file('arch.iso')), false);
+  assert.equal(Model.isArchive(file('app.jar')), false);
+  assert.equal(Model.isArchive(file('notes.txt')), false);
+  assert.equal(Model.isArchive(file('.zip')), false);
+  assert.equal(Model.isArchive({ name: 'folder.zip', isDir: true }), false);
+  assert.equal(Model.isArchive({ name: 'gone.zip', isDir: false, isBroken: true }), false);
+});

@@ -1088,6 +1088,50 @@ ShellRoot {
         browser.closeDialog()
       }
 
+      function test_9g_extractArchives() {
+        waitRows()
+        var zip = { name: "pack.zip", path: "/tmp/pack.zip", isDir: false, ext: "zip" }
+        var tar = { name: "src.tar.gz", path: "/tmp/src.tar.gz", isDir: false, ext: "gz" }
+        var text = { name: "notes.txt", path: "/tmp/notes.txt", isDir: false, ext: "txt" }
+        mock.calls = []
+        compare(browser.boolSetting("extractOnOpen", false), false)
+        browser.handleOpenRequest(zip)
+        compare(mock.called("extractArchive"), null, "archives open in the default app by default")
+        compare(mock.called("openExternally").args[0], "/tmp/pack.zip")
+
+        verify(menuLabels(browser.contextActions(zip)).indexOf("Extract here") >= 0)
+        verify(menuLabels(browser.contextActions(text)).indexOf("Extract here") < 0)
+        mock.calls = []
+        browser.menuEntry = zip
+        browser.runAction("extract")
+        compare(mock.called("extractArchive").args[0], "/tmp/pack.zip")
+        compare(browser.statusText, "Extracted to pack")
+
+        mock.updateSetting("extractOnOpen", true)
+        mock.calls = []
+        browser.handleOpenRequest(zip)
+        compare(mock.called("extractArchive").args[0], "/tmp/pack.zip")
+        compare(mock.called("openExternally"), null)
+        mock.calls = []
+        browser.openEntries([zip, tar, text])
+        compare(count("extractArchive"), 2, "every opened archive is extracted")
+        compare(mock.called("openExternally").args[0], "/tmp/notes.txt")
+
+        mock.extractResults = { "/tmp/pack.zip": { error: "damaged" } }
+        mock.calls = []
+        browser.handleOpenRequest(zip)
+        compare(browser.statusText, "Could not extract pack.zip: damaged")
+        mock.extractResults = ({})
+        mock.updateSetting("extractOnOpen", false)
+
+        browser.showDialog("settings", "Settings", "", null)
+        browser.settingsSection = "browsing"
+        var rows = browser.browsingRows()
+        compare(rows[rows.length - 1].key, "extractOnOpen")
+        compare(rows[rows.length - 1].fallback, false)
+        browser.closeDialog()
+      }
+
       function test_zz_done() {
         if (failures > 0) return
         console.log("OMAFILE_BROWSER_FLOWS_PASSED")

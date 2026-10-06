@@ -35,7 +35,7 @@ var placeKeys = ['home', 'desktop', 'documents', 'downloads', 'music', 'pictures
 var actionKeys = ['copy', 'cut', 'paste', 'rename', 'trash', 'trashFull', 'delete', 'restore', 'newfolder', 'newfile', 'up',
   'back', 'forward', 'refresh', 'search', 'hidden', 'list', 'grid', 'columns', 'split', 'close', 'add',
   'sort', 'menu', 'eject', 'open', 'terminal', 'editor', 'properties', 'cancel', 'check', 'warning',
-  'error', 'chevronRight', 'chevronDown', 'chevronUp', 'chevronLeft'];
+  'error', 'chevronRight', 'chevronDown', 'chevronUp', 'chevronLeft', 'extract'];
 
 var categoryKeys = ['folder', 'image', 'video', 'audio', 'archive', 'code', 'document', 'pdf', 'font',
   'executable', 'link', 'broken', 'file'];

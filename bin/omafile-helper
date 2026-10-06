@@ -3138,6 +3138,76 @@ def op_barsettings(req):
     send_done(req_id)
 
 
+ARCHIVE_SUFFIXES = (".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".tar.lz", ".tar",
+                    ".tgz", ".txz", ".tbz", ".tbz2", ".tzst", ".zip", ".7z", ".rar")
+
+
+def archive_stem(name):
+    lower = name.lower()
+    for suffix in ARCHIVE_SUFFIXES:
+        if lower.endswith(suffix) and len(name) > len(suffix):
+            return name[:-len(suffix)]
+    return os.path.splitext(name)[0] or name
+
+
+def extract_argv(path, work):
+    return [trusted_program("bsdtar"), "-xf", path, "-C", work]
+
+
+def run_until_cancelled(argv, cancel_event):
+    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE, env=trusted_env(), close_fds=True,
+                            start_new_session=True)
+    while True:
+        try:
+            _, err = proc.communicate(timeout=0.25)
+            return proc.returncode, (err or b"")[:MAX_CAPTURE_BYTES].decode("utf-8", "replace").strip()
+        except subprocess.TimeoutExpired:
+            if cancel_event.is_set():
+                kill_process_group(proc)
+                return -1, "cancelled"
+
+
+def op_extract(req, cancel_event):
+    req_id = req["id"]
+    path = req.get("path")
+    if not isinstance(path, str) or not os.path.isfile(path):
+        send_error(req_id, "EINVAL", "an archive file is required", path if isinstance(path, str) else None)
+        return
+    dest_dir = os.path.dirname(path)
+    try:
+        work = tempfile.mkdtemp(prefix=".omafile-extract-", dir=dest_dir)
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), dest_dir)
+        return
+    try:
+        try:
+            argv = extract_argv(path, work)
+        except FileNotFoundError:
+            send_error(req_id, "EUNSUPPORTED", "bsdtar is not installed", path)
+            return
+        code, err = run_until_cancelled(argv, cancel_event)
+        if code != 0:
+            send_error(req_id, "ECANCELED" if code == -1 else "EFAIL", err or "could not extract", path)
+            return
+        items = os.listdir(work)
+        dest_bytes = to_bytes(dest_dir)
+        if len(items) == 1:
+            final = os.path.join(dest_bytes, unique_dest_name(dest_bytes, to_bytes(items[0])))
+            os.rename(os.path.join(work, items[0]), final)
+        else:
+            stem = to_bytes(archive_stem(os.path.basename(path)))
+            final = os.path.join(dest_bytes, unique_dest_name(dest_bytes, stem))
+            os.rename(work, final)
+            work = None
+        send_done(req_id, path=to_str(final))
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), path)
+    finally:
+        if work and os.path.isdir(work):
+            shutil.rmtree(work, ignore_errors=True)
+
+
 CANCELLABLE_OPS = {
     "list": op_list,
     "search": op_search,
@@ -3152,6 +3222,7 @@ CANCELLABLE_OPS = {
     "unmounturi": op_unmounturi,
     "thumb": op_thumb,
     "counts": op_counts,
+    "extract": op_extract,
 }
 
 SIMPLE_OPS = {
