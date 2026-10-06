@@ -984,6 +984,38 @@ Item {
     persist()
   }
 
+  function compressPaths(paths, name, onDone, onError) {
+    var folder = Model.dirname(paths[0])
+    var record = {
+      id: 0, op: "compress", label: name, dest: folder, state: "running",
+      bytes: 0, total: 0, files: 0, filesTotal: 0, current: "", rate: 0,
+      errors: [], startedMs: Date.now(), finishedMs: 0, count: paths.length, from: folder
+    }
+    var id = request({ op: "compress", paths: paths, name: name }, {
+      onData: function (m) {
+        if (m.t === "progress") updateTransfer(m.id, {
+          bytes: Number(m.bytes) || 0, total: Number(m.total) || 0,
+          files: Number(m.files) || 0, current: String(m.current || ""), rate: Number(m.rate) || 0
+        })
+      },
+      onDone: function (m) {
+        updateTransfer(m.id, { state: "done", result: String(m.path || "") })
+        trimTransferHistory()
+        if (onDone) onDone(m)
+      },
+      onError: function (m) {
+        updateTransfer(m.id, { state: m.code === "ECANCELED" ? "cancelled" : "failed", message: String(m.message || "") })
+        trimTransferHistory()
+        if (onError) onError(m)
+      }
+    })
+    record.id = id
+    var next = transfers.slice()
+    next.push(record)
+    transfers = next
+    return id
+  }
+
   function extractArchive(path, onDone, onError) {
     var folder = Model.dirname(path)
     var record = {

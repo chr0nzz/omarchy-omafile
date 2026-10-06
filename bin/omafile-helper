@@ -3173,12 +3173,22 @@ def archive_read_position(pid, archive):
     return None
 
 
-def run_extract(argv, archive, req_id, cancel_event):
-    total = os.path.getsize(archive)
-    real = os.path.realpath(archive)
-    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.PIPE, env=trusted_env(), close_fds=True,
-                            start_new_session=True)
+def run_bsdtar(argv, req_id, cancel_event, total, measure, on_entry=None, stdin_data=None):
+    proc = subprocess.Popen(argv, stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=trusted_env(),
+                            close_fds=True, start_new_session=True)
+    if stdin_data is not None:
+        def feed():
+            try:
+                proc.stdin.write(stdin_data)
+            except OSError:
+                pass
+            finally:
+                try:
+                    proc.stdin.close()
+                except OSError:
+                    pass
+        threading.Thread(target=feed, daemon=True).start()
     stream = proc.stderr.fileno()
     pending = b""
     errors = []
@@ -3193,9 +3203,11 @@ def run_extract(argv, archive, req_id, cancel_event):
     def take(line):
         nonlocal files, current, error_bytes
         text = line.decode("utf-8", "replace").rstrip("\r")
-        if text.startswith("x "):
+        if text.startswith("x ") or text.startswith("a "):
             files += 1
             current = text[2:]
+            if on_entry:
+                on_entry(current)
         elif text and error_bytes < MAX_CAPTURE_BYTES:
             errors.append(text)
             error_bytes += len(text)
@@ -3224,11 +3236,11 @@ def run_extract(argv, archive, req_id, cancel_event):
             now = time.monotonic()
             if now - last_report >= 0.25:
                 last_report = now
-                position = archive_read_position(proc.pid, real)
-                if position is not None:
-                    done_bytes = max(done_bytes, min(position, total))
+                measured = measure(proc.pid)
+                if measured is not None:
+                    done_bytes = max(done_bytes, min(measured, total))
                 elapsed = now - started
-                if pending.startswith(b"x "):
+                if pending.startswith(b"x ") or pending.startswith(b"a "):
                     current = pending[2:].decode("utf-8", "replace")
                 emit({"id": req_id, "t": "progress", "bytes": done_bytes, "total": total,
                       "files": files, "filesTotal": 0, "current": current,
@@ -3241,6 +3253,12 @@ def run_extract(argv, archive, req_id, cancel_event):
         raise
     finally:
         proc.stderr.close()
+
+
+def run_extract(argv, archive, req_id, cancel_event):
+    real = os.path.realpath(archive)
+    return run_bsdtar(argv, req_id, cancel_event, os.path.getsize(archive),
+                      lambda pid: archive_read_position(pid, real))
 
 
 def op_extract(req, cancel_event):
@@ -3286,6 +3304,108 @@ def op_extract(req, cancel_event):
             shutil.rmtree(work, ignore_errors=True)
 
 
+COMPRESS_SUFFIXES = (".zip", ".tar.xz", ".tar.gz", ".7z")
+
+
+def compress_suffix(name):
+    lower = name.lower()
+    for suffix in COMPRESS_SUFFIXES:
+        if lower.endswith(suffix) and len(name) > len(suffix):
+            return name[-len(suffix):]
+    return ""
+
+
+def unique_archive_name(dest_bytes, name):
+    suffix = compress_suffix(name)
+    stem = name[:-len(suffix)]
+    candidate = name
+    n = 1
+    while os.path.lexists(os.path.join(dest_bytes, to_bytes(candidate))):
+        candidate = "%s (%d)%s" % (stem, n, suffix)
+        n += 1
+    return candidate
+
+
+def compress_sizes(parent_bytes, names):
+    sizes = {}
+    for name in names:
+        top = os.path.join(parent_bytes, name)
+        lst = os.lstat(top)
+        sizes[to_str(name)] = lst.st_size if stat.S_ISREG(lst.st_mode) else 0
+        if not stat.S_ISDIR(lst.st_mode):
+            continue
+        for dirpath, dirnames, filenames in os.walk(top, followlinks=False):
+            for child in filenames:
+                full = os.path.join(dirpath, child)
+                try:
+                    child_lst = os.lstat(full)
+                except OSError:
+                    continue
+                if stat.S_ISREG(child_lst.st_mode):
+                    sizes[to_str(os.path.relpath(full, parent_bytes))] = child_lst.st_size
+    return sizes
+
+
+def op_compress(req, cancel_event):
+    req_id = req["id"]
+    paths = req.get("paths")
+    name = req.get("name")
+    if (not isinstance(paths, list) or not paths or not all(isinstance(p, str) and os.path.isabs(p) for p in paths)
+            or not isinstance(name, str) or "/" in name or name in (".", "..") or not compress_suffix(name)):
+        send_error(req_id, "EINVAL", "absolute paths and an archive name ending in .zip, .tar.xz, .tar.gz or .7z are required")
+        return
+    parent = os.path.dirname(os.path.normpath(paths[0]))
+    names = []
+    for p in paths:
+        p = os.path.normpath(p)
+        if os.path.dirname(p) != parent or p == parent:
+            send_error(req_id, "EINVAL", "every item must be in the same folder", p)
+            return
+        if not os.path.lexists(p):
+            send_error(req_id, "ENOENT", "no such file or directory", p)
+            return
+        names.append(to_bytes(os.path.basename(p)))
+    parent_bytes = to_bytes(parent)
+    try:
+        sizes = compress_sizes(parent_bytes, names)
+        fd, work = tempfile.mkstemp(prefix=".omafile-compress-", suffix=compress_suffix(name), dir=parent)
+        os.close(fd)
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), parent)
+        return
+    try:
+        try:
+            argv = [trusted_program("bsdtar"), "-a", "-cvf", work, "-C", parent, "--null", "-T", "-"]
+        except FileNotFoundError:
+            os.unlink(work)
+            send_error(req_id, "EUNSUPPORTED", "bsdtar is not installed", parent)
+            return
+        done = [0]
+
+        def counted(entry):
+            done[0] += sizes.get(entry, 0)
+
+        code, err = run_bsdtar(argv, req_id, cancel_event, sum(sizes.values()), lambda pid: done[0],
+                               on_entry=counted, stdin_data=b"".join(n + b"\0" for n in names))
+        if code != 0:
+            os.unlink(work)
+            send_error(req_id, "ECANCELED" if code == -1 else "EFAIL", err or "could not compress", parent)
+            return
+        while True:
+            final = os.path.join(parent_bytes, to_bytes(unique_archive_name(parent_bytes, name)))
+            try:
+                os.link(work, final)
+                break
+            except FileExistsError:
+                continue
+        os.unlink(work)
+        send_done(req_id, path=to_str(final))
+    except OSError as e:
+        if os.path.lexists(work):
+            os.unlink(work)
+        send_error(req_id, errno_code(e), e.strerror or str(e), parent)
+
+
 CANCELLABLE_OPS = {
     "list": op_list,
     "search": op_search,
@@ -3301,6 +3421,7 @@ CANCELLABLE_OPS = {
     "thumb": op_thumb,
     "counts": op_counts,
     "extract": op_extract,
+    "compress": op_compress,
 }
 
 SIMPLE_OPS = {

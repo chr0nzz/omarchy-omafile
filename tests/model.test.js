@@ -618,3 +618,12 @@ test('isArchive covers archives but not other files or folders', () => {
   assert.equal(Model.isArchive({ name: 'folder.zip', isDir: true }), false);
   assert.equal(Model.isArchive({ name: 'gone.zip', isDir: false, isBroken: true }), false);
 });
+
+test('compressName names one item after itself and several items Archive', () => {
+  assert.equal(Model.compressName([{ name: 'photos', isDir: true }]), 'photos');
+  assert.equal(Model.compressName([{ name: 'report.pdf', isDir: false }]), 'report');
+  assert.equal(Model.compressName([{ name: 'src.tar.gz', isDir: false }]), 'src');
+  assert.equal(Model.compressName([{ name: '.bashrc', isDir: false }]), '.bashrc');
+  assert.equal(Model.compressName([{ name: 'a', isDir: false }, { name: 'b', isDir: false }]), 'Archive');
+  assert.equal(Model.compressName([]), 'Archive');
+});

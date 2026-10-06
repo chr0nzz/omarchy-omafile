@@ -1153,6 +1153,49 @@ ShellRoot {
         mock.transfers = []
       }
 
+      function test_9j_compress() {
+        waitRows()
+        var docs = { name: "docs", path: "/tmp/docs", isDir: true, ext: "" }
+        var report = { name: "report.pdf", path: "/tmp/report.pdf", isDir: false, ext: "pdf" }
+        verify(menuLabels(browser.contextActions(docs)).indexOf("Compress\u2026") >= 0)
+        mock.calls = []
+        browser.menuEntry = report
+        browser.runAction("compress")
+        compare(browser.dialogMode, "compress")
+        var field = findChild(browser, "dialogField")
+        tryCompare(field, "text", "report")
+        var format = findChild(browser, "compressFormat")
+        verify(format.visible)
+        compare(format.value, ".zip")
+        compare(findChild(browser, "dialogConfirmButton").text, "Compress")
+        format.changed(".tar.xz")
+        field.text = "Quarterly"
+        browser.submitDialog()
+        compare(browser.dialogMode, "")
+        var call = mock.called("compressPaths")
+        compare(call.args[0], ["/tmp/report.pdf"])
+        compare(call.args[1], "Quarterly.tar.xz")
+        compare(browser.statusText, "Compressed to Quarterly.tar.xz")
+
+        browser.menuEntry = docs
+        browser.runAction("compress")
+        field.text = "a/b"
+        browser.submitDialog()
+        compare(browser.dialogError, "Name cannot contain a slash")
+        browser.closeDialog()
+
+        mock.compressResult = { error: "cancelled", code: "ECANCELED" }
+        browser.compressNow([docs], "docs.zip")
+        compare(browser.statusText, "Compressing docs.zip cancelled")
+        mock.compressResult = null
+        browser.compressFormat = ".zip"
+
+        pane().navigate("recent:")
+        compare(browser.compressTargets(report).length, 0, "nothing to compress in Recent")
+        pane().navigate("/tmp")
+        waitRows()
+      }
+
       function test_zz_done() {
         if (failures > 0) return
         console.log("OMAFILE_BROWSER_FLOWS_PASSED")

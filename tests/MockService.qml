@@ -131,6 +131,12 @@ QtObject {
   function setDefaultApp(path, desktopId) { record("setDefaultApp", [path, desktopId]) }
   function runCommandOn(text, path) { record("runCommandOn", [text, path]); return true }
   function openExternally(path) { record("openExternally", [path]) }
+  property var compressResult: null
+  function compressPaths(paths, name, onDone, onError) {
+    record("compressPaths", [paths, name])
+    if (compressResult && compressResult.error) { if (onError) onError({ message: compressResult.error, code: compressResult.code }) }
+    else if (onDone) onDone({ path: "/tmp/" + name })
+  }
   property var extractResults: ({})
   function extractArchive(path, onDone, onError) {
     record("extractArchive", [path])

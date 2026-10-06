@@ -71,6 +71,7 @@ Item {
     if (t.state === "cancelled") return "Cancelled"
     if (t.state === "paused") return "Waiting for a decision"
     if (t.op === "extract" && t.total <= 0) return "Extracting"
+    if (t.op === "compress" && t.total <= 0) return "Compressing"
     var line = Model.formatSize(t.bytes) + " of " + Model.formatSize(t.total)
     if (t.rate > 0) {
       line += "   " + Model.formatRate(t.rate)
@@ -86,6 +87,11 @@ Item {
       out.push({ key: "To", value: shortPath(t.result || t.dest) })
       if (t.files > 0) out.push({ key: "Files", value: String(t.files) })
       if (t.total > 0) out.push({ key: "Read", value: Model.formatSize(t.bytes) + " of " + Model.formatSize(t.total) })
+    } else if (t.op === "compress") {
+      out.push({ key: "What", value: "Compressing " + Model.formatCount(Number(t.count) || 1, "item", "items") })
+      out.push({ key: "To", value: shortPath(t.result || Model.joinPath(t.dest, String(t.label || ""))) })
+      if (t.files > 0) out.push({ key: "Files", value: String(t.files) })
+      if (t.total > 0) out.push({ key: "Size", value: Model.formatSize(t.bytes) + " of " + Model.formatSize(t.total) })
     } else {
       var verb = t.op === "move" ? "Moving" : "Copying"
       out.push({ key: "What", value: verb + " " + Model.formatCount(Number(t.count) || 1, "item", "items") })
@@ -230,7 +236,7 @@ Item {
                 id: opGlyph
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: Icons.actionGlyph(entry.item.op === "extract" ? "extract" : (entry.item.op === "move" ? "cut" : "copy"))
+                text: Icons.actionGlyph(entry.item.op === "extract" || entry.item.op === "compress" ? "extract" : (entry.item.op === "move" ? "cut" : "copy"))
                 color: Util.alpha(Color.popups.text, 0.6)
                 font.family: Style.font.family
                 font.pixelSize: Style.font.iconSmall

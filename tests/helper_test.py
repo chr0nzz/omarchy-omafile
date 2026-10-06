@@ -1125,6 +1125,109 @@ class ExtractProgressTests(HelperTestCase):
         self.assertFalse(os.path.exists(self.path("first.txt")))
 
 
+@unittest.skipUnless(os.path.isfile("/usr/bin/bsdtar"), "bsdtar is not installed")
+class CompressTests(HelperTestCase):
+    def setUp(self):
+        super().setUp()
+        os.makedirs(self.path("photos", "trip"))
+        with open(self.path("photos", "trip", "a.txt"), "w") as f:
+            f.write("a" * 100)
+        with open(self.path("notes.txt"), "w") as f:
+            f.write("n" * 50)
+        with open(self.path("-rf"), "w") as f:
+            f.write("dash")
+
+    def compress(self, paths, name):
+        return self.helper.call({"id": self.next_id(), "op": "compress", "paths": paths, "name": name}, timeout=20)
+
+    def listing(self, archive):
+        out = subprocess.run(["/usr/bin/bsdtar", "-tf", archive], capture_output=True, text=True, check=True)
+        return sorted(line.rstrip("/") for line in out.stdout.splitlines())
+
+    def test_items_go_into_an_archive_next_to_them(self):
+        for name in ["Archive.zip", "Archive.tar.xz", "Archive.tar.gz", "Archive.7z"]:
+            msgs = self.compress([self.path("photos"), self.path("notes.txt"), self.path("-rf")], name)
+            self.assertEqual(msgs[-1]["t"], "done", msgs[-1])
+            self.assertEqual(msgs[-1]["path"], self.path(name))
+            self.assertEqual(self.listing(self.path(name)),
+                             ["-rf", "notes.txt", "photos", "photos/trip", "photos/trip/a.txt"])
+        self.assertEqual([n for n in os.listdir(self.root) if n.startswith(".omafile-compress-")], [])
+
+    def test_progress_counts_the_bytes_written(self):
+        msgs = self.compress([self.path("photos"), self.path("notes.txt")], "Archive.zip")
+        progress = [m for m in msgs if m["t"] == "progress"]
+        for m in progress:
+            self.assertEqual(m["total"], 150)
+            self.assertLessEqual(m["bytes"], 150)
+
+    def test_existing_archives_are_never_replaced(self):
+        with open(self.path("Archive.tar.xz"), "w") as f:
+            f.write("old")
+        msgs = self.compress([self.path("notes.txt")], "Archive.tar.xz")
+        self.assertEqual(msgs[-1]["path"], self.path("Archive (1).tar.xz"))
+        with open(self.path("Archive.tar.xz")) as f:
+            self.assertEqual(f.read(), "old")
+
+    def test_round_trip_through_extract(self):
+        self.compress([self.path("photos")], "photos.zip")
+        shutil.rmtree(self.path("photos"))
+        msgs = self.helper.call({"id": self.next_id(), "op": "extract", "path": self.path("photos.zip")}, timeout=20)
+        self.assertEqual(msgs[-1]["path"], self.path("photos"))
+        with open(self.path("photos", "trip", "a.txt")) as f:
+            self.assertEqual(f.read(), "a" * 100)
+
+    def test_bad_requests_are_rejected(self):
+        os.makedirs(self.path("other"))
+        with open(self.path("other", "x.txt"), "w") as f:
+            f.write("x")
+        cases = [
+            ([self.path("notes.txt"), self.path("other", "x.txt")], "Archive.zip"),
+            ([self.path("notes.txt")], "Archive.rar"),
+            ([self.path("notes.txt")], "../Archive.zip"),
+            ([self.path("notes.txt")], ".zip"),
+            (["notes.txt"], "Archive.zip"),
+            ([], "Archive.zip"),
+        ]
+        for paths, name in cases:
+            self.assertEqual(self.compress(paths, name)[-1]["code"], "EINVAL", (paths, name))
+        self.assertEqual(self.compress([self.path("missing")], "Archive.zip")[-1]["code"], "ENOENT")
+
+
+FAKE_SLOW_BSDTAR = """#!/usr/bin/env python3
+import sys, time
+sys.stdin.buffer.read()
+sys.stderr.write("a big.bin\\n")
+sys.stderr.flush()
+time.sleep(30)
+"""
+
+
+class CompressCancelTests(HelperTestCase):
+    def test_cancel_stops_compressing_and_leaves_nothing(self):
+        script = self.path("fake-bsdtar")
+        with open(script, "w") as f:
+            f.write(FAKE_SLOW_BSDTAR)
+        os.chmod(script, 0o755)
+        self.helper.close()
+        self.helper = Helper(overrides={"programs": {"bsdtar": script}})
+        with open(self.path("big.bin"), "wb") as f:
+            f.write(b"x" * 1000)
+        req_id = self.next_id()
+        self.helper.send({"id": req_id, "op": "compress", "paths": [self.path("big.bin")], "name": "big.zip"})
+        deadline = time.time() + 5
+        progress = None
+        while time.time() < deadline:
+            obj = self.helper.q.get(timeout=5)
+            if obj.get("t") == "progress" and obj.get("files"):
+                progress = obj
+                break
+        self.assertEqual(progress["bytes"], 1000)
+        self.helper.send({"id": self.next_id(), "op": "cancel", "target": req_id})
+        msgs = self.helper.collect_until(req_id, timeout=5)
+        self.assertEqual(msgs[-1]["code"], "ECANCELED")
+        self.assertEqual(sorted(n for n in os.listdir(self.root) if n != "fake-bsdtar"), ["big.bin"])
+
+
 class TrashTests(HelperTestCase):
     def setUp(self):
         super().setUp()

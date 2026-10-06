@@ -398,6 +398,22 @@ paths and `..` are refused. Errors: `EINVAL` when `path` is not a file, `EUNSUPP
 without bsdtar, `ECANCELED`, and `EFAIL` with the tool's message. The temporary folder is
 removed on failure.
 
+### compress
+
+```
+{"id": N, "op": "compress", "paths": ["/home/me/photos", "/home/me/notes.txt"], "name": "Archive.zip"}
+```
+
+Cancellable. Every path must be absolute and in the same folder. `name` must end in `.zip`,
+`.tar.xz`, `.tar.gz` or `.7z`, which picks the format, and cannot contain a slash. Runs
+`bsdtar -a -cvf <temporary file> -C <folder> --null -T -` with the item names on standard input,
+NUL separated, so no name is ever read as an option. Symlinks are stored as links, never
+followed. The finished archive is linked into place under `name`, or `name (1)`, `name (2)` and so
+on, so an existing file is never replaced. Emits `progress` like `extract`, where `bytes` and
+`total` count the regular file bytes added so far and in all. Replies `done` with `path`.
+Errors: `EINVAL`, `ENOENT`, `EUNSUPPORTED` without bsdtar, `ECANCELED`, and `EFAIL` with the
+tool's message. The temporary file is removed on failure.
+
 ### dirs
 
 ```
