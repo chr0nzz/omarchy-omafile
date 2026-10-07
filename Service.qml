@@ -45,6 +45,7 @@ Item {
   property bool _stateLoaded: false
   property int _bookmarkWatchId: 0
   property var hiddenDrives: []
+  property var placeOrder: ({})
   property var servers: []
   property var serverSettings: ({})
   property var folderViews: ({})
@@ -826,7 +827,11 @@ Item {
 
   function refreshDrives() {
     request({ op: "drives" }, {
-      onData: function (m) { if (m.t === "drives") root.drives = m.drives || [] }
+      onData: function (m) {
+        if (m.t !== "drives") return
+        var next = m.drives || []
+        if (JSON.stringify(next) !== JSON.stringify(root.drives)) root.drives = next
+      }
     })
   }
 
@@ -1164,6 +1169,34 @@ Item {
     persist()
   }
 
+  function placeOrderFor(section) {
+    var saved = placeOrder[String(section || "")]
+    return saved ? saved : []
+  }
+
+  function hasPlaceOrder(section) {
+    return placeOrderFor(section).length > 0
+  }
+
+  function setPlaceOrder(section, ids) {
+    var key = String(section || "")
+    if (!key) return
+    var next = {}
+    for (var k in placeOrder) next[k] = placeOrder[k]
+    next[key] = Model.rememberPlaceOrder(placeOrderFor(key), ids)
+    placeOrder = next
+    persist()
+  }
+
+  function resetPlaceOrder(section) {
+    var key = String(section || "")
+    if (!hasPlaceOrder(key)) return
+    var next = {}
+    for (var k in placeOrder) if (k !== key) next[k] = placeOrder[k]
+    placeOrder = next
+    persist()
+  }
+
   function togglePinned(path) {
     var next = []
     var found = false
@@ -1400,6 +1433,7 @@ Item {
       bookmarkLabels: bookmarkLabels,
       bookmarksDirty: bookmarksDirty,
       hiddenDrives: hiddenDrives,
+      placeOrder: placeOrder,
       servers: servers,
       serverSettings: serverSettings,
       folderViews: folderViews,
@@ -1434,6 +1468,7 @@ Item {
       if (parsed.bookmarkLabels) bookmarkLabels = parsed.bookmarkLabels
     }
     if (parsed.hiddenDrives) hiddenDrives = parsed.hiddenDrives
+    if (parsed.placeOrder && typeof parsed.placeOrder === "object") placeOrder = Model.cleanPlaceOrder(parsed.placeOrder)
     if (parsed.servers) servers = parsed.servers
     if (parsed.serverSettings && typeof parsed.serverSettings === "object") serverSettings = parsed.serverSettings
     if (parsed.folderViews && typeof parsed.folderViews === "object") folderViews = parsed.folderViews

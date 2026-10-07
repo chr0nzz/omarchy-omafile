@@ -1038,15 +1038,47 @@ Item {
     }
     return items
   }
+  function placeOrderActions(row) {
+    var items = []
+    if (!row || !row.section) return items
+    if (row.orderId) {
+      items.push({ key: "place:moveup", label: "Move up", glyph: Icons.actionGlyph("chevronUp"),
+        disabled: Number(row.orderIndex) <= 0 })
+      items.push({ key: "place:movedown", label: "Move down", glyph: Icons.actionGlyph("chevronDown"),
+        disabled: Number(row.orderIndex) >= Number(row.orderCount) - 1 })
+    }
+    items.push({ key: "place:resetorder", label: "Reset order", glyph: Icons.actionGlyph("restore"),
+      disabled: !service || typeof service.hasPlaceOrder !== "function" || !service.hasPlaceOrder(row.section) })
+    return items
+  }
+  function sectionMenuActions(row) {
+    var items = []
+    items.push({ key: "place:sectionup", label: "Move section up", glyph: Icons.actionGlyph("chevronUp"),
+      disabled: !(Number(row.sectionIndex) > 0) })
+    items.push({ key: "place:sectiondown", label: "Move section down", glyph: Icons.actionGlyph("chevronDown"),
+      disabled: !(Number(row.sectionIndex) < Number(row.sectionCount) - 1) })
+    items.push({ key: "sep-place-section", label: "", glyph: "" })
+    items = items.concat(placeOrderActions(row))
+    items.push({ key: "place:resetsections", label: "Reset section order", glyph: Icons.actionGlyph("restore"),
+      disabled: !service || typeof service.hasPlaceOrder !== "function" || !service.hasPlaceOrder("sections") })
+    return items
+  }
+  function withPlaceOrderActions(items, row) {
+    var order = placeOrderActions(row)
+    if (order.length === 0) return items
+    if (items.length > 0) items.push({ key: "sep-place-order", label: "", glyph: "" })
+    return items.concat(order)
+  }
   function placeMenuActions(row) {
     var items = []
     if (!row || row.unhide === true) return items
+    if (row.header === true) return sectionMenuActions(row)
     var real = row.path && row.path !== "recent:"
     if (row.unmounted === true) {
       items.push({ key: "place:mount", label: "Mount", glyph: Icons.placeGlyph(row.key) })
       items.push({ key: "sep-place1", label: "", glyph: "" })
       items.push({ key: "place:hidedrive", label: "Hide", glyph: Icons.actionGlyph("hidden") })
-      return items
+      return withPlaceOrderActions(items, row)
     }
     if (row.server === true || row.connect === true) {
       items.push({ key: "place:connect", label: "Connect", glyph: Icons.placeGlyph("network") })
@@ -1054,7 +1086,7 @@ Item {
         items.push({ key: "place:editserver", label: "Edit\u2026", glyph: Icons.actionGlyph("rename") })
       if (row.remembered === true && row.uri)
         items.push({ key: "place:forget", label: "Forget this server", glyph: Icons.actionGlyph("close") })
-      return items
+      return withPlaceOrderActions(items, row)
     }
     items.push({ key: "place:open", label: "Open", glyph: Icons.actionGlyph("open") })
     items.push({ key: "place:tab", label: "Open in new tab", glyph: Icons.actionGlyph("add") })
@@ -1088,7 +1120,7 @@ Item {
       items.push({ key: "place:copypath", label: "Copy path", glyph: Icons.actionGlyph("copy") })
       items.push({ key: "place:properties", label: "Properties", glyph: Icons.actionGlyph("properties") })
     }
-    return items
+    return withPlaceOrderActions(items, row)
   }
   function openPlaceMenu(row, x, y) {
     var pt = sidebar.mapToItem(keyCatcher, x, y)
@@ -1131,6 +1163,12 @@ Item {
     else if (action === "properties") showPlaceProperties(row)
     else if (action === "connect") openServer(String(row.uri || ""))
     else if (action === "editserver") showDialog("connect", "Connect to a server", String(row.uri || ""), null)
+    else if (action === "moveup") sidebar.moveRow(row, -1)
+    else if (action === "movedown") sidebar.moveRow(row, 1)
+    else if (action === "resetorder") service.resetPlaceOrder(String(row.section || ""))
+    else if (action === "sectionup") sidebar.moveSection(String(row.section || ""), -1)
+    else if (action === "sectiondown") sidebar.moveSection(String(row.section || ""), 1)
+    else if (action === "resetsections") service.resetPlaceOrder("sections")
   }
   function driveNotice(title, m) {
     var detail = String((m && m.message) || "")
@@ -1778,6 +1816,8 @@ Item {
     if (event.key === Qt.Key_Escape) { leaveSidebar(); return true }
     if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) { leaveSidebar(); return true }
     if (event.key === Qt.Key_Right) { leaveSidebar(); return true }
+    if (ctrl && event.key === Qt.Key_Down) { sidebar.moveCursorRow(1); return true }
+    if (ctrl && event.key === Qt.Key_Up) { sidebar.moveCursorRow(-1); return true }
     if (event.key === Qt.Key_Down) { sidebar.moveCursor(1); return true }
     if (event.key === Qt.Key_Up) { sidebar.moveCursor(-1); return true }
     if (event.key === Qt.Key_Home) { sidebar.cursorIndex = 0; return true }

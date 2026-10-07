@@ -6,6 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+const Model = require('./load.js')('Model.js');
+
 function service(saved = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'Service.qml'), 'utf8');
   const requests = [];
@@ -14,12 +16,12 @@ function service(saved = {}) {
     pinned: [], bookmarkLabels: {}, bookmarksMigrated: false, bookmarksLoaded: false,
     bookmarksDirty: false, bookmarksError: '', _legacyPinned: [], _bookmarkWatchId: 0,
     _bookmarkReadPending: false, _bookmarkWritePending: false, _bookmarkRevision: 0,
-    _bookmarkGeneration: 0, _stateLoaded: false, recent: [], hiddenDrives: [], servers: [],
+    _bookmarkGeneration: 0, _stateLoaded: false, recent: [], hiddenDrives: [], placeOrder: {}, servers: [],
     serverSettings: {}, folderViews: {}, previousFileManager: '', session: null, _queue: [], _pending: {},
     helperRestarts: 0, helperReady: true, helperError: '', _thumbWaiting: {},
     restartTimer: { restart() {} }, bookmarkReloadTimer: { restart() {} },
     stateFile: { setText(text) { writes.push(JSON.parse(text)); } },
-    Model: { basename(value) { return path.basename(value); } }
+    Model: { basename(value) { return path.basename(value); }, rememberPlaceOrder: Model.rememberPlaceOrder, cleanPlaceOrder: Model.cleanPlaceOrder }
   });
   context.root = context;
   for (const match of source.matchAll(/^  function \w+\([^]*?^  }/gm)) {
@@ -126,4 +128,25 @@ test('folder views are saved with the state and read back after a restart', () =
   assert.deepEqual(plain(saved.folderViews), { '/photos': 'gallery' });
   const second = service(saved);
   assert.deepEqual(plain(second.context.folderViews), { '/photos': 'gallery' });
+});
+
+test('place order is saved per section, read back after a restart, and reset', () => {
+  const first = service({});
+  first.context.setPlaceOrder('drives', ['/mnt/b', '/mnt/a']);
+  first.context.setPlaceOrder('places', ['root', 'home']);
+  assert.equal(first.context.hasPlaceOrder('drives'), true);
+  const second = service(first.writes.at(-1));
+  assert.deepEqual(plain(second.context.placeOrderFor('drives')), ['/mnt/b', '/mnt/a']);
+  assert.deepEqual(plain(second.context.placeOrderFor('places')), ['root', 'home']);
+  second.context.resetPlaceOrder('drives');
+  assert.equal(second.context.hasPlaceOrder('drives'), false);
+  assert.deepEqual(plain(second.writes.at(-1).placeOrder), { places: ['root', 'home'] });
+  assert.deepEqual(plain(second.context.placeOrderFor('network')), []);
+});
+
+test('a damaged place order in the state file is cleaned when it loads', () => {
+  const loaded = service({ placeOrder: { drives: 'oops', places: ['root', 3, 'home'], sections: ['network'] } });
+  assert.deepEqual(plain(loaded.context.placeOrderFor('drives')), []);
+  assert.deepEqual(plain(loaded.context.placeOrderFor('places')), ['root', 'home']);
+  assert.deepEqual(plain(loaded.context.placeOrderFor('sections')), ['network']);
 });

@@ -627,3 +627,63 @@ test('compressName names one item after itself and several items Archive', () =>
   assert.equal(Model.compressName([{ name: 'a', isDir: false }, { name: 'b', isDir: false }]), 'Archive');
   assert.equal(Model.compressName([]), 'Archive');
 });
+
+test('orderPlaces follows the saved order and keeps new and fixed rows last', () => {
+  var rows = [
+    { orderId: 'home' }, { orderId: 'recent' }, { orderId: 'docs' }, { label: 'Connect' }, { orderId: 'root' }
+  ];
+  var ids = function (list) { return Array.from(list, function (r) { return r.orderId || r.label; }); };
+  assert.deepEqual(ids(Model.orderPlaces(rows, [])), ['home', 'recent', 'docs', 'root', 'Connect']);
+  assert.deepEqual(ids(Model.orderPlaces(rows, null)), ['home', 'recent', 'docs', 'root', 'Connect']);
+  assert.deepEqual(ids(Model.orderPlaces(rows, ['docs', 'gone', 'home'])), ['docs', 'home', 'recent', 'root', 'Connect']);
+  assert.deepEqual(Array.from(Model.placeOrderIds(rows)), ['home', 'recent', 'docs', 'root']);
+});
+
+test('movePlace moves one id to an index and clamps it', () => {
+  var ids = ['a', 'b', 'c', 'd'];
+  assert.deepEqual(Array.from(Model.movePlace(ids, 'a', 2)), ['b', 'c', 'a', 'd']);
+  assert.deepEqual(Array.from(Model.movePlace(ids, 'd', 0)), ['d', 'a', 'b', 'c']);
+  assert.deepEqual(Array.from(Model.movePlace(ids, 'b', -1)), ['b', 'a', 'c', 'd']);
+  assert.deepEqual(Array.from(Model.movePlace(ids, 'b', 9)), ['a', 'c', 'd', 'b']);
+  assert.deepEqual(Array.from(Model.movePlace(ids, 'x', 1)), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(ids, ['a', 'b', 'c', 'd']);
+});
+
+test('rememberPlaceOrder keeps the spot of rows that are gone for now', () => {
+  assert.deepEqual(Array.from(Model.rememberPlaceOrder(['usb', 'disk', 'nas'], ['nas', 'disk'])), ['usb', 'nas', 'disk']);
+  assert.deepEqual(Array.from(Model.rememberPlaceOrder(['disk', 'usb', 'nas'], ['nas', 'disk'])), ['nas', 'usb', 'disk']);
+  assert.deepEqual(Array.from(Model.rememberPlaceOrder(null, ['a'])), ['a']);
+});
+
+test('section drag helpers pick the slot under the dragged section and shift the rest', () => {
+  var tops = [0, 110, 170, 260];
+  var heights = [100, 50, 80, 40];
+  assert.equal(Model.clampSectionOffset(tops, heights, 1, -500), -110);
+  assert.equal(Model.clampSectionOffset(tops, heights, 1, 500), 140);
+  assert.equal(Model.sectionDropIndex(tops, heights, 0, 0), 0);
+  assert.equal(Model.sectionDropIndex(tops, heights, 0, 100), 1);
+  assert.equal(Model.sectionDropIndex(tops, heights, 0, 200), 2);
+  assert.equal(Model.sectionDropIndex(tops, heights, 3, -150), 1);
+  assert.equal(Model.sectionSettleOffset(tops, heights, 0, 1), 60);
+  assert.equal(Model.sectionSettleOffset(tops, heights, 3, 1), -150);
+  assert.equal(Model.sectionSettleOffset(tops, heights, 2, 2), 0);
+  assert.equal(Model.sectionShift(heights, 10, 0, 2, 1), -110);
+  assert.equal(Model.sectionShift(heights, 10, 0, 2, 3), 0);
+  assert.equal(Model.sectionShift(heights, 10, 3, 1, 1), 50);
+  assert.equal(Model.sectionShift(heights, 10, 3, 1, 0), 0);
+});
+
+test('cleanPlaceOrder keeps only lists of unique, non-empty string ids', () => {
+  var clean = Model.cleanPlaceOrder({
+    places: ['root', 'home', 'root', '', 7, null],
+    drives: 'not a list',
+    network: [],
+    sections: ['network', 'places']
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(clean)), { places: ['root', 'home'], sections: ['network', 'places'] });
+  assert.deepEqual(JSON.parse(JSON.stringify(Model.cleanPlaceOrder(null))), {});
+  assert.deepEqual(JSON.parse(JSON.stringify(Model.cleanPlaceOrder(['places']))), {});
+  var many = [];
+  for (var i = 0; i < 150; i++) many.push('id' + i);
+  assert.equal(Model.cleanPlaceOrder({ bookmarks: many }).bookmarks.length, 100);
+});
