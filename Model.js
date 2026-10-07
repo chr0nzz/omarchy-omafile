@@ -920,6 +920,20 @@ function movePlace(ids, id, index) {
   return next;
 }
 
+function cleanPlaceOrder(value) {
+  var out = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return out;
+  for (var key in value) {
+    var list = value[key];
+    if (!Array.isArray(list)) continue;
+    var ids = [];
+    for (var i = 0; i < list.length && ids.length < placeOrderLimit; i++)
+      if (typeof list[i] === 'string' && list[i] !== '' && ids.indexOf(list[i]) < 0) ids.push(list[i]);
+    if (ids.length > 0) out[key] = ids;
+  }
+  return out;
+}
+
 function rememberPlaceOrder(saved, ids) {
   var next = ids.slice();
   var old = saved || [];

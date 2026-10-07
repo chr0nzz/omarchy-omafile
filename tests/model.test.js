@@ -672,3 +672,18 @@ test('section drag helpers pick the slot under the dragged section and shift the
   assert.equal(Model.sectionShift(heights, 10, 3, 1, 1), 50);
   assert.equal(Model.sectionShift(heights, 10, 3, 1, 0), 0);
 });
+
+test('cleanPlaceOrder keeps only lists of unique, non-empty string ids', () => {
+  var clean = Model.cleanPlaceOrder({
+    places: ['root', 'home', 'root', '', 7, null],
+    drives: 'not a list',
+    network: [],
+    sections: ['network', 'places']
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(clean)), { places: ['root', 'home'], sections: ['network', 'places'] });
+  assert.deepEqual(JSON.parse(JSON.stringify(Model.cleanPlaceOrder(null))), {});
+  assert.deepEqual(JSON.parse(JSON.stringify(Model.cleanPlaceOrder(['places']))), {});
+  var many = [];
+  for (var i = 0; i < 150; i++) many.push('id' + i);
+  assert.equal(Model.cleanPlaceOrder({ bookmarks: many }).bookmarks.length, 100);
+});

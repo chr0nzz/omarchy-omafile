@@ -827,7 +827,11 @@ Item {
 
   function refreshDrives() {
     request({ op: "drives" }, {
-      onData: function (m) { if (m.t === "drives") root.drives = m.drives || [] }
+      onData: function (m) {
+        if (m.t !== "drives") return
+        var next = m.drives || []
+        if (JSON.stringify(next) !== JSON.stringify(root.drives)) root.drives = next
+      }
     })
   }
 
@@ -1464,7 +1468,7 @@ Item {
       if (parsed.bookmarkLabels) bookmarkLabels = parsed.bookmarkLabels
     }
     if (parsed.hiddenDrives) hiddenDrives = parsed.hiddenDrives
-    if (parsed.placeOrder && typeof parsed.placeOrder === "object") placeOrder = parsed.placeOrder
+    if (parsed.placeOrder && typeof parsed.placeOrder === "object") placeOrder = Model.cleanPlaceOrder(parsed.placeOrder)
     if (parsed.servers) servers = parsed.servers
     if (parsed.serverSettings && typeof parsed.serverSettings === "object") serverSettings = parsed.serverSettings
     if (parsed.folderViews && typeof parsed.folderViews === "object") folderViews = parsed.folderViews

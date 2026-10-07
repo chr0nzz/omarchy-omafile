@@ -21,7 +21,7 @@ function service(saved = {}) {
     helperRestarts: 0, helperReady: true, helperError: '', _thumbWaiting: {},
     restartTimer: { restart() {} }, bookmarkReloadTimer: { restart() {} },
     stateFile: { setText(text) { writes.push(JSON.parse(text)); } },
-    Model: { basename(value) { return path.basename(value); }, rememberPlaceOrder: Model.rememberPlaceOrder }
+    Model: { basename(value) { return path.basename(value); }, rememberPlaceOrder: Model.rememberPlaceOrder, cleanPlaceOrder: Model.cleanPlaceOrder }
   });
   context.root = context;
   for (const match of source.matchAll(/^  function \w+\([^]*?^  }/gm)) {
@@ -142,4 +142,11 @@ test('place order is saved per section, read back after a restart, and reset', (
   assert.equal(second.context.hasPlaceOrder('drives'), false);
   assert.deepEqual(plain(second.writes.at(-1).placeOrder), { places: ['root', 'home'] });
   assert.deepEqual(plain(second.context.placeOrderFor('network')), []);
+});
+
+test('a damaged place order in the state file is cleaned when it loads', () => {
+  const loaded = service({ placeOrder: { drives: 'oops', places: ['root', 3, 'home'], sections: ['network'] } });
+  assert.deepEqual(plain(loaded.context.placeOrderFor('drives')), []);
+  assert.deepEqual(plain(loaded.context.placeOrderFor('places')), ['root', 'home']);
+  assert.deepEqual(plain(loaded.context.placeOrderFor('sections')), ['network']);
 });

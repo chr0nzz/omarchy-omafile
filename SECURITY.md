@@ -17,7 +17,7 @@ Only the latest release on `main` receives fixes.
 | Data | Where | Notes |
 | --- | --- | --- |
 | Settings | `~/.config/omarchy/shell.json` | Written by the settings dialog and `omarchy bar set` |
-| Tabs, bookmarks, hidden drives, server addresses, per folder views | `~/.local/state/omarchy/omafile/state.json` | Plain text. Server addresses are stored, passwords are not |
+| Tabs, bookmarks, hidden drives, server addresses, per folder views, sidebar order | `~/.local/state/omarchy/omafile/state.json` | Plain text. Server addresses are stored, passwords are not |
 | GTK bookmarks | `~/.config/gtk-3.0/bookmarks` (or `$XDG_CONFIG_HOME/gtk-3.0/bookmarks`) | Shared local paths and labels; remote entries preserved. Local backup and pending edits remain in `state.json`; migration is marked complete only after a confirmed write |
 | Trashed files | `$XDG_DATA_HOME/Trash` and per volume `.Trash-$uid` | The freedesktop trash, shared with every other file manager |
 | Desktop entry | `~/.local/share/applications/xyzlab.omafile.desktop` | Only while Default file manager is on |
