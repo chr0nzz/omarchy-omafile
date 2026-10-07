@@ -40,7 +40,6 @@ Item {
   property bool menuOpen: false
   property int menuCursor: -1
   property var menuActions: []
-  // Tracks Shift so an open context menu can swap Move to trash for Delete permanently.
   property bool shiftHeld: false
   onShiftHeldChanged: refreshEntryMenu()
   property string focusZone: "pane"
@@ -1008,7 +1007,6 @@ Item {
           items.push({ key: "claude", label: "Open Claude Code here", glyph: Icons.actionGlyph("terminal") })
       }
       separator()
-      // Permanent delete stays behind Shift, except in the trash where it is the only way out.
       if (trashed)
         items.push({ key: "delete", label: "Delete permanently", glyph: Icons.actionGlyph("delete"), hint: "Delete" })
       else if (shiftHeld)
@@ -1957,8 +1955,6 @@ Item {
     id: keyCatcher
     anchors.fill: parent
     focus: true
-    // Some xkb options (shift:both_capslock_cancel) report the Shift release as another key,
-    // so the release is matched on the scan code of the press.
     property int shiftScanCode: -1
     Keys.onPressed: function (event) {
       if (event.key === Qt.Key_Shift) shiftScanCode = event.nativeScanCode
