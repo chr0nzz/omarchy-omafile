@@ -30,6 +30,7 @@ QtObject {
   property var discovered: []
   property var servers: []
   property var hiddenDrives: []
+  property var placeOrder: ({})
   property var values: ({})
   property var pickRequest: null
   property var thumbExts: ({ yml: true })
@@ -108,6 +109,21 @@ QtObject {
   function unmountDrive(device, onDone, onError) { record("unmountDrive", [device]); if (onDone) onDone({}) }
   function ejectDrive(device) { record("ejectDrive", [device]) }
   function togglePinned(path) { record("togglePinned", [path]) }
+  function placeOrderFor(section) { return placeOrder[section] || [] }
+  function hasPlaceOrder(section) { return placeOrderFor(section).length > 0 }
+  function setPlaceOrder(section, ids) {
+    record("setPlaceOrder", [section, ids])
+    var next = {}
+    for (var k in placeOrder) next[k] = placeOrder[k]
+    next[section] = Model.rememberPlaceOrder(placeOrderFor(section), ids)
+    placeOrder = next
+  }
+  function resetPlaceOrder(section) {
+    record("resetPlaceOrder", [section])
+    var next = {}
+    for (var k in placeOrder) if (k !== section) next[k] = placeOrder[k]
+    placeOrder = next
+  }
   property var bookmarkLabels: ({})
   function bookmarkLabel(path) { return bookmarkLabels[path] || String(path).split("/").pop() }
   function addBookmarks(paths) { record("addBookmarks", [paths]); pinned = pinned.concat(paths); return paths.length }

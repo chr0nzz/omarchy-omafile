@@ -118,7 +118,9 @@ Videos, PDFs, office documents and other files get a thumbnail from the thumbnai
 
 ### The sidebar
 
-Places, then your bookmarks, then drives, then Network, then Trash.
+Places, then your bookmarks, then drives, then Network, then Trash. Drag a section heading up or down to move the whole section, or right click it for Move section up, Move section down and Reset section order. Trash always stays at the bottom.
+
+Drag a row up or down within its section to reorder Places, Bookmarks, Drives or Network. Right click a row for Move up and Move down, or press Ctrl+Up and Ctrl+Down in the sidebar. Right click a section heading, or any row in it, and choose Reset order to go back to the default. The order is kept in Omafile's `state.json`, so the GTK bookmarks file and other apps are not affected. A drive or server that is away keeps its spot for when it comes back.
 
 Bookmarks are shared with GNOME Files and the GTK file chooser: Omafile reads and writes `~/.config/gtk-3.0/bookmarks`, so a bookmark added in either place shows up in the other straight away. To add one, right click a folder and choose Bookmark this folder, press Ctrl+D, or drag folders onto the Bookmarks heading in the sidebar. An empty bookmark list shows a drop spot. Right click a bookmark to rename it or remove it, or use the cross beside it. Bookmarks from earlier Omafile versions are merged in once. A local backup stays in `state.json`; migration completes only after the GTK write succeeds. Read or write errors appear in the status bar, and pending edits retry after a helper restart or another bookmark change.
 
@@ -226,6 +228,7 @@ Focus starts in the file list. Tab moves it to the sidebar, or to the other pane
 | `Arrows`, `Enter` | Move and open, once in the sidebar |
 | `Ctrl+Enter` | Open a sidebar place in a new tab |
 | `Delete` | Remove a bookmark or hide a drive, in the sidebar |
+| `Ctrl+Up` / `Ctrl+Down` | Move a sidebar row within its section |
 | `Escape` | Leave the sidebar |
 | `Shift+F10` / `Menu` | Open the context menu on the current item |
 | `F10` | Open the menu for the folder itself |

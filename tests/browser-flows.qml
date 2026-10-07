@@ -544,6 +544,113 @@ ShellRoot {
         mock.servers = []
       }
 
+      function sectionRows(id) {
+        var groups = findChild(browser, "sidebar").sections()
+        for (var i = 0; i < groups.length; i++) if (groups[i].id === id) return groups[i].rows
+        return []
+      }
+
+      function placeIds() { return sectionRows("places").map(function (r) { return r.orderId }) }
+
+      function test_3k_placeOrder() {
+        var side = findChild(browser, "sidebar")
+        mock.placeOrder = ({})
+        compare(placeIds(), ["home", "recent", "root"])
+        var first = browser.placeMenuActions(sectionRows("places")[0])
+        compare(first.filter(function (i) { return i.label === "Move up" })[0].disabled, true)
+        compare(first.filter(function (i) { return i.label === "Move down" })[0].disabled, false)
+        compare(first.filter(function (i) { return i.label === "Reset order" })[0].disabled, true)
+
+        browser.runPlaceAction("movedown", sectionRows("places")[0])
+        compare(placeIds(), ["recent", "home", "root"])
+        side.moveRow(sectionRows("places")[2], -2)
+        compare(placeIds(), ["root", "recent", "home"])
+
+        browser.enterSidebar()
+        side.cursorIndex = 0
+        keyClick(Qt.Key_Down, Qt.ControlModifier)
+        compare(placeIds(), ["recent", "root", "home"])
+        compare(side.cursorRow().orderId, "root", "the cursor follows the moved row")
+        browser.leaveSidebar()
+
+        wait(50)
+        var recentRow = null
+        var homeRow = null
+        tryVerify(function () {
+          recentRow = findChild(browser, "place-recent")
+          homeRow = findChild(browser, "place-home")
+          return recentRow !== null && homeRow !== null
+        })
+        var start = recentRow.mapToItem(side, 20, recentRow.height / 2)
+        var end = homeRow.mapToItem(side, 20, homeRow.height * 0.75)
+        var homeTop = homeRow.mapToItem(side, 0, 0).y
+        mousePress(side, start.x, start.y)
+        for (var step = 1; step <= 10; step++) mouseMove(side, start.x, start.y + (end.y - start.y) * step / 10, -1, Qt.LeftButton)
+        compare(side.dragTo, 2, "the dragged row targets the slot under the pointer")
+        tryVerify(function () { return Math.abs(homeRow.mapToItem(side, 0, 0).y - (homeTop - side.rowStep)) < 1 }, 2000, "the rows it passes slide up")
+        mouseRelease(side, start.x, end.y)
+        tryVerify(function () { return placeIds()[2] === "recent" }, 2000, "dragging a row drops it below the target")
+        compare(placeIds(), ["root", "home", "recent"])
+
+        wait(50)
+        var header = findChild(browser, "section-places")
+        verify(header !== null)
+        mouseClick(header, 20, header.height / 2, Qt.RightButton)
+        verify(browser.menuOpen)
+        compare(menuLabels(browser.menuActions), ["Move section up", "Move section down", "Reset order", "Reset section order"])
+        menuItem("Reset order")
+        compare(placeIds(), ["home", "recent", "root"])
+        browser.closeMenu()
+
+        var server = sectionRows("network").filter(function (r) { return r.connect === true })[0]
+        compare(menuLabels(browser.placeMenuActions(server)).indexOf("Move up"), -1, "Connect to a server stays last")
+        mock.placeOrder = ({})
+      }
+
+      function sectionIds() { return findChild(browser, "sidebar").sections().map(function (g) { return g.id }) }
+
+      function test_3k_sectionOrder() {
+        var side = findChild(browser, "sidebar")
+        mock.placeOrder = ({})
+        wait(50)
+        compare(sectionIds(), ["places", "bookmarks", "network"])
+        var places = findChild(browser, "section-places")
+        var bookmarks = findChild(browser, "section-bookmarks")
+        var placesColumn = places.parent
+        var bookmarksColumn = bookmarks.parent
+        var bookmarksTop = bookmarksColumn.mapToItem(side, 0, 0).y
+        var start = places.mapToItem(side, 20, places.height / 2)
+        var offset = bookmarksColumn.y + bookmarksColumn.height / 2 - placesColumn.y - placesColumn.height / 2 + 4
+        mousePress(side, start.x, start.y)
+        for (var step = 1; step <= 10; step++) mouseMove(side, start.x, start.y + offset * step / 10, -1, Qt.LeftButton)
+        compare(side.sectionDragTo, 1, "Places is dragged below Bookmarks")
+        tryVerify(function () {
+          var shift = side.sectionShift("bookmarks")
+          return shift < -placesColumn.height && Math.abs(bookmarksColumn.mapToItem(side, 0, 0).y - (bookmarksTop + shift)) < 1
+        }, 2000, "Bookmarks slides up into the space Places left")
+        wait(50)
+        mouseRelease(side, start.x, start.y + offset)
+        tryVerify(function () { return sectionIds()[0] === "bookmarks" }, 2000, "the section order is saved")
+        compare(sectionIds(), ["bookmarks", "places", "network"])
+        compare(mock.called("setPlaceOrder").args[0], "sections")
+
+        wait(50)
+        var network = findChild(browser, "section-network")
+        mouseClick(network, 20, network.height / 2, Qt.RightButton)
+        verify(browser.menuOpen)
+        compare(browser.menuActions.filter(function (i) { return i.label === "Move section down" })[0].disabled, true)
+        menuItem("Move section up")
+        compare(sectionIds(), ["bookmarks", "network", "places"])
+
+        wait(50)
+        network = findChild(browser, "section-network")
+        mouseClick(network, 20, network.height / 2, Qt.RightButton)
+        menuItem("Reset section order")
+        compare(sectionIds(), ["places", "bookmarks", "network"])
+        browser.closeMenu()
+        mock.placeOrder = ({})
+      }
+
       function test_3l_quickConnect() {
         mock.servers = ["ssh://laptop/home/menno/"]
         mock.serverSettings = { "ssh://laptop/home/menno/": { user: "menno", domain: "", anonymous: false } }
@@ -603,7 +710,7 @@ ShellRoot {
         compare(idle.hideKey, "/dev/sda2")
         compare(boot.unmountable, false)
 
-        compare(menuLabels(browser.placeMenuActions(idle)), ["Mount", "Hide"])
+        compare(menuLabels(browser.placeMenuActions(idle)), ["Mount", "Hide", "Move up", "Move down", "Reset order"])
         var labels = menuLabels(browser.placeMenuActions(stick))
         verify(labels.indexOf("Open") >= 0)
         verify(labels.indexOf("Unmount") >= 0)

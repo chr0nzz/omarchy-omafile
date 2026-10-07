@@ -67,6 +67,195 @@ Item {
     else sidebar.navigate(row.path)
   }
 
+  function moveCursorRow(delta) {
+    var row = cursorRow()
+    if (!row || !row.orderId) return
+    var key = rowKey(row)
+    moveRow(row, delta)
+    var rows = flatRows
+    for (var i = 0; i < rows.length; i++) if (rowKey(rows[i]) === key) cursorIndex = i
+  }
+
+  function sectionIds(section) {
+    var groups = sections()
+    for (var g = 0; g < groups.length; g++)
+      if (groups[g].id === section) return Model.placeOrderIds(groups[g].rows)
+    return []
+  }
+
+  function moveRow(row, delta) {
+    if (!row || !row.orderId || !service) return
+    var ids = sectionIds(row.section)
+    var to = ids.indexOf(row.orderId) + delta
+    if (ids.indexOf(row.orderId) < 0 || to < 0 || to >= ids.length) return
+    service.setPlaceOrder(row.section, Model.movePlace(ids, row.orderId, to))
+  }
+
+  property string dragSection: ""
+  property string dragId: ""
+  property int dragFrom: -1
+  property int dragCount: 0
+  property real dragOffset: 0
+  property bool dragSettling: false
+  readonly property real rowStep: Style.space(24) + Style.space(1)
+  readonly property int dragTo: dragId === "" ? -1
+    : Math.max(0, Math.min(dragCount - 1, dragFrom + Math.round(dragOffset / rowStep)))
+
+  function beginRowDrag(row) {
+    dragSection = String(row.section || "")
+    dragId = String(row.orderId || "")
+    dragFrom = Number(row.orderIndex)
+    dragCount = Number(row.orderCount)
+    dragOffset = 0
+    dragSettling = false
+  }
+
+  function updateRowDrag(offset) {
+    if (!dragId || dragSettling) return
+    dragOffset = Math.max(-dragFrom * rowStep, Math.min((dragCount - 1 - dragFrom) * rowStep, offset))
+  }
+
+  function endRowDrag() {
+    if (!dragId || dragSettling) return
+    dragSettling = true
+    dragOffset = (dragTo - dragFrom) * rowStep
+    settleTimer.restart()
+  }
+
+  function clearRowDrag() {
+    dragSection = ""
+    dragId = ""
+    dragFrom = -1
+    dragCount = 0
+    dragOffset = 0
+    dragSettling = false
+  }
+
+  function commitRowDrag() {
+    var section = dragSection
+    var id = dragId
+    var to = dragTo
+    clearRowDrag()
+    if (!service || !id || to < 0) return
+    var ids = sectionIds(section)
+    if (ids.indexOf(id) < 0 || ids.indexOf(id) === to) return
+    service.setPlaceOrder(section, Model.movePlace(ids, id, to))
+  }
+
+  function rowShift(row) {
+    if (!dragId || !row || !row.orderId || row.section !== dragSection) return 0
+    if (row.orderId === dragId) return dragOffset
+    var index = Number(row.orderIndex)
+    if (dragFrom < dragTo && index > dragFrom && index <= dragTo) return -rowStep
+    if (dragFrom > dragTo && index >= dragTo && index < dragFrom) return rowStep
+    return 0
+  }
+
+  Timer {
+    id: settleTimer
+    interval: 150
+    onTriggered: sidebar.commitRowDrag()
+  }
+
+  property string sectionDragId: ""
+  property var sectionDragIds: []
+  property var sectionDragTops: []
+  property var sectionDragHeights: []
+  property int sectionDragFrom: -1
+  property real sectionDragOffset: 0
+  property bool sectionDragSettling: false
+  property int sectionDragDrop: -1
+  readonly property int sectionDragTo: sectionDragId === "" ? -1
+    : sectionDragSettling ? sectionDragDrop
+    : Model.sectionDropIndex(sectionDragTops, sectionDragHeights, sectionDragFrom, sectionDragOffset)
+
+  function moveSection(section, delta) {
+    if (!service) return
+    var ids = Model.placeOrderIds(sections())
+    var from = ids.indexOf(section)
+    var to = from + delta
+    if (from < 0 || to < 0 || to >= ids.length) return
+    service.setPlaceOrder("sections", Model.movePlace(ids, section, to))
+  }
+
+  function beginSectionDrag(section) {
+    var ids = []
+    var tops = []
+    var heights = []
+    for (var i = 0; i < sectionRepeater.count; i++) {
+      var item = sectionRepeater.itemAt(i)
+      if (!item) return false
+      ids.push(String(item.modelData.id || ""))
+      tops.push(item.y)
+      heights.push(item.height)
+    }
+    if (ids.indexOf(section) < 0 || ids.length < 2) return false
+    sectionDragIds = ids
+    sectionDragTops = tops
+    sectionDragHeights = heights
+    sectionDragFrom = ids.indexOf(section)
+    sectionDragOffset = 0
+    sectionDragSettling = false
+    sectionDragId = section
+    return true
+  }
+
+  function updateSectionDrag(offset) {
+    if (!sectionDragId || sectionDragSettling) return
+    sectionDragOffset = Model.clampSectionOffset(sectionDragTops, sectionDragHeights, sectionDragFrom, offset)
+  }
+
+  function endSectionDrag() {
+    if (!sectionDragId || sectionDragSettling) return
+    sectionDragDrop = sectionDragTo
+    sectionDragSettling = true
+    sectionDragOffset = Model.sectionSettleOffset(sectionDragTops, sectionDragHeights, sectionDragFrom, sectionDragDrop)
+    sectionSettleTimer.restart()
+  }
+
+  function commitSectionDrag() {
+    var ids = sectionDragIds
+    var id = sectionDragId
+    var from = sectionDragFrom
+    var to = sectionDragTo
+    sectionDragId = ""
+    sectionDragIds = []
+    sectionDragTops = []
+    sectionDragHeights = []
+    sectionDragFrom = -1
+    sectionDragOffset = 0
+    sectionDragSettling = false
+    sectionDragDrop = -1
+    if (!service || !id || to < 0 || to === from) return
+    service.setPlaceOrder("sections", Model.movePlace(ids, id, to))
+  }
+
+  function sectionShift(section) {
+    if (!sectionDragId) return 0
+    if (section === sectionDragId) return sectionDragOffset
+    var index = sectionDragIds.indexOf(section)
+    if (index < 0) return 0
+    return Model.sectionShift(sectionDragHeights, column.spacing, sectionDragFrom, sectionDragTo, index)
+  }
+
+  Timer {
+    id: sectionSettleTimer
+    interval: 150
+    onTriggered: sidebar.commitSectionDrag()
+  }
+
+  function orderedSection(section, rows) {
+    var saved = service && typeof service.placeOrderFor === "function" ? service.placeOrderFor(section) : []
+    var ordered = Model.orderPlaces(rows, saved)
+    var count = Model.placeOrderIds(ordered).length
+    for (var i = 0; i < ordered.length; i++) {
+      ordered[i].section = section
+      ordered[i].orderIndex = i
+      ordered[i].orderCount = count
+    }
+    return ordered
+  }
+
   function removeCursor() {
     var row = cursorRow()
     if (!row) return
@@ -149,8 +338,8 @@ Item {
     var out = []
     var dirs = service ? service.userDirs : ({})
     var places = []
-    places.push({ key: "home", label: "Home", path: home })
-    places.push({ key: "recent", label: "Recent", path: "recent:" })
+    places.push({ key: "home", label: "Home", path: home, orderId: "home" })
+    places.push({ key: "recent", label: "Recent", path: "recent:", orderId: "recent" })
     var order = ["desktop", "documents", "downloads", "music", "pictures", "videos"]
     var labels = {
       desktop: "Desktop", documents: "Documents", downloads: "Downloads",
@@ -159,10 +348,10 @@ Item {
     for (var i = 0; i < order.length; i++) {
       var k = order[i]
       var resolved = usablePlace(dirs ? dirs[k] : "", home)
-      if (resolved) places.push({ key: k, label: labels[k], path: resolved })
+      if (resolved) places.push({ key: k, label: labels[k], path: resolved, orderId: k })
     }
-    places.push({ key: "root", label: "Filesystem", path: "/" })
-    out.push({ title: "Places", rows: places })
+    places.push({ key: "root", label: "Filesystem", path: "/", orderId: "root" })
+    out.push({ id: "places", title: "Places", rows: orderedSection("places", places) })
 
     var pinned = service ? service.pinned : []
     {
@@ -171,11 +360,12 @@ Item {
         pins.push({
           key: "pinned", bookmark: true,
           label: service.bookmarkLabel ? service.bookmarkLabel(String(pinned[p])) : (Model.basename(String(pinned[p])) || "/"),
-          path: String(pinned[p])
+          path: String(pinned[p]),
+          orderId: String(pinned[p])
         })
       if (pins.length === 0)
         pins.push({ key: "pinned", label: "Drop folders here to bookmark", path: "", dropBookmark: true })
-      out.push({ title: "Bookmarks", rows: pins, bookmarkTarget: true })
+      out.push({ id: "bookmarks", title: "Bookmarks", rows: orderedSection("bookmarks", pins), bookmarkTarget: true })
     }
 
     var drives = (sidebar.showDrives && service) ? service.drives : []
@@ -194,6 +384,7 @@ Item {
           path: isMounted ? String(drive.mount) : "",
           device: String(drive.path || ""),
           hideKey: hideKey,
+          orderId: hideKey,
           unmounted: !isMounted,
           unmountable: isMounted && (drive.removable === true || userMount(drive.mount)),
           removable: drive.removable === true,
@@ -201,7 +392,7 @@ Item {
           total: Number(drive.total) || 0
         })
       }
-      if (vols.length > 0) out.push({ title: "Drives", rows: vols })
+      if (vols.length > 0) out.push({ id: "drives", title: "Drives", rows: orderedSection("drives", vols) })
     }
 
     var net = []
@@ -220,7 +411,7 @@ Item {
       seen[shareKey] = true
       net.push({
         key: "networkdrive", label: String(share.label || share.mount),
-        path: String(share.mount), hideKey: String(share.mount), mounted: share.gvfs === true, connected: true,
+        path: String(share.mount), hideKey: String(share.mount), orderId: shareKey, mounted: share.gvfs === true, connected: true,
         uri: firstUri[shareKey] || "", remembered: firstUri[shareKey] !== undefined,
         free: Number(share.free) || 0, total: Number(share.total) || 0
       })
@@ -231,7 +422,7 @@ Item {
       var serverKey = Model.serverKeyOf(uri)
       if (seen[serverKey]) continue
       seen[serverKey] = true
-      net.push({ key: "networkdrive", label: Model.serverLabel(uri), path: "", uri: uri,
+      net.push({ key: "networkdrive", label: Model.serverLabel(uri), path: "", uri: uri, orderId: serverKey,
         server: true, connected: false, remembered: true })
     }
 
@@ -242,13 +433,20 @@ Item {
       seen[foundKey] = true
       net.push({
         key: "network", label: String(found[f].label || found[f].name),
-        path: "", uri: String(found[f].uri || ""), server: true, connected: false
+        path: "", uri: String(found[f].uri || ""), orderId: foundKey, server: true, connected: false
       })
     }
 
     net.push({ key: "network", label: "Connect to a server", path: "", connect: true })
-    out.push({ title: "Network", rows: net })
-    return out
+    out.push({ id: "network", title: "Network", rows: orderedSection("network", net) })
+    for (var o = 0; o < out.length; o++) out[o].orderId = out[o].id
+    var ordered = Model.orderPlaces(out, service && typeof service.placeOrderFor === "function"
+      ? service.placeOrderFor("sections") : [])
+    for (var x = 0; x < ordered.length; x++) {
+      ordered[x].orderIndex = x
+      ordered[x].orderCount = ordered.length
+    }
+    return ordered
   }
 
   Rectangle {
@@ -270,20 +468,35 @@ Item {
         spacing: Style.space(2)
 
         Repeater {
+          id: sectionRepeater
           model: sidebar.sections()
 
           delegate: Column {
+            id: sectionColumn
             required property var modelData
+            readonly property bool dragging: sidebar.sectionDragId !== ""
+              && sidebar.sectionDragId === String(modelData.id || "")
             width: column.width
             spacing: Style.space(1)
+            z: dragging ? 1 : 0
+            opacity: dragging ? 0.85 : 1
+            transform: Translate {
+              y: sidebar.sectionShift(String(sectionColumn.modelData.id || ""))
+              Behavior on y {
+                enabled: !sectionColumn.dragging || sidebar.sectionDragSettling
+                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+              }
+            }
 
             Text {
               textFormat: Text.PlainText
+              objectName: "section-" + String(modelData.id || "")
+              width: parent.width
               text: modelData.title
               leftPadding: Style.space(12)
               topPadding: Style.space(8)
               bottomPadding: Style.space(3)
-              color: headerDrop.containsDrag ? Color.accent : Util.alpha(Color.foreground, 0.4)
+              color: headerDrop.containsDrag || sectionColumn.dragging ? Color.accent : Util.alpha(Color.foreground, 0.4)
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
 
@@ -295,21 +508,67 @@ Item {
                 onEntered: function (drag) { if (!sidebar.acceptsBookmark(drag)) drag.accepted = false }
                 onDropped: function (drop) { sidebar.handleBookmarkDrop(drop) }
               }
+
+              MouseArea {
+                property real pressY: 0
+                property bool reordering: false
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                preventStealing: true
+                cursorShape: reordering ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                onPressed: function (mouse) {
+                  pressY = mapToItem(sidebar, mouse.x, mouse.y).y
+                  reordering = false
+                }
+                onPositionChanged: function (mouse) {
+                  if (!(pressedButtons & Qt.LeftButton) || sidebar.sectionDragSettling) return
+                  var offset = mapToItem(sidebar, mouse.x, mouse.y).y - pressY
+                  if (!reordering) {
+                    if (Math.abs(offset) < Style.space(8)) return
+                    reordering = sidebar.beginSectionDrag(String(sectionColumn.modelData.id || ""))
+                    if (!reordering) return
+                  }
+                  sidebar.updateSectionDrag(offset)
+                }
+                onReleased: if (reordering) sidebar.endSectionDrag()
+                onCanceled: if (reordering) sidebar.endSectionDrag()
+                Component.onDestruction: if (reordering) sidebar.endSectionDrag()
+                onClicked: function (mouse) {
+                  if (reordering || mouse.button !== Qt.RightButton) return
+                  var point = mapToItem(sidebar, mouse.x, mouse.y)
+                  sidebar.placeMenuRequested({ header: true, section: String(sectionColumn.modelData.id || ""),
+                    label: String(sectionColumn.modelData.title || ""),
+                    sectionIndex: Number(sectionColumn.modelData.orderIndex),
+                    sectionCount: Number(sectionColumn.modelData.orderCount) }, point.x, point.y)
+                }
+              }
             }
 
             Repeater {
               model: modelData.rows
 
               delegate: Rectangle {
+                id: placeRow
                 required property var modelData
+                readonly property bool movable: !!modelData.orderId
+                readonly property bool dragging: movable && sidebar.dragId === String(modelData.orderId)
+                  && sidebar.dragSection === String(modelData.section || "")
                 objectName: "place-" + String(modelData.key || "")
+                z: dragging ? 1 : 0
                 readonly property bool cursored: sidebar.keyboardActive
                   && sidebar.rowKey(modelData) === sidebar.cursorKey
                 width: column.width - Style.space(8)
                 x: Style.space(4)
                 height: Style.space(24)
                 radius: Style.cornerRadius
-                color: placeDrop.containsDrag ? Util.alpha(Color.accent, 0.3)
+                transform: Translate {
+                  y: sidebar.rowShift(placeRow.modelData)
+                  Behavior on y {
+                    enabled: !placeRow.dragging || sidebar.dragSettling
+                    NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+                  }
+                }
+                color: placeDrop.containsDrag || dragging ? Util.alpha(Color.accent, 0.3)
                   : sidebar.currentPath === modelData.path
                   ? Util.alpha(Color.accent, 0.18)
                   : (placeHover.hovered ? Util.alpha(Color.foreground, 0.08) : "transparent")
@@ -335,9 +594,31 @@ Item {
                 }
 
                 MouseArea {
+                  id: rowMouse
+                  property real pressY: 0
+                  property bool reordering: false
                   anchors.fill: parent
                   acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                  preventStealing: placeRow.movable
+                  onPressed: function (mouse) {
+                    pressY = mapToItem(sidebar, mouse.x, mouse.y).y
+                    reordering = false
+                  }
+                  onPositionChanged: function (mouse) {
+                    if (!placeRow.movable || !(pressedButtons & Qt.LeftButton) || sidebar.dragSettling) return
+                    var offset = mapToItem(sidebar, mouse.x, mouse.y).y - pressY
+                    if (!reordering) {
+                      if (Math.abs(offset) < Style.space(8)) return
+                      reordering = true
+                      sidebar.beginRowDrag(placeRow.modelData)
+                    }
+                    sidebar.updateRowDrag(offset)
+                  }
+                  onReleased: if (reordering) sidebar.endRowDrag()
+                  onCanceled: if (reordering) sidebar.endRowDrag()
+                  Component.onDestruction: if (reordering) sidebar.endRowDrag()
                   onClicked: function (mouse) {
+                    if (reordering) return
                     if (mouse.button === Qt.RightButton && modelData.unhide !== true) {
                       var point = mapToItem(sidebar, mouse.x, mouse.y)
                       sidebar.placeMenuRequested(modelData, point.x, point.y)

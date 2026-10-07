@@ -884,3 +884,76 @@ function wantsNewWindow(payloadJson) {
     return false;
   }
 }
+
+var placeOrderLimit = 100;
+
+function orderPlaces(rows, order) {
+  var rank = {};
+  var saved = order || [];
+  for (var i = 0; i < saved.length; i++) rank[String(saved[i])] = i;
+  var movable = [];
+  var fixed = [];
+  for (var r = 0; r < rows.length; r++) {
+    var id = rows[r].orderId;
+    if (id) movable.push({ row: rows[r], rank: rank[id] !== undefined ? rank[id] : saved.length, at: r });
+    else fixed.push(rows[r]);
+  }
+  movable.sort(function (a, b) { return a.rank - b.rank || a.at - b.at; });
+  var out = [];
+  for (var m = 0; m < movable.length; m++) out.push(movable[m].row);
+  return out.concat(fixed);
+}
+
+function placeOrderIds(rows) {
+  var ids = [];
+  for (var i = 0; i < rows.length; i++) if (rows[i].orderId) ids.push(String(rows[i].orderId));
+  return ids;
+}
+
+function movePlace(ids, id, index) {
+  var from = ids.indexOf(id);
+  if (from < 0) return ids.slice();
+  var next = ids.slice();
+  next.splice(from, 1);
+  var to = Math.max(0, Math.min(next.length, index));
+  next.splice(to, 0, id);
+  return next;
+}
+
+function rememberPlaceOrder(saved, ids) {
+  var next = ids.slice();
+  var old = saved || [];
+  for (var i = 0; i < old.length; i++) {
+    var id = String(old[i]);
+    if (next.indexOf(id) >= 0) continue;
+    next.splice(Math.min(i, next.length), 0, id);
+  }
+  return next.slice(0, placeOrderLimit);
+}
+
+function clampSectionOffset(tops, heights, from, offset) {
+  var last = tops.length - 1;
+  var min = tops[0] - tops[from];
+  var max = tops[last] + heights[last] - tops[from] - heights[from];
+  return Math.max(min, Math.min(max, offset));
+}
+
+function sectionDropIndex(tops, heights, from, offset) {
+  var center = tops[from] + heights[from] / 2 + offset;
+  var index = 0;
+  for (var i = 0; i < tops.length; i++)
+    if (i !== from && tops[i] + heights[i] / 2 < center) index++;
+  return index;
+}
+
+function sectionSettleOffset(tops, heights, from, to) {
+  if (to > from) return tops[to] + heights[to] - tops[from] - heights[from];
+  if (to < from) return tops[to] - tops[from];
+  return 0;
+}
+
+function sectionShift(heights, gap, from, to, index) {
+  if (from < to && index > from && index <= to) return -(heights[from] + gap);
+  if (from > to && index >= to && index < from) return heights[from] + gap;
+  return 0;
+}
