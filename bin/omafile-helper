@@ -2380,10 +2380,27 @@ def refresh_stale_desktop_entry():
     refresh_desktop_database()
 
 
+def claim_default_handler():
+    try:
+        subprocess.run(
+            ["xdg-mime", "default", DESKTOP_ID, "inode/directory"],
+            capture_output=True, text=True, timeout=15, shell=False)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return True
+
+
 def op_defaultfm(req):
     req_id = req["id"]
     refresh_stale_desktop_entry()
     handler = current_default_handler()
+    # The desktop entry only exists while Default file manager is on. If the
+    # inode/directory default no longer points at it, something else rewrote
+    # mimeapps.list (a system upgrade, another app), so claim it back.
+    if (handler != DESKTOP_ID
+            and os.path.exists(os.path.join(DESKTOP_DIR, DESKTOP_ID))
+            and claim_default_handler()):
+        handler = current_default_handler()
     emit({
         "id": req_id, "t": "done",
         "handler": handler,
@@ -2412,11 +2429,7 @@ def op_setdefaultfm(req, cancel_event):
             send_error(req_id, errno_code(e), e.strerror or str(e), desktop_path)
             return
         refresh_desktop_database()
-        try:
-            subprocess.run(
-                ["xdg-mime", "default", DESKTOP_ID, "inode/directory"],
-                capture_output=True, text=True, timeout=15, shell=False)
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        if not claim_default_handler():
             send_error(req_id, "EUNSUPPORTED", "could not set the default handler")
             return
         show_items = install_filemanager1()
