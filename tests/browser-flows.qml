@@ -803,6 +803,18 @@ ShellRoot {
         pane().navigate("/tmp")
         waitRows()
         verify(!bar.visible)
+
+        pane().setCursor(0, false, false)
+        browser.openMenuAtCursor()
+        var outside = menuLabels(browser.menuActions)
+        verify(outside.indexOf("Move to trash") >= 0)
+        verify(outside.indexOf("Delete permanently") < 0, "permanent delete hides behind Shift")
+        keyPress(Qt.Key_Shift)
+        verify(menuLabels(browser.menuActions).indexOf("Delete permanently") >= 0, "Shift reveals permanent delete")
+        verify(menuLabels(browser.menuActions).indexOf("Move to trash") < 0)
+        keyRelease(Qt.Key_Shift)
+        verify(menuLabels(browser.menuActions).indexOf("Move to trash") >= 0, "releasing Shift restores trash")
+        browser.closeMenu()
       }
 
       function test_7_pickOpen() {

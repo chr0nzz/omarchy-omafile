@@ -40,6 +40,9 @@ Item {
   property bool menuOpen: false
   property int menuCursor: -1
   property var menuActions: []
+  // Tracks Shift so an open context menu can swap Move to trash for Delete permanently.
+  property bool shiftHeld: false
+  onShiftHeldChanged: refreshEntryMenu()
   property string focusZone: "pane"
   property int appCursor: 0
   property real menuX: 0
@@ -969,57 +972,68 @@ Item {
     var p = activePane()
     var hasEntry = entry !== null && entry !== undefined
     var items = []
+    var sep = 0
+    function separator() { items.push({ key: "sep" + (++sep), label: "", glyph: "" }) }
+    var claude = service && service.claudeAvailable
     if (hasEntry) {
-      items.push({ key: "open", label: entry.isDir ? "Open" : "Open", glyph: Icons.actionGlyph("open") })
+      items.push({ key: "open", label: "Open", glyph: Icons.actionGlyph("open"), hint: "Enter" })
       items.push({ key: "openwith", label: "Open with", glyph: Icons.actionGlyph("open") })
-      if (!entry.isDir) items.push({ key: "preview", label: "Preview", glyph: Icons.actionGlyph("search") })
+      if (entry.isDir)
+        items.push({ key: "opentab", label: "Open in new tab", glyph: Icons.actionGlyph("add"), hint: "Ctrl+Enter" })
+      else
+        items.push({ key: "preview", label: "Preview", glyph: Icons.actionGlyph("search"), hint: "Space" })
+      separator()
+      items.push({ key: "cut", label: "Cut", glyph: Icons.actionGlyph("cut"), hint: "Ctrl+X" })
+      items.push({ key: "copy", label: "Copy", glyph: Icons.actionGlyph("copy"), hint: "Ctrl+C" })
+      items.push({ key: "paste", label: "Paste", glyph: Icons.actionGlyph("paste"), hint: "Ctrl+V", disabled: !service })
+      items.push({ key: "copypath", label: "Copy path", glyph: Icons.actionGlyph("copy") })
+      separator()
+      var trashed = Model.allInTrash([entry.path], trashRoot())
+      if (trashed && Model.trashItemNames([entry.path], trashRoot()).length > 0)
+        items.push({ key: "restore", label: "Restore", glyph: Icons.actionGlyph("restore") })
+      items.push({ key: "rename", label: "Rename", glyph: Icons.actionGlyph("rename"), hint: "F2" })
       if (archiveTargets(entry).length > 0)
         items.push({ key: "extract", label: "Extract here", glyph: Icons.actionGlyph("extract") })
       if (compressTargets(entry).length > 0)
         items.push({ key: "compress", label: "Compress\u2026", glyph: Icons.actionGlyph("extract") })
       if (entry.isDir) {
-        items.push({ key: "opentab", label: "Open in new tab", glyph: Icons.actionGlyph("add") })
         items.push({
           key: "bookmark",
           label: root.isBookmarked(entry.path) ? "Remove bookmark" : "Add to bookmarks",
           glyph: Icons.placeGlyph("pinned")
         })
+        separator()
         items.push({ key: "terminal", label: "Open in terminal", glyph: Icons.actionGlyph("terminal") })
-        if (service && service.claudeAvailable)
+        if (claude)
           items.push({ key: "claude", label: "Open Claude Code here", glyph: Icons.actionGlyph("terminal") })
       }
-      items.push({ key: "sep1", label: "", glyph: "" })
-      items.push({ key: "copy", label: "Copy", glyph: Icons.actionGlyph("copy") })
-      items.push({ key: "cut", label: "Cut", glyph: Icons.actionGlyph("cut") })
-    }
-    items.push({ key: "paste", label: "Paste", glyph: Icons.actionGlyph("paste"), disabled: !service })
-    if (hasEntry) {
-      var trashed = Model.allInTrash([entry.path], trashRoot())
-      items.push({ key: "sep2", label: "", glyph: "" })
-      if (trashed && Model.trashItemNames([entry.path], trashRoot()).length > 0)
-        items.push({ key: "restore", label: "Restore", glyph: Icons.actionGlyph("restore") })
-      items.push({ key: "rename", label: "Rename", glyph: Icons.actionGlyph("rename") })
-      if (!trashed) items.push({ key: "trash", label: "Move to trash", glyph: Icons.actionGlyph("trash") })
-      items.push({ key: "delete", label: "Delete permanently", glyph: Icons.actionGlyph("delete") })
-      items.push({ key: "sep3", label: "", glyph: "" })
-      items.push({ key: "copypath", label: "Copy path", glyph: Icons.actionGlyph("copy") })
-      items.push({ key: "properties", label: "Properties", glyph: Icons.actionGlyph("properties") })
+      separator()
+      // Permanent delete stays behind Shift, except in the trash where it is the only way out.
+      if (trashed)
+        items.push({ key: "delete", label: "Delete permanently", glyph: Icons.actionGlyph("delete"), hint: "Delete" })
+      else if (shiftHeld)
+        items.push({ key: "delete", label: "Delete permanently", glyph: Icons.actionGlyph("delete"), hint: "Shift+Delete" })
+      else
+        items.push({ key: "trash", label: "Move to trash", glyph: Icons.actionGlyph("trash"), hint: "Delete" })
+      items.push({ key: "properties", label: "Properties", glyph: Icons.actionGlyph("properties"), hint: "Ctrl+I" })
     } else {
-      items.push({ key: "sep2", label: "", glyph: "" })
-      items.push({ key: "newfolder", label: "New folder", glyph: Icons.actionGlyph("newfolder") })
-      items.push({ key: "newfile", label: "New file", glyph: Icons.actionGlyph("newfile") })
-      items.push({ key: "sep3", label: "", glyph: "" })
+      items.push({ key: "newfolder", label: "New folder", glyph: Icons.actionGlyph("newfolder"), hint: "Ctrl+Shift+N" })
+      items.push({ key: "newfile", label: "New file", glyph: Icons.actionGlyph("newfile"), hint: "Ctrl+N" })
+      items.push({ key: "paste", label: "Paste", glyph: Icons.actionGlyph("paste"), hint: "Ctrl+V", disabled: !service })
+      separator()
+      items.push({ key: "terminal", label: "Open in terminal", glyph: Icons.actionGlyph("terminal"), hint: "Ctrl+." })
+      if (claude)
+        items.push({ key: "claude", label: "Open Claude Code here", glyph: Icons.actionGlyph("terminal") })
+      separator()
       items.push({
         key: "bookmark",
         label: root.isBookmarked(p.path) ? "Remove this bookmark" : "Bookmark this folder",
         glyph: Icons.placeGlyph("pinned")
       })
-      items.push({ key: "terminal", label: "Open in terminal", glyph: Icons.actionGlyph("terminal") })
-      if (service && service.claudeAvailable)
-        items.push({ key: "claude", label: "Open Claude Code here", glyph: Icons.actionGlyph("terminal") })
-      items.push({ key: "refresh", label: "Refresh", glyph: Icons.actionGlyph("refresh") })
+      items.push({ key: "copypath", label: "Copy path", glyph: Icons.actionGlyph("copy") })
+      items.push({ key: "refresh", label: "Refresh", glyph: Icons.actionGlyph("refresh"), hint: "F5" })
       if (paneInTrash(p)) {
-        items.push({ key: "sep4", label: "", glyph: "" })
+        separator()
         items.push({ key: "emptytrash", label: "Empty trash", glyph: Icons.actionGlyph("delete"),
           disabled: !service || service.trashCount <= 0 })
       }
@@ -1459,7 +1473,7 @@ Item {
     return items
   }
   function menuWidth() {
-    return Style.space(menuKind === "" ? 200 : 230)
+    return Style.space(230)
   }
 
   function openToolbarMenu(kind, anchor) {
@@ -1603,6 +1617,15 @@ Item {
     menuY = toolbar.height + Style.space(40) + Math.min(row, 18) * Style.space(22)
       + (trashBar.visible ? trashBar.height : 0)
     menuOpen = true
+  }
+
+  function refreshEntryMenu() {
+    if (!menuOpen || menuKind !== "" || !menuEntry) return
+    var current = menuCursor >= 0 && menuCursor < menuActions.length ? menuActions[menuCursor].key : ""
+    menuActions = contextActions(menuEntry)
+    if (current === "trash" || current === "delete") current = shiftHeld ? "delete" : "trash"
+    menuCursor = -1
+    for (var i = 0; i < menuActions.length; i++) if (current !== "" && menuActions[i].key === current) menuCursor = i
   }
 
   function closeMenu() {
@@ -1934,9 +1957,21 @@ Item {
     id: keyCatcher
     anchors.fill: parent
     focus: true
+    // Some xkb options (shift:both_capslock_cancel) report the Shift release as another key,
+    // so the release is matched on the scan code of the press.
+    property int shiftScanCode: -1
     Keys.onPressed: function (event) {
+      if (event.key === Qt.Key_Shift) shiftScanCode = event.nativeScanCode
+      root.shiftHeld = (event.modifiers & Qt.ShiftModifier) !== 0 || event.key === Qt.Key_Shift
       if (root.handleKey(event)) event.accepted = true
     }
+    Keys.onReleased: function (event) {
+      if (event.key === Qt.Key_Shift || (shiftScanCode > 0 && event.nativeScanCode === shiftScanCode)) {
+        shiftScanCode = -1
+        root.shiftHeld = false
+      }
+    }
+    onActiveFocusChanged: if (!activeFocus) root.shiftHeld = false
 
     Column {
       anchors.fill: parent
