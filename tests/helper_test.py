@@ -323,6 +323,36 @@ class PermissionTests(HelperTestCase):
         msgs = self.helper.call({"id": self.next_id(), "op": "opener", "path": target})
         self.assertEqual([m for m in msgs if m["t"] == "opener"][0]["handler"], "omafile-test-viewer.desktop")
 
+    def defaultfm_env(self, installed):
+        config = self.path("config")
+        apps = self.path("data", "applications")
+        os.makedirs(config)
+        os.makedirs(apps)
+        with open(os.path.join(config, "mimeapps.list"), "w") as f:
+            f.write("[Default Applications]\ntext/plain=nvim.desktop\n")
+        if installed:
+            with open(os.path.join(apps, "xyzlab.omafile.desktop"), "w") as f:
+                f.write("[Desktop Entry]\nType=Application\nName=Omafile\nExec=true %f\nMimeType=inode/directory;\n")
+        self.helper.close()
+        self.helper = Helper(env={"XDG_CONFIG_HOME": config, "XDG_DATA_HOME": self.path("data"),
+                                  "XDG_CURRENT_DESKTOP": "Hyprland"})
+        msgs = self.helper.call({"id": self.next_id(), "op": "defaultfm"})
+        with open(os.path.join(config, "mimeapps.list")) as f:
+            return msgs[-1], f.read()
+
+    @unittest.skipUnless(os.path.isfile("/usr/bin/gio"), "gio is not installed")
+    def test_defaultfm_reclaims_a_lost_default(self):
+        done, mimeapps = self.defaultfm_env(installed=True)
+        self.assertTrue(done["isOmafile"], done)
+        self.assertIn("inode/directory=xyzlab.omafile.desktop", mimeapps)
+        self.assertIn("text/plain=nvim.desktop", mimeapps)
+
+    @unittest.skipUnless(os.path.isfile("/usr/bin/gio"), "gio is not installed")
+    def test_defaultfm_leaves_the_default_alone_when_turned_off(self):
+        done, mimeapps = self.defaultfm_env(installed=False)
+        self.assertFalse(done["isOmafile"], done)
+        self.assertNotIn("inode/directory", mimeapps)
+
     def test_recursive_chmod_never_follows_a_symlink(self):
         outside = self.path("outside.txt")
         with open(outside, "w") as f:

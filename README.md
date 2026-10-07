@@ -148,7 +148,7 @@ Settings also picks whether Omafile is a normal window or a popup panel centred 
 
 ### Opening folders from other apps
 
-Turn on Default file manager in Settings. Folders opened from anywhere else then land in Omafile, and Show in folder opens the containing folder with the file selected. It also puts Omafile in your application launcher, using the same folder icon as the bar widget. Turning it off restores the handler you had before.
+Turn on Default file manager in Settings. Folders opened from anywhere else then land in Omafile, and Show in folder opens the containing folder with the file selected. It also puts Omafile in your application launcher, using the same folder icon as the bar widget. Turning it off restores the handler you had before. If something else later takes the folder handler back, such as a system upgrade rewriting `~/.config/mimeapps.list`, Omafile claims it again the next time the shell starts.
 
 Two separate mechanisms are involved, which is why some apps can follow it and others not:
 
@@ -162,8 +162,8 @@ The D-Bus half needs PyGObject, which Omarchy ships. Without it the desktop entr
 The desktop entry half from a terminal:
 
 ```bash
-xdg-mime default xyzlab.omafile.desktop inode/directory
-xdg-mime query default inode/directory
+gio mime inode/directory xyzlab.omafile.desktop
+gio mime inode/directory
 ```
 
 ### Picking files for other apps
