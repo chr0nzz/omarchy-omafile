@@ -230,7 +230,7 @@ Focus starts in the file list. Tab moves it to the sidebar, or to the other pane
 | `Shift+F10` / `Menu` | Open the context menu on the current item |
 | `F10` | Open the menu for the folder itself |
 
-The context menu is a real focus target: arrows move through it, Enter or Space runs the highlighted entry, Escape closes it. Anything Omafile can do to a file is in there, so no action needs the mouse.
+The context menu is a real focus target: arrows move through it, Enter or Space runs the highlighted entry, Escape closes it. Anything Omafile can do to a file is in there, so no action needs the mouse. Entries show their keyboard shortcut on the right. **Move to trash** turns into **Delete permanently** while you hold Shift.
 
 ### Selection
 
