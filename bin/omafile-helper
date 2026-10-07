@@ -442,53 +442,86 @@ def op_du(req, cancel_event):
     maybe_emit(final=True)
     send_done(req_id)
 
-def copy_file_data(src_bytes, dst_bytes, progress_cb, cancel_event):
-    src_fd = os.open(src_bytes, os.O_RDONLY)
-    try:
-        dst_fd = os.open(dst_bytes, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o666)
-        try:
-            copied = 0
-            use_cfr = hasattr(os, "copy_file_range")
-            while True:
-                if cancel_event.is_set():
-                    raise Cancelled()
-                if use_cfr:
-                    try:
-                        n = os.copy_file_range(src_fd, dst_fd, 1024 * 1024)
-                    except OSError:
-                        use_cfr = False
-                        continue
-                    if n == 0:
-                        break
-                    copied += n
-                else:
-                    buf = os.read(src_fd, 1024 * 1024)
-                    if not buf:
-                        break
-                    os.write(dst_fd, buf)
-                    copied += len(buf)
-                progress_cb(copied)
-            return copied
-        finally:
-            os.close(dst_fd)
-    finally:
-        os.close(src_fd)
+class ChangedWhileCopying(OSError):
+    pass
 
-def copy_meta(dst_bytes, lst):
+
+def open_checked(dir_fd, name, lst, flags):
+    fd = os.open(name, flags | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dir_fd)
     try:
-        os.chmod(dst_bytes, stat.S_IMODE(lst.st_mode))
+        st = os.fstat(fd)
+        if (st.st_dev, st.st_ino) != (lst.st_dev, lst.st_ino) or stat.S_IFMT(st.st_mode) != stat.S_IFMT(lst.st_mode):
+            raise ChangedWhileCopying(errno.ESTALE, "changed while copying")
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def copy_file_data(src_fd, dst_fd, progress_cb, cancel_event):
+    copied = 0
+    use_cfr = hasattr(os, "copy_file_range")
+    while True:
+        if cancel_event.is_set():
+            raise Cancelled()
+        if use_cfr:
+            try:
+                n = os.copy_file_range(src_fd, dst_fd, 1024 * 1024)
+            except OSError:
+                use_cfr = False
+                continue
+            if n == 0:
+                break
+            copied += n
+        else:
+            buf = os.read(src_fd, 1024 * 1024)
+            if not buf:
+                break
+            os.write(dst_fd, buf)
+            copied += len(buf)
+        progress_cb(copied)
+    return copied
+
+
+def copy_meta_fd(fd, lst):
+    try:
+        os.fchmod(fd, stat.S_IMODE(lst.st_mode))
     except OSError:
         pass
     try:
-        os.utime(dst_bytes, ns=(lst.st_atime_ns, lst.st_mtime_ns))
+        os.utime(fd, ns=(lst.st_atime_ns, lst.st_mtime_ns))
     except OSError:
         pass
 
-def same_file(a, b):
+
+def lstat_at(dir_fd, name):
     try:
-        return os.path.samefile(a, b)
-    except OSError:
-        return False
+        return os.lstat(name, dir_fd=dir_fd)
+    except FileNotFoundError:
+        return None
+
+
+def unique_name_at(dir_fd, name_bytes):
+    if lstat_at(dir_fd, name_bytes) is None:
+        return name_bytes
+    stem, ext = os.path.splitext(to_str(name_bytes))
+    n = 1
+    while True:
+        candidate = to_bytes("%s (%d)%s" % (stem, n, ext))
+        if lstat_at(dir_fd, candidate) is None:
+            return candidate
+        n += 1
+
+
+def remove_at(dir_fd, name, existing):
+    if stat.S_ISDIR(existing.st_mode):
+        shutil.rmtree(name, dir_fd=dir_fd)
+    else:
+        os.unlink(name, dir_fd=dir_fd)
+
+
+def open_parent(path_bytes):
+    return os.open(os.path.dirname(path_bytes) or b"/", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
 
 
 def unique_dest_name(dest_dir_bytes, name_bytes):
@@ -609,71 +642,94 @@ def op_copy_move(req, cancel_event, is_move):
                   "files": files_done[0], "filesTotal": total_files, "current": current_str, "rate": rate})
             last_progress[0] = now
 
-    def copy_one(src_bytes, dst_bytes):
-        nonlocal copied, skipped
+    def fail(path_bytes, e):
+        errors.append({"path": to_str(path_bytes), "message": e.strerror or str(e)})
+
+    def place_target(src_lst, dst_fd, dst_name, src_path, dst_path, same_action, merge_dirs):
+        nonlocal skipped
+        existing = lstat_at(dst_fd, dst_name)
+        if existing is None:
+            return dst_name
+        if (existing.st_dev, existing.st_ino) == (src_lst.st_dev, src_lst.st_ino):
+            action = same_action
+        else:
+            action = resolve_conflict(req_id, cancel_event, to_str(src_path), to_str(dst_path), dst_path, conflict_mode, job_state)
+        if action == "cancel":
+            raise Cancelled()
+        if action == "skip":
+            skipped += 1
+            return None
+        if action == "rename":
+            return unique_name_at(dst_fd, dst_name)
+        if action == "overwrite":
+            merge = merge_dirs and stat.S_ISDIR(existing.st_mode) and stat.S_ISDIR(src_lst.st_mode)
+            if not merge:
+                try:
+                    remove_at(dst_fd, dst_name, existing)
+                except OSError:
+                    pass
+        return dst_name
+
+    def copy_at(src_fd, src_name, dst_fd, dst_name, src_path, dst_path, same_action="rename"):
+        nonlocal copied
         if cancel_event.is_set():
             raise Cancelled()
         try:
-            lst = os.lstat(src_bytes)
+            lst = os.lstat(src_name, dir_fd=src_fd)
         except OSError as e:
-            errors.append({"path": to_str(src_bytes), "message": e.strerror or str(e)})
+            fail(src_path, e)
             return
-        src_str = to_str(src_bytes)
-        final_dst = dst_bytes
-        if os.path.lexists(dst_bytes):
-            if same_file(src_bytes, dst_bytes):
-                action = "rename"
-            else:
-                action = resolve_conflict(req_id, cancel_event, src_str, to_str(dst_bytes), dst_bytes, conflict_mode, job_state)
-            if action == "cancel":
-                raise Cancelled()
-            if action == "skip":
-                skipped += 1
-                return
-            if action == "rename":
-                parent = os.path.dirname(dst_bytes)
-                base = os.path.basename(dst_bytes)
-                final_dst = os.path.join(parent, unique_dest_name(parent, base))
-            elif action == "overwrite":
-                try:
-                    if os.path.isdir(final_dst) and not os.path.islink(final_dst) and not stat.S_ISDIR(lst.st_mode):
-                        shutil.rmtree(final_dst)
-                    elif not (os.path.isdir(final_dst) and not os.path.islink(final_dst)):
-                        os.remove(final_dst)
-                except OSError:
-                    pass
+        target = place_target(lst, dst_fd, dst_name, src_path, dst_path, same_action, True)
+        if target is None:
+            return
+        src_str = to_str(src_path)
         emit_progress(src_str)
         if stat.S_ISLNK(lst.st_mode):
             try:
-                target = os.readlink(src_bytes)
-                if os.path.lexists(final_dst):
-                    os.remove(final_dst)
-                os.symlink(target, final_dst)
+                link = os.readlink(src_name, dir_fd=src_fd)
+                existing = lstat_at(dst_fd, target)
+                if existing is not None and not stat.S_ISDIR(existing.st_mode):
+                    os.unlink(target, dir_fd=dst_fd)
+                os.symlink(link, target, dir_fd=dst_fd)
             except OSError as e:
-                errors.append({"path": src_str, "message": e.strerror or str(e)})
+                fail(src_path, e)
                 return
             files_done[0] += 1
             copied += 1
         elif stat.S_ISDIR(lst.st_mode):
             try:
-                os.makedirs(final_dst, exist_ok=True)
+                child_src = open_checked(src_fd, src_name, lst, os.O_RDONLY | os.O_DIRECTORY)
             except OSError as e:
-                errors.append({"path": src_str, "message": e.strerror or str(e)})
+                fail(src_path, e)
                 return
             try:
-                with os.scandir(src_bytes) as it:
-                    children = list(it)
+                try:
+                    os.mkdir(target, 0o700, dir_fd=dst_fd)
+                except FileExistsError:
+                    pass
+                child_dst = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dst_fd)
             except OSError as e:
-                errors.append({"path": src_str, "message": e.strerror or str(e)})
-                children = []
-            for child in children:
-                if cancel_event.is_set():
-                    raise Cancelled()
-                copy_one(child.path, os.path.join(final_dst, child.name))
-            copy_meta(final_dst, lst)
+                os.close(child_src)
+                fail(src_path, e)
+                return
+            try:
+                try:
+                    names = sorted(os.fsencode(n) for n in os.listdir(child_src))
+                except OSError as e:
+                    fail(src_path, e)
+                    names = []
+                for name in names:
+                    if cancel_event.is_set():
+                        raise Cancelled()
+                    copy_at(child_src, name, child_dst, name,
+                            os.path.join(src_path, name), os.path.join(os.path.dirname(dst_path), target, name))
+                copy_meta_fd(child_dst, lst)
+            finally:
+                os.close(child_src)
+                os.close(child_dst)
             files_done[0] += 1
             copied += 1
-        else:
+        elif stat.S_ISREG(lst.st_mode):
             base = bytes_done[0]
 
             def progress_cb(n):
@@ -681,71 +737,72 @@ def op_copy_move(req, cancel_event, is_move):
                 emit_progress(src_str)
 
             try:
-                copy_file_data(src_bytes, final_dst, progress_cb, cancel_event)
-                copy_meta(final_dst, lst)
+                file_src = open_checked(src_fd, src_name, lst, os.O_RDONLY | os.O_NONBLOCK)
+            except OSError as e:
+                fail(src_path, e)
+                return
+            try:
+                file_dst = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                   0o600, dir_fd=dst_fd)
+            except OSError as e:
+                os.close(file_src)
+                fail(src_path, e)
+                return
+            try:
+                copy_file_data(file_src, file_dst, progress_cb, cancel_event)
+                copy_meta_fd(file_dst, lst)
             except Cancelled:
                 raise
             except OSError as e:
-                errors.append({"path": src_str, "message": e.strerror or str(e)})
+                fail(src_path, e)
                 bytes_done[0] = base
                 return
+            finally:
+                os.close(file_src)
+                os.close(file_dst)
             bytes_done[0] = base + lst.st_size
             files_done[0] += 1
             copied += 1
+        else:
+            fail(src_path, OSError(errno.EINVAL, "special files are not copied"))
 
-    def move_one(src_bytes, dst_bytes):
-        nonlocal copied, skipped
+    def move_at(src_fd, src_name, dst_fd, dst_name, src_path, dst_path):
+        nonlocal copied
         if cancel_event.is_set():
             raise Cancelled()
         try:
-            lst = os.lstat(src_bytes)
+            lst = os.lstat(src_name, dir_fd=src_fd)
         except OSError as e:
-            errors.append({"path": to_str(src_bytes), "message": e.strerror or str(e)})
+            fail(src_path, e)
             return
-        src_str = to_str(src_bytes)
-        final_dst = dst_bytes
-        if os.path.lexists(dst_bytes):
-            if same_file(src_bytes, dst_bytes):
-                action = "skip"
-            else:
-                action = resolve_conflict(req_id, cancel_event, src_str, to_str(dst_bytes), dst_bytes, conflict_mode, job_state)
-            if action == "cancel":
-                raise Cancelled()
-            if action == "skip":
-                skipped += 1
-                return
-            if action == "rename":
-                parent = os.path.dirname(dst_bytes)
-                base = os.path.basename(dst_bytes)
-                final_dst = os.path.join(parent, unique_dest_name(parent, base))
-            elif action == "overwrite":
-                try:
-                    if os.path.isdir(dst_bytes) and not os.path.islink(dst_bytes):
-                        shutil.rmtree(dst_bytes)
-                    else:
-                        os.remove(dst_bytes)
-                except OSError:
-                    pass
-        emit_progress(src_str)
+        target = place_target(lst, dst_fd, dst_name, src_path, dst_path, "skip", False)
+        if target is None:
+            return
+        emit_progress(to_str(src_path))
         try:
-            os.rename(src_bytes, final_dst)
-            size = 0 if stat.S_ISDIR(lst.st_mode) and not stat.S_ISLNK(lst.st_mode) else lst.st_size
+            os.rename(src_name, target, src_dir_fd=src_fd, dst_dir_fd=dst_fd)
+            size = 0 if stat.S_ISDIR(lst.st_mode) else lst.st_size
             bytes_done[0] += size
             files_done[0] += 1
             copied += 1
         except OSError as e:
-            if e.errno == errno.EXDEV:
-                copy_one(src_bytes, final_dst)
-                try:
-                    if stat.S_ISDIR(lst.st_mode) and not stat.S_ISLNK(lst.st_mode):
-                        shutil.rmtree(src_bytes)
-                    else:
-                        os.unlink(src_bytes)
-                except OSError as e2:
-                    errors.append({"path": src_str, "message": e2.strerror or str(e2)})
-            else:
-                errors.append({"path": src_str, "message": e.strerror or str(e)})
+            if e.errno != errno.EXDEV:
+                fail(src_path, e)
+                return
+            before = len(errors)
+            copy_at(src_fd, src_name, dst_fd, target, src_path, os.path.join(os.path.dirname(dst_path), target), "skip")
+            if len(errors) != before:
+                return
+            try:
+                remove_at(src_fd, src_name, lst)
+            except OSError as e2:
+                fail(src_path, e2)
 
+    try:
+        dest_fd = open_checked(None, dest_bytes, dest_lst, os.O_RDONLY | os.O_DIRECTORY)
+    except OSError as e:
+        send_error(req_id, errno_code(e), e.strerror or str(e), dest)
+        return
     try:
         for s in sources:
             if cancel_event.is_set():
@@ -753,13 +810,23 @@ def op_copy_move(req, cancel_event, is_move):
             src_bytes = to_bytes(s)
             name = os.path.basename(src_bytes)
             dst_bytes = os.path.join(dest_bytes, name)
-            if is_move:
-                move_one(src_bytes, dst_bytes)
-            else:
-                copy_one(src_bytes, dst_bytes)
+            try:
+                parent_fd = open_parent(src_bytes)
+            except OSError as e:
+                fail(src_bytes, e)
+                continue
+            try:
+                if is_move:
+                    move_at(parent_fd, name, dest_fd, name, src_bytes, dst_bytes)
+                else:
+                    copy_at(parent_fd, name, dest_fd, name, src_bytes, dst_bytes)
+            finally:
+                os.close(parent_fd)
     except Cancelled:
         send_error(req_id, "ECANCELED", "cancelled")
         return
+    finally:
+        os.close(dest_fd)
     emit_progress("", force=True)
     send_done(req_id, copied=copied, skipped=skipped, errors=errors)
 
