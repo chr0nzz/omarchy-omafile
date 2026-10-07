@@ -2302,13 +2302,14 @@ def desktop_body():
 
 
 def current_default_handler():
+    return gio_default_app("inode/directory")
+
+
+def set_folder_handler(handler):
     try:
-        proc = subprocess.run(
-            ["xdg-mime", "query", "default", "inode/directory"],
-            capture_output=True, text=True, timeout=10, shell=False)
+        return run_gio_mime(["mime", "inode/directory", handler]).returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        return ""
-    return (proc.stdout or "").strip()
+        return False
 
 
 def refresh_desktop_database():
@@ -2380,26 +2381,13 @@ def refresh_stale_desktop_entry():
     refresh_desktop_database()
 
 
-def claim_default_handler():
-    try:
-        subprocess.run(
-            ["xdg-mime", "default", DESKTOP_ID, "inode/directory"],
-            capture_output=True, text=True, timeout=15, shell=False)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-    return True
-
-
 def op_defaultfm(req):
     req_id = req["id"]
     refresh_stale_desktop_entry()
     handler = current_default_handler()
-    # The desktop entry only exists while Default file manager is on. If the
-    # inode/directory default no longer points at it, something else rewrote
-    # mimeapps.list (a system upgrade, another app), so claim it back.
     if (handler != DESKTOP_ID
             and os.path.exists(os.path.join(DESKTOP_DIR, DESKTOP_ID))
-            and claim_default_handler()):
+            and set_folder_handler(DESKTOP_ID)):
         handler = current_default_handler()
     emit({
         "id": req_id, "t": "done",
@@ -2416,8 +2404,10 @@ def op_setdefaultfm(req, cancel_event):
     enabled = bool(req.get("enabled", False))
     previous = str(req.get("previous") or "")
     desktop_path = os.path.join(DESKTOP_DIR, DESKTOP_ID)
-    if not shutil.which("xdg-mime"):
-        send_error(req_id, "EUNSUPPORTED", "xdg-mime is not installed")
+    try:
+        trusted_program("gio")
+    except FileNotFoundError:
+        send_error(req_id, "EUNSUPPORTED", "gio is not installed")
         return
     if enabled:
         was = current_default_handler()
@@ -2429,7 +2419,7 @@ def op_setdefaultfm(req, cancel_event):
             send_error(req_id, errno_code(e), e.strerror or str(e), desktop_path)
             return
         refresh_desktop_database()
-        if not claim_default_handler():
+        if not set_folder_handler(DESKTOP_ID):
             send_error(req_id, "EUNSUPPORTED", "could not set the default handler")
             return
         show_items = install_filemanager1()
@@ -2440,12 +2430,7 @@ def op_setdefaultfm(req, cancel_event):
               "previous": was if was != DESKTOP_ID else previous})
         return
     restore = previous if previous and previous != DESKTOP_ID else "org.gnome.Nautilus.desktop"
-    try:
-        subprocess.run(
-            ["xdg-mime", "default", restore, "inode/directory"],
-            capture_output=True, text=True, timeout=15, shell=False)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    set_folder_handler(restore)
     try:
         os.unlink(desktop_path)
     except OSError:

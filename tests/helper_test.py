@@ -340,14 +340,14 @@ class PermissionTests(HelperTestCase):
         with open(os.path.join(config, "mimeapps.list")) as f:
             return msgs[-1], f.read()
 
-    @unittest.skipUnless(shutil.which("xdg-mime"), "xdg-mime is not installed")
+    @unittest.skipUnless(os.path.isfile("/usr/bin/gio"), "gio is not installed")
     def test_defaultfm_reclaims_a_lost_default(self):
         done, mimeapps = self.defaultfm_env(installed=True)
         self.assertTrue(done["isOmafile"], done)
         self.assertIn("inode/directory=xyzlab.omafile.desktop", mimeapps)
         self.assertIn("text/plain=nvim.desktop", mimeapps)
 
-    @unittest.skipUnless(shutil.which("xdg-mime"), "xdg-mime is not installed")
+    @unittest.skipUnless(os.path.isfile("/usr/bin/gio"), "gio is not installed")
     def test_defaultfm_leaves_the_default_alone_when_turned_off(self):
         done, mimeapps = self.defaultfm_env(installed=False)
         self.assertFalse(done["isOmafile"], done)

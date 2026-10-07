@@ -162,8 +162,8 @@ The D-Bus half needs PyGObject, which Omarchy ships. Without it the desktop entr
 The desktop entry half from a terminal:
 
 ```bash
-xdg-mime default xyzlab.omafile.desktop inode/directory
-xdg-mime query default inode/directory
+gio mime inode/directory xyzlab.omafile.desktop
+gio mime inode/directory
 ```
 
 ### Picking files for other apps

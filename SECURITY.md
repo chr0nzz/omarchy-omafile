@@ -22,7 +22,7 @@ Only the latest release on `main` receives fixes.
 | Trashed files | `$XDG_DATA_HOME/Trash` and per volume `.Trash-$uid` | The freedesktop trash, shared with every other file manager |
 | Desktop entry | `~/.local/share/applications/xyzlab.omafile.desktop` | Only while Default file manager is on |
 | D-Bus service file | `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service` | Only while Default file manager is on. Overrides the system file so Show in folder reaches Omafile |
-| Default handler | `xdg-mime` for `inode/directory` | Only while Default file manager is on. Turning it off restores the previous handler |
+| Default handler | `gio mime` for `inode/directory` in `mimeapps.list` | Only while Default file manager is on. Claimed again at shell start if something else took it. Turning it off restores the previous handler |
 | Default apps | `~/.config/mimeapps.list` (or `$XDG_CONFIG_HOME/mimeapps.list`) through `gio mime` | Only when you change Opens with in Properties. Never for `inode/directory` |
 | Permissions, owner and group | The file or folder you edit in Properties | Only when you press Apply. Recursive changes skip symlinks and never follow them. Changing the owner only works when the helper runs as root, which Omafile never arranges |
 | Portal backend file | `/usr/share/xdg-desktop-portal/portals/omafile.portal` | Installed once, with your password, when Pick files for other apps is turned on. Fixed contents. Left in place when it is turned off, where it does nothing on its own |
@@ -42,8 +42,8 @@ Only the latest release on `main` receives fixes.
 | `gio open` | Opening a file with its default application |
 | `gio mount` | Connecting to or disconnecting from a network server |
 | `gio list network:///` | Looking for servers the network advertises |
-| `gio info`, `gio mime` | Reading a file's type and its default app when Properties opens, and saving a new default when you change Opens with |
-| `xdg-mime`, `update-desktop-database` | Only when Default file manager is turned on or off |
+| `gio info`, `gio mime` | Reading a file's type and its default app when Properties opens, saving a new default when you change Opens with, and checking or setting the folder handler for Default file manager |
+| `update-desktop-database` | Only when Default file manager is turned on or off |
 | `bin/omafile-portal` | Only while Pick files for other apps is on. Started by D-Bus when another app asks for a file chooser |
 | `bin/omafile-portal-setup` | Only when Pick files for other apps is turned on or off |
 | `pkexec install`, or `sudo install` from a terminal | Once, when Pick files for other apps is turned on and `omafile.portal` is missing or different |
