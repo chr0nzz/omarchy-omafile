@@ -181,10 +181,39 @@ class ResultTests(unittest.TestCase):
             one = {"files": [b"a.txt\0"]}
             response, results = portal.parse_result({"ok": True, "paths": [tmp]}, "savefiles", one)
             self.assertTrue(results["uris"][0].endswith("/a.txt"))
-            full = [os.path.join(tmp, "x"), os.path.join(tmp, "y")]
+            full = [os.path.join(tmp, "a.txt"), os.path.join(tmp, "b c.txt")]
             response, results = portal.parse_result({"ok": True, "paths": full}, "savefiles", options)
             self.assertEqual(len(results["uris"]), 2)
-            self.assertTrue(results["uris"][1].endswith("/y"))
+            self.assertTrue(results["uris"][1].endswith("/b%20c.txt"))
+            other = [os.path.join(tmp, "x"), os.path.join(tmp, "y")]
+            self.assertEqual(portal.parse_result({"ok": True, "paths": other}, "savefiles", options)[0], 2,
+                             "paths must be the selected folder joined with the names the app asked for")
+
+    def test_savefiles_names_cannot_leave_the_selected_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for bad in [b"../escape.txt\0", b"..\0", b".\0", b"sub/file.txt\0", b"/etc/passwd\0"]:
+                options = {"files": [b"ok.txt\0", bad]}
+                self.assertFalse(portal.valid_request("savefiles", options), bad)
+                response, results = portal.parse_result({"ok": True, "paths": [tmp]}, "savefiles", options)
+                self.assertEqual(response, 2, bad)
+                self.assertEqual(results, {})
+            dupes = {"files": [b"a.txt\0", b"a.txt\0"]}
+            self.assertFalse(portal.valid_request("savefiles", dupes))
+            self.assertTrue(portal.valid_request("savefiles", {"files": [b"a.txt\0", b"..hidden\0"]}))
+            self.assertTrue(portal.valid_request("open", {}))
+
+    def test_returned_paths_must_be_normalised(self):
+        for path in ["/home/me/../etc/passwd", "/home/me/./x", "/home/me/x/", "/home//me"]:
+            self.assertEqual(portal.parse_result({"ok": True, "paths": [path]}, "open", {})[0], 2, path)
+        self.assertEqual(portal.parse_result({"ok": True, "paths": ["/home/me/.."]}, "save", {})[0], 2)
+
+    def test_save_ignores_an_unsafe_suggested_name(self):
+        req = portal.build_request("save", "", {"current_name": "../../.bashrc"}, "/r")
+        self.assertEqual(req["currentName"], "")
+        req = portal.build_request("save", "", {"current_name": ".."}, "/r")
+        self.assertEqual(req["currentName"], "")
+        req = portal.build_request("save", "", {"current_name": "report.pdf"}, "/r")
+        self.assertEqual(req["currentName"], "report.pdf")
 
     def test_variant(self):
         results = portal.parse_result(

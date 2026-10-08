@@ -150,6 +150,22 @@ def portal_filters(options):
     return filters, index
 
 
+def plain_name(name):
+    return (isinstance(name, str) and name not in ("", ".", "..")
+            and "/" not in name and "\0" not in name)
+
+
+def save_file_names(options):
+    return [decode_bytes(f) for f in (options.get("files") or [])]
+
+
+def valid_request(mode, options):
+    if mode != "savefiles":
+        return True
+    names = [f for f in save_file_names(options) if f]
+    return all(plain_name(n) for n in names) and len(set(names)) == len(names)
+
+
 def build_request(mode, title, options, result_path):
     filters, current_index = portal_filters(options)
     current_folder = decode_bytes(options.get("current_folder"))
@@ -160,10 +176,11 @@ def build_request(mode, title, options, result_path):
             current_folder = os.path.dirname(current_file)
         if not current_name:
             current_name = os.path.basename(current_file)
+    if not plain_name(current_name):
+        current_name = ""
     files = []
     if mode == "savefiles":
-        files = [decode_bytes(f) for f in (options.get("files") or [])]
-        files = [f for f in files if f]
+        files = [f for f in save_file_names(options) if f]
     return {
         "mode": mode,
         "title": str(title or "") or DEFAULT_TITLES[mode],
@@ -191,14 +208,33 @@ def parse_result(data, mode, options):
     paths = [p for p in paths if isinstance(p, str) and p]
     if not paths:
         return RESPONSE_CANCELLED, {}
-    if any(not os.path.isabs(p) for p in paths):
+    if any(not os.path.isabs(p) or os.path.normpath(p) != p or "\0" in p for p in paths):
         return RESPONSE_ERROR, {}
     if mode == "savefiles":
-        files = [decode_bytes(f) for f in (options.get("files") or [])]
-        files = [f for f in files if f]
+        if not valid_request(mode, options):
+            return RESPONSE_ERROR, {}
+        files = [f for f in save_file_names(options) if f]
         if files and len(paths) == 1 and (len(files) > 1 or os.path.isdir(paths[0])):
-            paths = [os.path.join(paths[0], name) for name in files]
-    elif mode == "save" or not options.get("multiple", False):
+            folder = paths[0]
+        elif files and len(paths) == len(files) and len(set(os.path.dirname(p) for p in paths)) == 1:
+            folder = os.path.dirname(paths[0])
+            if [os.path.basename(p) for p in paths] != files:
+                return RESPONSE_ERROR, {}
+        elif not files:
+            folder = None
+        else:
+            return RESPONSE_ERROR, {}
+        if folder is not None:
+            if not os.path.isdir(folder):
+                return RESPONSE_ERROR, {}
+            paths = [os.path.join(folder, name) for name in files]
+            if any(os.path.dirname(p) != folder for p in paths):
+                return RESPONSE_ERROR, {}
+    elif mode == "save":
+        paths = paths[:1]
+        if not plain_name(os.path.basename(paths[0])):
+            return RESPONSE_ERROR, {}
+    elif not options.get("multiple", False):
         paths = paths[:1]
     results = {"uris": [GLib.filename_to_uri(p, None) for p in paths], "choices": []}
     filters, _ = portal_filters(options)
@@ -408,6 +444,9 @@ class Portal:
             invocation.return_value(GLib.Variant("(ua{sv})", (RESPONSE_ERROR, {})))
             return
         remove_quietly(result_path)
+        if not valid_request(mode, options):
+            invocation.return_value(GLib.Variant("(ua{sv})", (RESPONSE_ERROR, {})))
+            return
         request = build_request(mode, title, options, result_path)
         pick = Pick(self, invocation, handle, mode, options, result_path)
         self.pending.append(pick)

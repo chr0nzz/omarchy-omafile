@@ -459,6 +459,7 @@ Item {
       var name = String(pickNameField.text || "").trim()
       if (!name) { statusText = "Type a name to save as"; pickNameField.forceActiveFocus(); return }
       if (name.indexOf("/") >= 0) { statusText = "The name cannot contain a slash"; return }
+      if (!Model.isPlainFileName(name)) { statusText = "That name is not allowed"; return }
       if (p.virtualView) { statusText = "Pick a folder to save into"; return }
       var target = Model.joinPath(p.path, name)
       for (var i = 0; i < p.rows.length; i++) {
@@ -480,7 +481,14 @@ Item {
       if (!folder) { statusText = "Pick a folder to save into"; return }
       var names = pick.files || []
       var out = []
-      for (var n = 0; n < names.length; n++) out.push(Model.joinPath(folder, String(names[n])))
+      for (var n = 0; n < names.length; n++) {
+        if (!Model.isPlainFileName(names[n])) {
+          statusText = "The app asked to save under a name that is not allowed"
+          cancelPick()
+          return
+        }
+        out.push(Model.joinPath(folder, String(names[n])))
+      }
       completePick(out)
       return
     }

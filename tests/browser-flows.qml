@@ -1315,6 +1315,37 @@ ShellRoot {
         waitRows()
       }
 
+      function test_8b_pickSaveNamesStayInTheFolder() {
+        mock.calls = []
+        browser.pickerRequest = { mode: "save", result: "/run/u.json", currentFolder: "/tmp", currentName: "x.txt" }
+        browser.beginPickSession()
+        tryVerify(function () { return !pane().loading && pane().rows.length === 3 })
+        findChild(browser, "pickNameField").text = ".."
+        browser.acceptPick(null)
+        compare(mock.called("finishPick"), null, "a name of .. is refused")
+        compare(browser.statusText, "That name is not allowed")
+        browser.cancelPick()
+
+        mock.calls = []
+        browser.pickerRequest = { mode: "savefiles", result: "/run/s.json", currentFolder: "/tmp", files: ["a.txt", "b.txt"] }
+        browser.beginPickSession()
+        tryVerify(function () { return !pane().loading && pane().rows.length === 3 })
+        browser.acceptPick(null)
+        var call = mock.called("finishPick")
+        compare(call.args[0].ok, true)
+        compare(call.args[0].paths, ["/tmp/a.txt", "/tmp/b.txt"])
+
+        mock.calls = []
+        browser.pickerRequest = { mode: "savefiles", result: "/run/t.json", currentFolder: "/tmp", files: ["ok.txt", "../escape.txt"] }
+        browser.beginPickSession()
+        tryVerify(function () { return !pane().loading && pane().rows.length === 3 })
+        browser.acceptPick(null)
+        call = mock.called("finishPick")
+        compare(call.args[0].ok, false, "a name that leaves the folder cancels the pick")
+        verify(call.args[0].paths === undefined)
+        verify(!browser.picking)
+      }
+
       function test_zz_done() {
         if (failures > 0) return
         console.log("OMAFILE_BROWSER_FLOWS_PASSED")
