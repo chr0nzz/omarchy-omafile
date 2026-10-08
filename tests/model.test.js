@@ -687,3 +687,16 @@ test('cleanPlaceOrder keeps only lists of unique, non-empty string ids', () => {
   for (var i = 0; i < 150; i++) many.push('id' + i);
   assert.equal(Model.cleanPlaceOrder({ bookmarks: many }).bookmarks.length, 100);
 });
+
+test('isPlainFileName refuses empty names, dot names, slashes and NUL', () => {
+  assert.equal(Model.isPlainFileName('report.pdf'), true);
+  assert.equal(Model.isPlainFileName('..hidden'), true);
+  assert.equal(Model.isPlainFileName('.bashrc'), true);
+  assert.equal(Model.isPlainFileName(''), false);
+  assert.equal(Model.isPlainFileName('.'), false);
+  assert.equal(Model.isPlainFileName('..'), false);
+  assert.equal(Model.isPlainFileName('../escape.txt'), false);
+  assert.equal(Model.isPlainFileName('a/b'), false);
+  assert.equal(Model.isPlainFileName('a\0b'), false);
+  assert.equal(Model.isPlainFileName(null), false);
+});

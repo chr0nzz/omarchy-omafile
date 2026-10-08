@@ -322,6 +322,12 @@ function normalizePath(path) {
 var extractSuffixes = ['.tar.gz', '.tar.xz', '.tar.bz2', '.tar.zst', '.tar.lz', '.tar', '.tgz', '.txz',
   '.tbz', '.tbz2', '.tzst', '.zip', '.7z', '.rar'];
 
+function isPlainFileName(name) {
+  if (typeof name !== 'string') return false;
+  if (name === '' || name === '.' || name === '..') return false;
+  return name.indexOf('/') < 0 && name.indexOf('\0') < 0;
+}
+
 function compressName(entries) {
   if (!entries || entries.length !== 1) return 'Archive';
   var entry = entries[0];
