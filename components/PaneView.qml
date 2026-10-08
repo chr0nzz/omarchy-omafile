@@ -117,6 +117,37 @@ Item {
   }
   signal zoomRequested(real delta)
 
+  readonly property int wheelLines: 3
+
+  function wheelStep() {
+    if (pane.view === "grid" || pane.galleryView) return Math.max(gridView.cellHeight, pane.rowHeight * wheelLines)
+    return pane.rowHeight * wheelLines
+  }
+
+  function wheelScroll(wheel) {
+    if (wheel.pixelDelta.y !== 0 || wheel.angleDelta.y === 0) return false
+    var v = activeView()
+    var top = v.originY - v.topMargin
+    var bottom = Math.max(top, v.originY + v.contentHeight + v.bottomMargin - v.height)
+    var from = wheelGlide.running && wheelGlide.target === v ? wheelGlide.to : v.contentY
+    var to = Math.max(top, Math.min(bottom, from - wheel.angleDelta.y / 120 * wheelStep()))
+    wheelGlide.stop()
+    v.cancelFlick()
+    if (to === v.contentY) return true
+    wheelGlide.target = v
+    wheelGlide.from = v.contentY
+    wheelGlide.to = to
+    wheelGlide.start()
+    return true
+  }
+
+  NumberAnimation {
+    id: wheelGlide
+    property: "contentY"
+    duration: 140
+    easing.type: Easing.OutCubic
+  }
+
   function countSelection() {
     var n = 0
     for (var k in selection) if (selection[k]) n++
@@ -918,7 +949,7 @@ Item {
 
       onWheel: function (wheel) {
         if (!(wheel.modifiers & Qt.ControlModifier)) {
-          wheel.accepted = false
+          if (!pane.wheelScroll(wheel)) wheel.accepted = false
           return
         }
         wheelAccum += wheel.angleDelta.y
