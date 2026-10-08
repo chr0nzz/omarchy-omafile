@@ -636,8 +636,14 @@ Item {
       return
     }
     if (dialogMode === "newfolder") {
-      service.makeDirectory(Model.joinPath(p.path, value),
-        function () { closeDialog(); p.refresh() },
+      var folder = Model.joinPath(p.path, value)
+      service.makeDirectory(folder,
+        function () {
+          closeDialog()
+          if (!root.picking) { p.refresh(); return }
+          p.navigate(folder)
+          if (root.pickNeedsName) pickNameField.forceActiveFocus()
+        },
         function (m) { root.dialogError = String(m.message || "Could not create the folder") })
     } else if (dialogMode === "newfile") {
       service.makeFile(Model.joinPath(p.path, value),
@@ -1489,6 +1495,9 @@ Item {
     var items = []
     var check = Icons.actionGlyph("check")
     if (kind === "main") {
+      items.push({ key: "newfolder", label: "New folder", glyph: Icons.actionGlyph("newfolder"), hint: "Ctrl+Shift+N",
+        disabled: !service || !p || p.virtualView })
+      items.push({ label: "" })
       items.push({ key: "settings", label: "Settings", glyph: Icons.actionGlyph("settings"), hint: "Ctrl+," })
       items.push({ key: "shortcuts", label: "Keyboard shortcuts", glyph: Icons.actionGlyph("keyboard"), hint: "F1" })
       return items

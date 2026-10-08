@@ -148,6 +148,7 @@ QtObject {
   function runCommandOn(text, path) { record("runCommandOn", [text, path]); return true }
   function openExternally(path) { record("openExternally", [path]) }
   property var compressResult: null
+  function makeDirectory(path, onDone, onError) { record("makeDirectory", [path]); if (onDone) onDone({}) }
   function compressPaths(paths, name, onDone, onError) {
     record("compressPaths", [paths, name])
     if (compressResult && compressResult.error) { if (onError) onError({ message: compressResult.error, code: compressResult.code }) }

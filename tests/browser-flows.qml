@@ -1346,6 +1346,28 @@ ShellRoot {
         verify(!browser.picking)
       }
 
+      function test_8c_pickNewFolder() {
+        mock.calls = []
+        browser.pickerRequest = { mode: "open", directory: true, result: "/run/d.json", currentFolder: "/tmp" }
+        browser.beginPickSession()
+        waitRows()
+        waitForRendering(browser)
+        browser.openToolbarMenu("main", findChild(browser, "mainMenuButton"))
+        compare(menuLabels(browser.menuActions)[0], "New folder", "the main menu offers a new folder")
+        browser.runAction("newfolder")
+        compare(browser.dialogMode, "newfolder")
+        var field = findChild(browser, "dialogField")
+        tryCompare(field, "text", "untitled folder")
+        browser.submitDialog()
+        compare(mock.called("makeDirectory").args[0], "/tmp/untitled folder")
+        compare(browser.dialogMode, "")
+        compare(pane().path, "/tmp/untitled folder", "the new folder is entered")
+        mouseClick(findChild(browser, "pickAccept"))
+        compare(mock.called("finishPick").args[0].paths, ["/tmp/untitled folder"])
+        pane().navigate("/tmp")
+        waitRows()
+      }
+
       function test_zz_done() {
         if (failures > 0) return
         console.log("OMAFILE_BROWSER_FLOWS_PASSED")
