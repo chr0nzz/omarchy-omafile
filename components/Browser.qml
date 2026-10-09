@@ -2840,8 +2840,8 @@ Item {
             clip: true
             boundsBehavior: Flickable.StopAtBounds
 
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-            ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.vertical: ScrollHandle {}
+            ScrollBar.horizontal: ScrollHandle {}
 
             TextEdit {
               id: previewTextItem
@@ -3042,7 +3042,7 @@ Item {
             clip: true
             model: root.dialogMode === "openwith" ? root.filteredApps() : []
 
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.vertical: ScrollHandle {}
 
             delegate: Rectangle {
               required property var modelData
@@ -3113,7 +3113,7 @@ Item {
             clip: true
             boundsBehavior: Flickable.StopAtBounds
 
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.vertical: ScrollHandle {}
 
             Column {
               id: shortcutColumn
@@ -3233,7 +3233,7 @@ Item {
               clip: true
               boundsBehavior: Flickable.StopAtBounds
 
-              ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+              ScrollBar.vertical: ScrollHandle {}
 
               Column {
                 id: settingsColumn
@@ -3691,6 +3691,8 @@ Item {
             contentHeight: propsPanel.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
+
+            ScrollBar.vertical: ScrollHandle {}
 
             PropertiesPanel {
               id: propsPanel

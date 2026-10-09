@@ -70,6 +70,31 @@ ShellRoot {
         wait(100)
         mouseClick(pane, 50, 50)
         compare(pane.selectedCount, 1)
+
+        pane.view = "list"
+        var many = []
+        for (var i = 0; i < 80; i++) many.push(["file" + i + ".txt", "f", i, i, 0, null])
+        pane.entries = many
+        pane.rebuild()
+        var bar = findChild(pane, "listScroll")
+        verify(bar !== null, "the list has a scroll handle")
+        tryVerify(function () { return bar.visible }, 2000, "a long list shows the handle")
+        var thumb = findChild(bar, "scrollThumb")
+        tryCompare(thumb, "width", bar.thin)
+        mouseMove(bar, bar.width / 2, bar.height / 4)
+        tryCompare(thumb, "width", bar.thick, 2000, "hovering widens the handle")
+        var before = pane.selectedCount
+        var grab = bar.mapToItem(pane, bar.width / 2, bar.height * bar.size / 2)
+        mousePress(pane, grab.x, grab.y)
+        mouseMove(pane, grab.x, grab.y + bar.height / 3, 50)
+        mouseRelease(pane, grab.x, grab.y + bar.height / 3)
+        verify(bar.position > 0.2, "dragging the handle scrolls the list")
+        compare(pane.selectedCount, before, "dragging the handle leaves the selection alone")
+        mouseMove(pane, 100, 100)
+        tryCompare(thumb, "width", bar.thin, 2000, "leaving narrows it again")
+        pane.entries = many.slice(0, 2)
+        pane.rebuild()
+        tryVerify(function () { return !bar.visible }, 2000, "a short list hides the handle")
         console.log("OMAFILE_PANE_CLICKS_PASSED")
         harness.passed = true
       }

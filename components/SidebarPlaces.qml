@@ -460,7 +460,7 @@ Item {
       clip: true
       boundsBehavior: Flickable.StopAtBounds
 
-      ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+      ScrollBar.vertical: ScrollHandle {}
 
       Column {
         id: column

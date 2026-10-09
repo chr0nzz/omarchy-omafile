@@ -202,7 +202,7 @@ Item {
       clip: true
       boundsBehavior: Flickable.StopAtBounds
 
-      Controls.ScrollBar.vertical: Controls.ScrollBar { policy: Controls.ScrollBar.AsNeeded }
+      Controls.ScrollBar.vertical: ScrollHandle {}
 
       Column {
         id: list

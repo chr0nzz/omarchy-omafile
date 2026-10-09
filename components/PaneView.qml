@@ -141,6 +141,13 @@ Item {
     return pane.view === "list" ? listView : gridView
   }
 
+  function onScrollHandle(x, y) {
+    var bar = activeView().ScrollBar.vertical
+    if (!bar || !bar.visible) return false
+    var pt = bandArea.mapToItem(bar, x, y)
+    return bar.contains(pt)
+  }
+
   function columnsPerRow() {
     if (pane.view === "list" || gridView.cellWidth <= 0) return 1
     return Math.max(1, Math.floor(gridView.width / gridView.cellWidth))
@@ -861,6 +868,10 @@ Item {
 
       onPressed: function (mouse) {
         pane.activated()
+        if (pane.onScrollHandle(mouse.x, mouse.y)) {
+          mouse.accepted = false
+          return
+        }
         if (pane.view === "list" && mouse.y < header.height + Style.space(1)) {
           mouse.accepted = false
           return
@@ -1009,7 +1020,7 @@ Item {
         currentIndex: pane.cursorIndex
         visible: pane.view === "list"
 
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.vertical: ScrollHandle { objectName: "listScroll" }
 
         delegate: Rectangle {
           id: row
@@ -1206,7 +1217,7 @@ Item {
         cacheBuffer: 600
         boundsBehavior: Flickable.StopAtBounds
 
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.vertical: ScrollHandle { objectName: "gridScroll" }
 
         delegate: Rectangle {
           id: cell
