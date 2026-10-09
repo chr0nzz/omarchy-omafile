@@ -17,8 +17,8 @@ if ! QT_QPA_PLATFORM=offscreen qs -p "$stage/shell.qml" --no-color > "$stage/out
   cat "$stage/output.log"
   exit 1
 fi
-if ! grep -q 'OMAFILE_PANE_CLICKS_PASSED' "$stage/output.log"; then
+if ! grep -q 'OMAFILE_PANE_CLICKS_PASSED' "$stage/output.log" || ! grep -q 'OMAFILE_PANE_WHEEL_PASSED' "$stage/output.log"; then
   cat "$stage/output.log"
   exit 1
 fi
-printf 'Pane header sorting, recent order, row selection, drag selection and grid selection: passed\n'
+printf 'Pane header sorting, recent order, row selection, drag selection, grid selection and wheel scrolling: passed\n'

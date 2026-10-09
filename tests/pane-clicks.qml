@@ -98,6 +98,30 @@ ShellRoot {
         console.log("OMAFILE_PANE_CLICKS_PASSED")
         harness.passed = true
       }
+      function test_wheel() {
+        harness.passed = false
+        pane.path = "/tmp"
+        pane.view = "list"
+        var many = []
+        for (var i = 0; i < 300; i++) many.push(["file" + i + ".txt", "f", i, i, 0, null])
+        pane.entries = many
+        pane.rebuild()
+        var lv = pane.activeView()
+        var notch = pane.rowHeight * pane.wheelLines
+        lv.contentY = 0
+        mouseWheel(pane, 300, 200, 0, -120)
+        tryCompare(lv, "contentY", notch, 2000, "one notch scrolls a full step")
+        lv.contentY = 0
+        for (var j = 0; j < 5; j++) mouseWheel(pane, 300, 200, 0, -120)
+        tryCompare(lv, "contentY", notch * 5, 2000, "fast notches add up instead of restarting")
+        lv.contentY = 0
+        for (var k = 0; k < 16; k++) { mouseWheel(pane, 300, 200, 0, -15); wait(4) }
+        tryCompare(lv, "contentY", notch * 2, 2000, "a high resolution wheel scrolls as far as a notched one")
+        for (var n = 0; n < 200; n++) mouseWheel(pane, 300, 200, 0, 120)
+        tryCompare(lv, "contentY", lv.originY, 2000, "scrolling stops at the top")
+        console.log("OMAFILE_PANE_WHEEL_PASSED")
+        harness.passed = true
+      }
     }
   }
   Timer { interval: 15000; running: true; onTriggered: { console.log("OMAFILE_PANE_CLICKS_TIMEOUT"); Qt.quit() } }
