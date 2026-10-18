@@ -1,4 +1,4 @@
-import QtQuick
+import QtQuick 6.11
 import QtTest
 import Quickshell
 import "FilePlugin/components" as Plugin
