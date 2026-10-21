@@ -61,6 +61,11 @@ Item {
   property int _watchId: 0
   property string _watchPath: ""
   property var _pendingChunks: []
+  property var _shadowKeys: []
+  property var _shadowRaw: []
+  onRowsChanged: syncRowModel()
+
+  ListModel { id: rowModel }
 
   readonly property bool canGoBack: historyIndex > 0
   readonly property bool canGoForward: historyIndex >= 0 && historyIndex < history.length - 1
@@ -173,6 +178,70 @@ Item {
 
   function activeView() {
     return pane.view === "list" ? listView : gridView
+  }
+
+  function rowKey(row) {
+    return (row.length > 6 && typeof row[6] === "string" && row[6].length > 0) ? row[6] : String(row[0])
+  }
+
+  function resetRowModel(keys, raws) {
+    rowModel.clear()
+    var items = new Array(raws.length)
+    for (var i = 0; i < raws.length; i++) items[i] = { raw: raws[i] }
+    if (items.length > 0) rowModel.append(items)
+    _shadowKeys = keys
+    _shadowRaw = raws
+    activeView().forceLayout()
+  }
+
+  function syncRowModel() {
+    var next = rows
+    var keys = new Array(next.length)
+    var raws = new Array(next.length)
+    var at = ({})
+    for (var i = 0; i < next.length; i++) {
+      keys[i] = rowKey(next[i])
+      raws[i] = JSON.stringify(next[i])
+      at[keys[i]] = i
+    }
+    var oldKeys = _shadowKeys
+    if (oldKeys.length === 0 || next.length === 0) return resetRowModel(keys, raws)
+
+    var last = -1
+    var kept = 0
+    for (var o = 0; o < oldKeys.length; o++) {
+      var j = at[oldKeys[o]]
+      if (j === undefined) continue
+      if (j < last) return resetRowModel(keys, raws)
+      last = j
+      kept++
+    }
+    var churn = (oldKeys.length - kept) + (next.length - kept)
+    if (kept === 0 || churn > 200) return resetRowModel(keys, raws)
+
+    var shadowKeys = oldKeys.slice()
+    var shadowRaw = _shadowRaw.slice()
+    for (var r = shadowKeys.length - 1; r >= 0; r--) {
+      if (at[shadowKeys[r]] !== undefined) continue
+      rowModel.remove(r)
+      shadowKeys.splice(r, 1)
+      shadowRaw.splice(r, 1)
+    }
+    for (var n = 0; n < next.length; n++) {
+      if (n < shadowKeys.length && shadowKeys[n] === keys[n]) {
+        if (shadowRaw[n] !== raws[n]) {
+          rowModel.setProperty(n, "raw", raws[n])
+          shadowRaw[n] = raws[n]
+        }
+        continue
+      }
+      rowModel.insert(n, { raw: raws[n] })
+      shadowKeys.splice(n, 0, keys[n])
+      shadowRaw.splice(n, 0, raws[n])
+    }
+    _shadowKeys = shadowKeys
+    _shadowRaw = shadowRaw
+    activeView().forceLayout()
   }
 
   function onScrollHandle(x, y) {
@@ -1042,10 +1111,11 @@ Item {
 
       ListView {
         id: listView
+        objectName: "fileList"
         width: parent.width
         height: parent.height - header.height - (pane.view === "list" ? 1 : 0)
         clip: true
-        model: pane.rows
+        model: rowModel
         cacheBuffer: 400
         boundsBehavior: Flickable.StopAtBounds
         currentIndex: pane.cursorIndex
@@ -1055,8 +1125,9 @@ Item {
 
         delegate: Rectangle {
           id: row
-          required property var modelData
+          required property string raw
           required property int index
+          readonly property var modelData: JSON.parse(raw)
 
           readonly property var entry: Model.decodeEntry(modelData, pane.path)
           readonly property bool isCut: pane.isCut(entry)
@@ -1238,7 +1309,7 @@ Item {
         width: parent.width
         height: parent.height - header.height
         clip: true
-        model: pane.rows
+        model: rowModel
         visible: pane.view !== "list"
         cellWidth: pane.compactView ? Math.round(Style.space(230) * pane.viewScale)
           : Math.round(Style.space(pane.galleryView ? 190 : 110) * pane.viewScale)
@@ -1251,8 +1322,9 @@ Item {
 
         delegate: Rectangle {
           id: cell
-          required property var modelData
+          required property string raw
           required property int index
+          readonly property var modelData: JSON.parse(raw)
 
           readonly property var entry: Model.decodeEntry(modelData, pane.path)
           readonly property bool isCut: pane.isCut(entry)

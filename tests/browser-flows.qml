@@ -483,6 +483,37 @@ ShellRoot {
         mock.statItems = ({})
       }
 
+      function test_3ha_liveUpdatesKeepRows() {
+        waitRows()
+        browser.setView("list")
+        pane().setSortOrder("name", false)
+        var list = findChild(pane(), "fileList")
+        verify(list !== null, "file list")
+        var before = []
+        for (var i = 0; i < 3; i++) before.push(list.itemAtIndex(i))
+        var at = names().indexOf("alpha.yml")
+        wait(1100)
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 777, mtime: 700, mode: 420, linkTarget: null } }
+        mock.watchCallback({ names: ["alpha.yml"] })
+        tryVerify(function () { return pane().rows[at][2] === 777 }, 2500, "size updates")
+        for (var j = 0; j < 3; j++) verify(list.itemAtIndex(j) === before[j], "row " + j + " keeps its delegate")
+        compare(list.itemAtIndex(at).entry.size, 777)
+
+        wait(1100)
+        mock.statItems = { "/tmp/new.txt": { kind: "f", size: 5, mtime: 600, mode: 420, linkTarget: null } }
+        mock.watchCallback({ names: ["new.txt"] })
+        tryVerify(function () { return names().indexOf("new.txt") >= 0 }, 2500, "new file appears")
+        for (var k = 0; k < 3; k++) {
+          var name = before[k].entry.name
+          verify(list.itemAtIndex(names().indexOf(name)) === before[k], name + " keeps its delegate")
+        }
+
+        mock.statItems = ({})
+        wait(1100)
+        mock.watchCallback({ names: [] })
+        waitRows()
+      }
+
       function beginPick() {
         browser.beginPickSession()
         tryCompare(browser, "pickInputHeld", false)
