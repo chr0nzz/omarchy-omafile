@@ -65,7 +65,9 @@ Item {
   property var _shadowRaw: []
   onRowsChanged: syncRowModel()
 
-  ListModel { id: rowModel }
+  ListModel { id: rowModelA }
+  ListModel { id: rowModelB }
+  property var rowModel: rowModelA
 
   readonly property bool canGoBack: historyIndex > 0
   readonly property bool canGoForward: historyIndex >= 0 && historyIndex < history.length - 1
@@ -185,12 +187,16 @@ Item {
   }
 
   function resetRowModel(keys, raws) {
-    rowModel.clear()
+    var fresh = rowModel === rowModelA ? rowModelB : rowModelA
+    fresh.clear()
     var items = new Array(raws.length)
     for (var i = 0; i < raws.length; i++) items[i] = { raw: raws[i] }
-    if (items.length > 0) rowModel.append(items)
+    if (items.length > 0) fresh.append(items)
     _shadowKeys = keys
     _shadowRaw = raws
+    rowModel = fresh
+    var stale = fresh === rowModelA ? rowModelB : rowModelA
+    stale.clear()
     activeView().forceLayout()
   }
 
@@ -1115,7 +1121,7 @@ Item {
         width: parent.width
         height: parent.height - header.height - (pane.view === "list" ? 1 : 0)
         clip: true
-        model: rowModel
+        model: pane.rowModel
         cacheBuffer: 400
         boundsBehavior: Flickable.StopAtBounds
         currentIndex: pane.cursorIndex
@@ -1309,7 +1315,7 @@ Item {
         width: parent.width
         height: parent.height - header.height
         clip: true
-        model: rowModel
+        model: pane.rowModel
         visible: pane.view !== "list"
         cellWidth: pane.compactView ? Math.round(Style.space(230) * pane.viewScale)
           : Math.round(Style.space(pane.galleryView ? 190 : 110) * pane.viewScale)

@@ -514,6 +514,34 @@ ShellRoot {
         waitRows()
       }
 
+      function test_3hb_filterResetKeepsScrolling() {
+        waitRows()
+        browser.setView("list")
+        var saved = mock.files
+        var many = []
+        for (var i = 0; i < 400; i++) many.push(["file-" + (1000 + i) + ".txt", "f", i, i, 420, null])
+        mock.files = many
+        pane().refresh()
+        tryVerify(function () { return pane().rows.length === 400 }, 5000)
+        var list = findChild(pane(), "fileList")
+        wait(300)
+        list.contentY = 3000
+        tryVerify(function () { return list.contentY > 2000 }, 2000, "the list scrolls down")
+        wait(100)
+        pane().filter = "file-11"
+        tryVerify(function () { return pane().rows.length === 100 }, 2000)
+        pane().filter = ""
+        tryVerify(function () { return pane().rows.length === 400 }, 2000)
+        wait(100)
+        compare(list.originY, 0, "replacing every row starts the list afresh")
+        list.positionViewAtBeginning()
+        wait(100)
+        compare(list.indexAt(10, list.contentY + 5), 0, "the first row shows at the top")
+        mock.files = saved
+        pane().refresh()
+        waitRows()
+      }
+
       function beginPick() {
         browser.beginPickSession()
         tryCompare(browser, "pickInputHeld", false)
