@@ -37,7 +37,10 @@ Item {
     if (host.asPopup && host.shown) host.requestClose()
     Hyprland.dispatch(host.pickerRuleCommand())
     pickerTimer.restart()
+    host.updateUiVisible()
   }
+
+  onShownChanged: host.updateUiVisible()
 
   Component.onCompleted: Hyprland.dispatch(host.pickerRuleCommand())
 
@@ -89,6 +92,7 @@ Item {
     raiseStep = Model.cascadeOffset(windowSlots.length)
     setSlots(windowSlots.concat([slot]))
     raiseTimer.restart()
+    host.updateUiVisible()
   }
 
   function focusExistingWindow(payloadJson) {
@@ -108,6 +112,7 @@ Item {
     delete slotPayloads[slot]
     setSlots(next)
     if (next.length === 0 && !closingFromHost) requestClose()
+    host.updateUiVisible()
   }
 
   function open(payloadJson) {
@@ -146,11 +151,17 @@ Item {
     setSlots([])
     slotPayloads = ({})
     closingFromHost = false
+    host.updateUiVisible()
   }
 
   function requestClose() {
     if (shell && typeof shell.hide === "function") shell.hide(pluginId)
     else close()
+  }
+
+  function updateUiVisible() {
+    if (service && typeof service.setUiVisible === "function")
+      service.setUiVisible(windowSlots.length > 0 || shown || pickerShown !== null)
   }
 
   onAsPopupChanged: {
@@ -167,7 +178,7 @@ Item {
     id: pickerTimer
     interval: 60
     repeat: false
-    onTriggered: host.pickerShown = host.pickRequest
+    onTriggered: { host.pickerShown = host.pickRequest; host.updateUiVisible() }
   }
 
   Timer {

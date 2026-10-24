@@ -521,6 +521,7 @@ Item {
         pane.truncated = msg.truncated === true
         pane.flushChunks()
         pane.statusChanged()
+        pane.statRemoteEntries()
       },
       function (msg) {
         if (generation !== pane._generation) return
@@ -567,6 +568,42 @@ Item {
     if (_watchId) service.unwatch(_watchId, _watchPath)
     _watchPath = pane.path
     _watchId = service.watchDirectory(pane.path, function (m) { pane.noteChanges(m) })
+  }
+
+  function statRemoteEntries() {
+    // GVFS listings arrive without per-entry attributes, so the folder opens
+    // instantly; stat the entries in chunks after the fact so sizes and dates
+    // fill in while the pane is already usable.
+    if (!service || typeof service.isGvfsPath !== "function") return
+    if (!service.isGvfsPath(pane.path)) return
+    var generation = pane._generation
+    var path = pane.path
+    var names = []
+    for (var i = 0; i < entries.length; i++)
+      if (!Number(entries[i][3])) names.push(entries[i][0])
+    if (names.length === 0) return
+    var idx = 0
+    function nextChunk() {
+      if (generation !== pane._generation || path !== pane.path) return
+      var slice = names.slice(idx, idx + 250)
+      idx += slice.length
+      var paths = slice.map(function (n) { return Model.joinPath(path, n) })
+      service.statPaths(paths, function (items) {
+        if (generation !== pane._generation || path !== pane.path) return
+        var byName = {}
+        for (var i = 0; i < items.length; i++) byName[slice[i]] = items[i]
+        var next = []
+        for (var k = 0; k < entries.length; k++) {
+          var raw = entries[k]
+          var item = byName[raw[0]]
+          if (!item || item.error) next.push(raw)
+          else next.push([raw[0], item.kind, item.size, item.mtime, item.mode, item.linkTarget])
+        }
+        pane.replaceEntries(next)
+        if (idx < names.length) nextChunk()
+      })
+    }
+    nextChunk()
   }
 
   function noteChanges(m) {

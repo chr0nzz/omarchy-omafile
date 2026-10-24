@@ -89,6 +89,10 @@ Streams `{"t": "entries", "c": [...]}` in chunks of at most `chunk` entries, the
 A folder with more than 200,000 entries stops there and adds `"truncated": true`.
 Symlinks are not followed for the stat, and a symlink to anything other than a folder or
 a regular file is reported as `o`. `hidden` defaults to `false` and controls dotfiles only.
+Entries under the GVFS mount (`$XDG_RUNTIME_DIR/gvfs/…`, for example
+`smb-share:server=…,share=…`) are listed from the directory entry alone: `size`
+and `mtime` are `0` and the link target is `null`, because a per-entry stat would
+cost a round trip per file on a network share. The shell stats items on demand.
 
 ### watch, unwatch
 
@@ -102,7 +106,9 @@ a regular file is reported as `o`. `hidden` defaults to `false` and controls dot
 content changes. Events are coalesced over a 120ms window so a large extraction does
 not flood the shell. `names` may be empty, meaning the caller should relist. Watching
 uses inotify through ctypes and falls back to a 2 second scandir poll when inotify is
-unavailable. `unwatch` ends the subscription and replies `done` on the watch's own id.
+unavailable. On GVFS paths the poll compares names only (no per-entry stat), so a
+file modified in place does not emit an event until it is renamed or replaced.
+`unwatch` ends the subscription and replies `done` on the watch's own id.
 
 ### stat
 

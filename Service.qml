@@ -32,6 +32,7 @@ Item {
   property var userDirs: ({})
   property int trashCount: 0
   property real trashBytes: 0
+  property bool uiVisible: false
   property var recent: []
   property var pinned: []
   property var bookmarkLabels: ({})
@@ -958,6 +959,10 @@ Item {
 
   property bool _drivesPending: false
 
+  function setUiVisible(visible) {
+    uiVisible = visible === true
+  }
+
   function refreshDrives() {
     if (_drivesPending) return
     _drivesPending = true
@@ -1106,6 +1111,14 @@ Item {
       if (remote && Model.isWithin(p, String(d.mount))) return true
     }
     return false
+  }
+
+  function isGvfsPath(path) {
+    var p = String(path || "")
+    if (!p) return false
+    var runtime = Quickshell.env("XDG_RUNTIME_DIR") || ""
+    if (!runtime) return false
+    return Model.isWithin(p, runtime + "/gvfs")
   }
 
   function networkMounts() {
@@ -1343,16 +1356,41 @@ Item {
     return true
   }
 
-  function openTerminal(path) {
-    var configured = String(settingNow("terminal", "") || "").trim()
-    if (configured) Quickshell.execDetached(["sh", "-c", "cd \"$1\" && " + configured, "omafile", path])
-    else Quickshell.execDetached(["setsid", "uwsm-app", "--", "xdg-terminal-exec", "--dir=" + path])
+  function launchWhenReachable(path, launch, onFail) {
+    // A network folder can be slow to answer; a terminal spawned before the
+    // path is reachable fails silently, so wait until it stats.
+    if (!isGvfsPath(path)) { launch(); return }
+    var deadline = Date.now() + 10000
+    function probe() {
+      statPaths([path], function (items) {
+        var item = items && items[0]
+        if (item && !item.error) { launch(); return }
+        if (Date.now() < deadline) Qt.timeout(500, probe)
+        else if (onFail) onFail("This network folder did not become reachable in time")
+      })
+    }
+    probe()
   }
 
-  function openAgent(path) {
-    if (!agentCommand) return
-    Quickshell.execDetached(["setsid", "uwsm-app", "--", "xdg-terminal-exec", "--dir=" + path,
-      "bash", "-c", agentCommand + "; exec bash"])
+  function openTerminal(path, onFail) {
+    var configured = String(settingNow("terminal", "") || "").trim()
+    var remote = isGvfsPath(path)
+    function launch() {
+      if (configured) Quickshell.execDetached(["sh", "-c", "cd \"$1\" && " + configured, "omafile", path])
+      else if (remote) Quickshell.execDetached(["setsid", "uwsm-app", "--", "xdg-terminal-exec", "--", "sh", "-c", "cd '" + path + "' && exec ${SHELL:-bash}"])
+      else Quickshell.execDetached(["setsid", "uwsm-app", "--", "xdg-terminal-exec", "--dir=" + path])
+    }
+    launchWhenReachable(path, launch, onFail)
+  }
+
+  function openAgent(path, onFail) {
+    var agent = agentCommand || "claude"
+    var remote = isGvfsPath(path)
+    function launch() {
+      if (remote) Quickshell.execDetached(["setsid", "uwsm-app", "--", "xdg-terminal-exec", "--", "sh", "-c", "cd '" + path + "' && exec bash -c '" + agent + "; exec bash'"])
+      else Quickshell.execDetached(["setsid", "uwsm-app", "--", "xdg-terminal-exec", "--dir=" + path, "bash", "-c", agent + "; exec bash"])
+    }
+    launchWhenReachable(path, launch, onFail)
   }
 
   property string omarchyEditor: "nvim"
@@ -1956,7 +1994,7 @@ Item {
     id: drivesTimer
     interval: 15000
     repeat: true
-    running: true
+    running: root.uiVisible
     onTriggered: root.refreshDrives()
   }
 

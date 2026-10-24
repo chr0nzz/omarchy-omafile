@@ -851,7 +851,8 @@ Item {
     }
     if (paths.length === 0) return
     if (dest === "trash:") {
-      performTrash(paths)
+      if (allGvfs(paths)) askDelete(paths)
+      else performTrash(paths)
       return
     }
     var action = service.settingNow("dropAction", "auto")
@@ -913,6 +914,14 @@ Item {
   function trashRoot() {
     return service && typeof service.trashFilesPath === "function" ? service.trashFilesPath() : ""
   }
+  function allGvfs(paths) {
+    if (!service || typeof service.isGvfsPath !== "function") return false
+    var list = paths || []
+    if (list.length === 0) return false
+    for (var i = 0; i < list.length; i++)
+      if (!service.isGvfsPath(String(list[i]))) return false
+    return true
+  }
   function paneInTrash(p) {
     return p !== null && p !== undefined && !p.virtualView && Model.isTrashPath(p.path, trashRoot())
   }
@@ -921,6 +930,7 @@ Item {
     var paths = given || activePane().selectedPaths()
     if (paths.length === 0) return
     if (Model.allInTrash(paths, trashRoot())) return askDelete(paths)
+    if (allGvfs(paths)) return askDelete(paths)
     if (service.settingNow("useTrash", true) !== true) return askDelete(paths)
     if (service.settingNow("confirmTrash", true) !== true) return performTrash(paths)
     confirmAction = "trash"
@@ -1460,8 +1470,8 @@ Item {
       separator()
       if (trashed)
         items.push({ key: "delete", label: "Delete permanently", glyph: Icons.actionGlyph("delete"), hint: "Delete" })
-      else if (shiftHeld)
-        items.push({ key: "delete", label: "Delete permanently", glyph: Icons.actionGlyph("delete"), hint: "Shift+Delete" })
+      else if (shiftHeld || allGvfs([entry.path]))
+        items.push({ key: "delete", label: "Delete permanently", glyph: Icons.actionGlyph("delete"), hint: "Delete" })
       else
         items.push({ key: "trash", label: "Move to trash", glyph: Icons.actionGlyph("trash"), hint: "Delete" })
       items.push({ key: "properties", label: "Properties", glyph: Icons.actionGlyph("properties"), hint: "Ctrl+I" })
@@ -1774,8 +1784,8 @@ Item {
     else if (key === "newfolder") showDialog("newfolder", "New folder", "untitled folder", null)
     else if (key === "newfile") showDialog("newfile", "New file", "untitled", null)
     else if (key === "bookmark") service.togglePinned(entry && entry.isDir ? entry.path : p.path)
-    else if (key === "terminal") service.openTerminal(entry && entry.isDir ? entry.path : p.path)
-    else if (key === "agent") service.openAgent(entry && entry.isDir ? entry.path : p.path)
+    else if (key === "terminal") service.openTerminal(entry && entry.isDir ? entry.path : p.path, function (m) { statusText = m })
+    else if (key === "agent") service.openAgent(entry && entry.isDir ? entry.path : p.path, function (m) { statusText = m })
     else if (key === "refresh") p.refresh()
     else if (key === "togglehidden") { p.showHidden = !p.showHidden; rememberSession() }
     else if (key === "settings") showDialog("settings", "Settings", "", null)
@@ -2520,7 +2530,7 @@ Item {
     if (ctrl && event.key === Qt.Key_N) { if (pickAllows("newfile")) showDialog("newfile", "New file", "untitled", null); return true }
     if (ctrl && event.key === Qt.Key_O) { openSelectedItems(); return true }
     if (ctrl && event.key === Qt.Key_T) { newTab(activeSide, null); return true }
-    if (ctrl && event.key === Qt.Key_Period) { if (!p.virtualView && pickAllows("terminal")) service.openTerminal(p.path); return true }
+    if (ctrl && event.key === Qt.Key_Period) { if (!p.virtualView && pickAllows("terminal")) service.openTerminal(p.path, function (m) { statusText = m }); return true }
     if (ctrl && !shiftKey && !alt && event.key === Qt.Key_E) { editText(p.cursorEntry()); return true }
     if (ctrl && event.key === Qt.Key_W) { closeTab(activeSide, activeIndexFor(activeSide)); return true }
     if (ctrl && event.key === Qt.Key_Q) { requestClose(); return true }
@@ -4836,7 +4846,7 @@ Item {
       { keys: "Ctrl+E", label: "Edit a text file in Omafile" },
       { keys: "Ctrl+Shift+N", label: "New folder" },
       { keys: "Ctrl+N", label: "New file" },
-      { keys: "Delete", label: "Move to trash, or delete permanently inside the trash" },
+      { keys: "Delete", label: "Move to trash, or delete permanently on network shares and inside the trash" },
       { keys: "Shift+Delete", label: "Delete permanently" },
       { keys: "Ctrl+I / Alt+Enter", label: "Properties" },
       { keys: "Ctrl+D", label: "Bookmark this folder" },

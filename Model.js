@@ -182,7 +182,9 @@ function formatCount(n, singular, plural) {
 }
 
 function formatDate(mtimeSeconds, nowMs) {
-  var d = new Date(Number(mtimeSeconds) * 1000);
+  var secs = Number(mtimeSeconds) || 0;
+  if (secs <= 0) return '';
+  var d = new Date(secs * 1000);
   var now = new Date(Number(nowMs));
   var sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
   if (sameDay) return pad2(d.getHours()) + ':' + pad2(d.getMinutes());

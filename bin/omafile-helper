@@ -145,6 +145,7 @@ def op_list(req, cancel_event):
     path_bytes = to_bytes(path)
     collected = []
     truncated = False
+    remote = is_gvfs_path(path_bytes)
     try:
         with os.scandir(path_bytes) as it:
             for entry in it:
@@ -156,6 +157,22 @@ def op_list(req, cancel_event):
                     break
                 name_str = to_str(entry.name)
                 if not hidden and name_str.startswith("."):
+                    continue
+                if remote:
+                    # GVFS mounts carry the type in the directory entry; a
+                    # per-entry stat would cost a round trip per file on a
+                    # network share, so size and mtime stay 0 until the shell
+                    # stats the item on demand.
+                    try:
+                        if entry.is_symlink():
+                            kind, size, mode = "l", 0, stat.S_IFLNK
+                        elif entry.is_dir(follow_symlinks=False):
+                            kind, size, mode = "d", 0, stat.S_IFDIR
+                        else:
+                            kind, size, mode = "f", 0, stat.S_IFREG
+                    except OSError:
+                        continue
+                    collected.append([name_str, kind, size, 0, mode, None])
                     continue
                 try:
                     lst = entry.stat(follow_symlinks=False)
@@ -288,21 +305,30 @@ def inotify_loop(handle):
 
 def poll_loop(handle):
     last_snapshot = None
+    # On GVFS mounts inotify is unavailable and a per-entry stat would cost a
+    # round trip per file every 2 seconds, so the snapshot is names only.
+    names_only = is_gvfs_path(handle.path_bytes)
     while not handle.stop_event.wait(2.0):
         snap = None
         try:
-            snap = {}
             with os.scandir(handle.path_bytes) as it:
-                for e in it:
-                    try:
-                        st = e.stat(follow_symlinks=False)
-                        snap[e.name] = (st.st_mtime, st.st_size)
-                    except OSError:
-                        pass
+                if names_only:
+                    snap = set(to_str(e.name) for e in it)
+                else:
+                    snap = {}
+                    for e in it:
+                        try:
+                            st = e.stat(follow_symlinks=False)
+                            snap[e.name] = (st.st_mtime, st.st_size)
+                        except OSError:
+                            pass
         except OSError:
             snap = None
         if last_snapshot is not None and snap is not None and snap != last_snapshot:
-            changed = [n for n in set(snap) | set(last_snapshot) if snap.get(n) != last_snapshot.get(n)]
+            if names_only:
+                changed = set(snap) ^ set(last_snapshot)
+            else:
+                changed = [n for n in set(snap) | set(last_snapshot) if snap.get(n) != last_snapshot.get(n)]
             names = sorted(to_str(n) for n in changed) if len(changed) <= 200 else []
             emit({"id": handle.req_id, "t": "changed", "path": to_str(handle.path_bytes), "names": names})
         if snap is not None:
@@ -2847,6 +2873,10 @@ def flatten_lsblk(devices):
 
 RUNTIME_DIR = os.environ.get("XDG_RUNTIME_DIR") or ("/run/user/%d" % os.getuid())
 GVFS_ROOT = os.path.join(RUNTIME_DIR, "gvfs")
+
+def is_gvfs_path(path_bytes):
+    gvfs = to_bytes(GVFS_ROOT)
+    return path_bytes == gvfs or path_bytes.startswith(gvfs + b"/")
 
 
 def unquote_path(value):
