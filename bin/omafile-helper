@@ -690,6 +690,10 @@ def open_dir_safely(path_bytes, create=False):
         raise
 
 
+def inside_or_same(path, folder):
+    return path == folder or path.startswith(folder.rstrip(b"/") + b"/")
+
+
 def valid_leaf(name):
     return bool(name) and name not in (b".", b"..") and b"/" not in name and b"\0" not in name
 
@@ -730,18 +734,24 @@ def open_parent(path_bytes):
     return fd
 
 
-def resolve_conflict(req_id, cancel_event, source_str, dest_str, dest_bytes, conflict_mode, job_state, directory=False, folders=False):
-    if not folders and conflict_mode == "ask" and job_state.get("hasFolders") and "mergeDirs" not in job_state:
-        choice = resolve_conflict(req_id, cancel_event, source_str, dest_str, dest_bytes, conflict_mode, job_state, folders=True)
-        if choice not in ("overwrite", "merge"):
-            return "cancel"
-        job_state["mergeDirs"] = choice == "merge"
-    if not folders and directory and job_state.get("mergeDirs"):
-        return "merge"
-    if not folders and job_state.get("applyAll"):
-        return job_state["applyAll"]
+def resolve_conflict(req_id, cancel_event, source_str, dest_str, dest_bytes, conflict_mode, job_state, both_dirs=False, over_folder=False):
+    apply_all = job_state.get("applyAll")
+    if both_dirs and conflict_mode == "ask":
+        if "mergeDirs" not in job_state and apply_all not in ("skip", "rename"):
+            choice = ask_conflict(req_id, cancel_event, source_str, dest_str, dest_bytes, job_state, True)
+            if choice not in ("overwrite", "merge"):
+                return "cancel"
+            job_state["mergeDirs"] = choice == "merge"
+        if job_state.get("mergeDirs"):
+            return "merge"
+    if apply_all and not (over_folder and apply_all == "overwrite"):
+        return apply_all
     if conflict_mode != "ask":
         return conflict_mode
+    return ask_conflict(req_id, cancel_event, source_str, dest_str, dest_bytes, job_state, False)
+
+
+def ask_conflict(req_id, cancel_event, source_str, dest_str, dest_bytes, job_state, folders):
     try:
         dlst = os.lstat(dest_bytes)
         dkind, dsize, _ = classify(dest_bytes, dlst)
@@ -804,10 +814,9 @@ def op_copy_move(req, cancel_event, is_move):
 
     total_bytes = 0
     total_files = 0
-    has_folders = False
 
     def prescan(p):
-        nonlocal total_bytes, total_files, has_folders
+        nonlocal total_bytes, total_files
         try:
             lst = os.lstat(p)
         except OSError:
@@ -816,7 +825,6 @@ def op_copy_move(req, cancel_event, is_move):
         if stat.S_ISLNK(lst.st_mode):
             return
         if stat.S_ISDIR(lst.st_mode):
-            has_folders = True
             try:
                 with os.scandir(p) as it:
                     for e in it:
@@ -841,7 +849,7 @@ def op_copy_move(req, cancel_event, is_move):
     files_done = [0]
     start_time = time.monotonic()
     last_progress = [0.0]
-    job_state = {"hasFolders": has_folders}
+    job_state = {}
 
     def emit_progress(current_str, force=False):
         now = time.monotonic()
@@ -857,26 +865,27 @@ def op_copy_move(req, cancel_event, is_move):
 
     top = {"armed": False, "name": None, "merged": False}
 
-    def place_target(src_lst, dst_fd, dst_name, src_path, dst_path, same_action, merge_dirs):
+    def place_target(src_lst, src_fd, dst_fd, dst_name, src_path, dst_path, same_action, merge_dirs):
         nonlocal skipped
         armed = top["armed"]
         top["armed"] = False
-        result = place_target_inner(src_lst, dst_fd, dst_name, src_path, dst_path, same_action, merge_dirs)
+        result = place_target_inner(src_lst, src_fd, dst_fd, dst_name, src_path, dst_path, same_action, merge_dirs)
         if armed:
             top["name"] = result[0]
             top["merged"] = result[2]
         return result
 
-    def place_target_inner(src_lst, dst_fd, dst_name, src_path, dst_path, same_action, merge_dirs):
+    def place_target_inner(src_lst, src_fd, dst_fd, dst_name, src_path, dst_path, same_action, merge_dirs):
         nonlocal skipped
         existing = lstat_at(dst_fd, dst_name)
         if existing is None:
             return dst_name, False, False
-        both_dirs = stat.S_ISDIR(existing.st_mode) and stat.S_ISDIR(src_lst.st_mode)
+        over_folder = stat.S_ISDIR(existing.st_mode)
+        both_dirs = over_folder and stat.S_ISDIR(src_lst.st_mode)
         if (existing.st_dev, existing.st_ino) == (src_lst.st_dev, src_lst.st_ino):
             action = same_action
         else:
-            action = resolve_conflict(req_id, cancel_event, to_str(src_path), to_str(dst_path), dst_path, conflict_mode, job_state, both_dirs)
+            action = resolve_conflict(req_id, cancel_event, to_str(src_path), to_str(dst_path), dst_path, conflict_mode, job_state, both_dirs, over_folder and not both_dirs)
         if action == "merge" and both_dirs:
             return dst_name, False, True
         if action == "cancel":
@@ -889,9 +898,15 @@ def op_copy_move(req, cancel_event, is_move):
         if action == "overwrite":
             if job_state.get("mergeDirs", merge_dirs) and both_dirs:
                 return dst_name, False, True
-            if not stat.S_ISDIR(existing.st_mode) and not stat.S_ISDIR(src_lst.st_mode):
+            if not over_folder and not stat.S_ISDIR(src_lst.st_mode):
                 return dst_name, True, False
-            remove_at(dst_fd, dst_name, existing)
+            try:
+                if over_folder and inside_or_same(real_dir(src_fd), os.path.join(real_dir(dst_fd), dst_name)):
+                    raise OSError(errno.EINVAL, "the folder being replaced holds this item")
+                remove_at(dst_fd, dst_name, existing)
+            except OSError as e:
+                fail(src_path, e)
+                return None, False, False
             return dst_name, False, False
         raise Cancelled()
 
@@ -910,7 +925,7 @@ def op_copy_move(req, cancel_event, is_move):
         except OSError as e:
             fail(src_path, e)
             return
-        target, replace, _ = place_target(lst, dst_fd, dst_name, src_path, dst_path, same_action, True)
+        target, replace, _ = place_target(lst, src_fd, dst_fd, dst_name, src_path, dst_path, same_action, True)
         if target is None:
             return
         src_str = to_str(src_path)
@@ -1033,7 +1048,7 @@ def op_copy_move(req, cancel_event, is_move):
         except OSError as e:
             fail(src_path, e)
             return
-        target, replace, merged = place_target(lst, dst_fd, dst_name, src_path, dst_path, "skip", False)
+        target, replace, merged = place_target(lst, src_fd, dst_fd, dst_name, src_path, dst_path, "skip", False)
         if target is None:
             return
         if merged:
@@ -1090,7 +1105,11 @@ def op_copy_move(req, cancel_event, is_move):
             top["name"] = None
             top["merged"] = False
             try:
-                if is_move:
+                src_lst = lstat_at(parent_fd, name)
+                if (src_lst is not None and stat.S_ISDIR(src_lst.st_mode)
+                        and inside_or_same(real_dir(dest_fd), os.path.join(real_dir(parent_fd), name))):
+                    fail(src_bytes, OSError(errno.EINVAL, "a folder cannot go inside itself"))
+                elif is_move:
                     move_at(parent_fd, name, dest_fd, name, src_bytes, dst_bytes)
                 else:
                     copy_at(parent_fd, name, dest_fd, name, src_bytes, dst_bytes)

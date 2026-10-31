@@ -331,6 +331,7 @@ Undo covers trash, rename, move, copy and new file or folder. Undoing a trash pu
 | `Ctrl+W` | Close the tab, or the window when it is the last one |
 | `Ctrl+Shift+T` | Reopen the last closed tab |
 | `Ctrl+PageUp` / `Ctrl+PageDown` | Previous and next tab |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next and previous tab |
 | `Ctrl+Shift+PageUp` / `Ctrl+Shift+PageDown` | Move the tab left or right |
 | `Alt+1` to `Alt+9` | Go to that tab |
 | `Ctrl+Enter` / middle click | Open a folder in a new tab |
@@ -395,8 +396,12 @@ Typing an ordinary character opens the search box with that character already ty
 
 | Keys | Action |
 |------|--------|
-| `R` / `K` / `S` / `A` | Replace, keep both, skip, skip all |
-| `Escape` | Skip this one |
+| `R` / `K` / `S` | Replace, keep both, skip |
+| `A` | Do the same for the rest of this job, on or off |
+| `M` / `R` | Merge or replace, when the name is a folder on both sides |
+| `Escape` | Skip this one, or cancel the job when asked about folders |
+
+The first time a folder lands on a folder of the same name, Omafile asks once for the whole job. **Merge** adds to the existing folder and asks about any file that clashes. A move takes merged items out of the source, and leaves anything you skip where it was. **Replace** deletes the existing folder first, after asking again. **For all** never replaces a folder with a file without asking.
 
 Escape skips the file.
 

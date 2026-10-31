@@ -2441,9 +2441,9 @@ Item {
       return true
     }
     if (dialogMode !== "") return handleDialogKey(event)
-    if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)) { cycleTab(event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier) ? -1 : 1); return true }
     if (previewOpen) return handlePreviewKey(event)
     if (menuOpen) return handleMenuKey(event)
+    if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)) { cycleTab(event.key === Qt.Key_Tab ? 1 : -1); return true }
     if (focusZone === "sidebar") return handleSidebarKey(event)
     return handlePaneKey(event)
   }
@@ -4750,8 +4750,9 @@ Item {
             Row {
               visible: root.folderConflict
               spacing: Style.space(8)
-              Button { text: "Replace (folders)"; bordered: true; onClicked: root.resolveConflict("overwrite", false) }
-              Button { text: "Merge (recursive)"; bordered: true; onClicked: root.resolveConflict("merge", false) }
+              Button { text: "Merge  M"; bordered: true; onClicked: root.resolveConflict("merge", false) }
+              Button { text: "Replace  R"; bordered: true; onClicked: root.resolveConflict("overwrite", false) }
+              Button { text: "Cancel  Esc"; bordered: true; onClicked: root.resolveConflict("cancel", false) }
             }
 
             Row {
@@ -4776,24 +4777,12 @@ Item {
                 onClicked: root.resolveConflict("skip", root.conflictAll)
               }
 
-              Row {
-                spacing: Style.space(4)
-                CheckBox {
-                  text: "A"
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.bodySmall
-                  palette.windowText: Color.popups.text
-                  palette.highlight: Color.accent
-                  checked: root.conflictAll
-                  onToggled: root.conflictAll = checked
-                }
-                Text {
-                  textFormat: Text.PlainText
-                  text: "(do for all)"
-                  color: Color.popups.text
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
+              Button {
+                objectName: "conflictAllButton"
+                text: "For all  A"
+                bordered: true
+                selected: root.conflictAll
+                onClicked: root.conflictAll = !root.conflictAll
               }
             }
           }
@@ -4929,6 +4918,7 @@ Item {
       { keys: "Ctrl+W", label: "Close the tab, or the window when it is the last one" },
       { keys: "Ctrl+Shift+T", label: "Reopen the last closed tab" },
       { keys: "Ctrl+PageUp / PageDown", label: "Previous and next tab" },
+      { keys: "Ctrl+Tab / Ctrl+Shift+Tab", label: "Next and previous tab" },
       { keys: "Ctrl+Shift+PageUp / PageDown", label: "Move the tab left or right" },
       { keys: "Alt+1 to Alt+9", label: "Go to that tab" },
       { keys: "Middle click", label: "Open a folder in a new tab" },
@@ -4973,8 +4963,10 @@ Item {
       { keys: "Delete", label: "Move the copy on the right to trash" },
       { keys: "Escape", label: "Close" },
       { section: "When a file already exists" },
-      { keys: "R / K / S / A", label: "Replace, keep both, skip, skip all" },
-      { keys: "Escape", label: "Skip this one" }
+      { keys: "R / K / S", label: "Replace, keep both, skip" },
+      { keys: "A", label: "Do the same for the rest of this job, on or off" },
+      { keys: "M / R", label: "Merge or replace, when the name is a folder on both sides" },
+      { keys: "Escape", label: "Skip this one, or cancel the job when asked about folders" }
     ]
   }
 
@@ -5076,8 +5068,10 @@ Item {
     var payload = dialogPayload
     if (!payload || !payload.info) return ""
     var info = payload.info
-    if (info.folders) return "Choose how folders are handled"
-    return "\"" + Model.basename(String(info.dest || "")) + "\" already exists in this folder."
+    var exists = "\"" + Model.basename(String(info.dest || "")) + "\" already exists in this folder."
+    if (info.folders) return exists + " Merge adds to it and asks about any file that clashes. Replace deletes it first. This applies to every folder in this job."
+    if (info.destKind === "d") return exists + " Replace deletes that folder and everything in it."
+    return exists
   }
 
   property var pendingConflicts: []
@@ -5091,7 +5085,7 @@ Item {
     }
     conflictShownMs = Date.now()
     conflictAll = false
-    showDialog("conflict", "File exists", "", { jobId: jobId, info: info })
+    showDialog("conflict", info && info.destKind === "d" ? "Folder exists" : "File exists", "", { jobId: jobId, info: info })
   }
 
   function showNextConflict() {
