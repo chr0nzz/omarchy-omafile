@@ -32,6 +32,8 @@ Item {
   property string dialogTitle: ""
   property string dialogError: ""
   property var dialogPayload: null
+  property bool conflictAll: false
+  readonly property bool folderConflict: dialogMode === "conflict" && !!(dialogPayload && dialogPayload.info && dialogPayload.info.folders)
   property string confirmAction: ""
   property string settingsSection: "opening"
   readonly property real viewScale: clampViewScale(service ? service.settingNow("viewScale", 1) : 1)
@@ -2425,16 +2427,23 @@ Item {
     if (duplicates.open) return duplicates.handleKey(event)
     if (dialogMode === "conflict") {
       if (Date.now() - conflictShownMs < conflictKeyDelay) return true
+      if (folderConflict) {
+        if (event.key === Qt.Key_R) resolveConflict("overwrite", false)
+        else if (event.key === Qt.Key_M) resolveConflict("merge", false)
+        else if (event.key === Qt.Key_Escape) resolveConflict("cancel", false)
+        return true
+      }
       if (event.key === Qt.Key_Escape) { resolveConflict("skip", false); return true }
-      if (event.key === Qt.Key_R) { resolveConflict("overwrite", false); return true }
-      if (event.key === Qt.Key_K) { resolveConflict("rename", false); return true }
-      if (event.key === Qt.Key_S) { resolveConflict("skip", false); return true }
-      if (event.key === Qt.Key_A) { resolveConflict("skip", true); return true }
+      if (event.key === Qt.Key_R) { resolveConflict("overwrite", conflictAll); return true }
+      if (event.key === Qt.Key_K) { resolveConflict("rename", conflictAll); return true }
+      if (event.key === Qt.Key_S) { resolveConflict("skip", conflictAll); return true }
+      if (event.key === Qt.Key_A) { conflictAll = !conflictAll; return true }
       return true
     }
     if (dialogMode !== "") return handleDialogKey(event)
     if (previewOpen) return handlePreviewKey(event)
     if (menuOpen) return handleMenuKey(event)
+    if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)) { cycleTab(event.key === Qt.Key_Tab ? 1 : -1); return true }
     if (focusZone === "sidebar") return handleSidebarKey(event)
     return handlePaneKey(event)
   }
@@ -3682,7 +3691,7 @@ Item {
       MouseArea {
         anchors.fill: parent
         onClicked: {
-          if (root.dialogMode === "conflict") root.resolveConflict("skip", false)
+          if (root.dialogMode === "conflict") root.resolveConflict(root.folderConflict ? "cancel" : "skip", false)
           else root.closeDialog()
         }
       }
@@ -4739,30 +4748,41 @@ Item {
             }
 
             Row {
+              visible: root.folderConflict
+              spacing: Style.space(8)
+              Button { text: "Merge  M"; bordered: true; onClicked: root.resolveConflict("merge", false) }
+              Button { text: "Replace  R"; bordered: true; onClicked: root.resolveConflict("overwrite", false) }
+              Button { text: "Cancel  Esc"; bordered: true; onClicked: root.resolveConflict("cancel", false) }
+            }
+
+            Row {
+              visible: !root.folderConflict
               spacing: Style.space(8)
 
               Button {
                 text: "Replace  R"
                 bordered: true
-                onClicked: root.resolveConflict("overwrite", false)
+                onClicked: root.resolveConflict("overwrite", root.conflictAll)
               }
 
               Button {
                 text: "Keep both  K"
                 bordered: true
-                onClicked: root.resolveConflict("rename", false)
+                onClicked: root.resolveConflict("rename", root.conflictAll)
               }
 
               Button {
                 text: "Skip  S"
                 bordered: true
-                onClicked: root.resolveConflict("skip", false)
+                onClicked: root.resolveConflict("skip", root.conflictAll)
               }
 
               Button {
-                text: "Skip all  A"
+                objectName: "conflictAllButton"
+                text: "For all  A"
                 bordered: true
-                onClicked: root.resolveConflict("skip", true)
+                selected: root.conflictAll
+                onClicked: root.conflictAll = !root.conflictAll
               }
             }
           }
@@ -4898,6 +4918,7 @@ Item {
       { keys: "Ctrl+W", label: "Close the tab, or the window when it is the last one" },
       { keys: "Ctrl+Shift+T", label: "Reopen the last closed tab" },
       { keys: "Ctrl+PageUp / PageDown", label: "Previous and next tab" },
+      { keys: "Ctrl+Tab / Ctrl+Shift+Tab", label: "Next and previous tab" },
       { keys: "Ctrl+Shift+PageUp / PageDown", label: "Move the tab left or right" },
       { keys: "Alt+1 to Alt+9", label: "Go to that tab" },
       { keys: "Middle click", label: "Open a folder in a new tab" },
@@ -4942,8 +4963,10 @@ Item {
       { keys: "Delete", label: "Move the copy on the right to trash" },
       { keys: "Escape", label: "Close" },
       { section: "When a file already exists" },
-      { keys: "R / K / S / A", label: "Replace, keep both, skip, skip all" },
-      { keys: "Escape", label: "Skip this one" }
+      { keys: "R / K / S", label: "Replace, keep both, skip" },
+      { keys: "A", label: "Do the same for the rest of this job, on or off" },
+      { keys: "M / R", label: "Merge or replace, when the name is a folder on both sides" },
+      { keys: "Escape", label: "Skip this one, or cancel the job when asked about folders" }
     ]
   }
 
@@ -5045,7 +5068,10 @@ Item {
     var payload = dialogPayload
     if (!payload || !payload.info) return ""
     var info = payload.info
-    return "\"" + Model.basename(String(info.dest || "")) + "\" already exists in this folder."
+    var exists = "\"" + Model.basename(String(info.dest || "")) + "\" already exists in this folder."
+    if (info.folders) return exists + " Merge adds to it and asks about any file that clashes. Replace deletes it first. This applies to every folder in this job."
+    if (info.destKind === "d") return exists + " Replace deletes that folder and everything in it."
+    return exists
   }
 
   property var pendingConflicts: []
@@ -5058,7 +5084,8 @@ Item {
       return
     }
     conflictShownMs = Date.now()
-    showDialog("conflict", "File exists", "", { jobId: jobId, info: info })
+    conflictAll = false
+    showDialog("conflict", info && info.destKind === "d" ? "Folder exists" : "File exists", "", { jobId: jobId, info: info })
   }
 
   function showNextConflict() {

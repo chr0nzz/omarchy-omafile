@@ -183,15 +183,19 @@ the shell cancels it when Properties closes.
 at most ten times per second.
 
 With `conflict: "ask"`, on a collision the helper emits
-`{"t": "conflict", "source": "/a/x", "dest": "/b/x", "destKind": "f", "destSize": S, "destMtime": M, "seq": Q}`
+`{"t": "conflict", "source": "/a/x", "dest": "/b/x", "destKind": "f", "destSize": S, "destMtime": M, "seq": Q, "folders": false}`
 and pauses that job until the caller sends:
 
 ```
 {"id": N, "op": "resolve", "action": "overwrite", "applyAll": false, "seq": Q}
 ```
 
-`action` is `overwrite`, `skip`, `rename` or `cancel`; anything else is treated as
-`cancel`. A `resolve` without the matching `seq`, or a second answer to the same
+`action` is `overwrite`, `skip`, `rename`, `merge` or `cancel`; anything else is treated
+as `cancel`. The first time a folder meets a folder of the same name in a job, the
+conflict has `"folders": true` and asks how every folder in the job is handled: `merge`
+merges them from then on, `overwrite` goes on to an ordinary conflict for each one, and
+any other answer cancels the job. `applyAll` is ignored on this question. A later
+`applyAll` of `overwrite` still asks before a file replaces a folder. A `resolve` without the matching `seq`, or a second answer to the same
 conflict, is ignored. Terminal response is
 `{"t": "done", "copied": C, "skipped": S, "errors": [{"path": P, "message": M}], "created": [{"source": S, "path": P}]}`.
 `created` lists each top-level item the job actually placed and where, after any
@@ -210,6 +214,9 @@ timestamps and uses `os.copy_file_range` with a `shutil.copyfileobj` fallback.
 
 A source that is the destination itself, such as a paste back into the same folder,
 never goes through `conflict`: `copy` writes a renamed copy beside it and `move` skips it.
+A folder is refused as a source when the destination is that folder or inside it, and a
+folder is never replaced when it holds the item being copied or moved over it. Both are
+reported in `errors`.
 
 ### clipset, clipget, clipclear
 

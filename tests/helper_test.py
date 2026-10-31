@@ -715,6 +715,164 @@ class GvfsTests(HelperTestCase):
         self.assertEqual(changed["names"], ["new.txt"])
         self.helper.send({"id": self.next_id(), "op": "unwatch", "path": self.share})
 
+class FolderConflictTests(HelperTestCase):
+    def write(self, spec):
+        for name, text in spec.items():
+            path = self.path(name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write(text)
+
+    def read(self, name):
+        with open(self.path(name)) as f:
+            return f.read()
+
+    def run_job(self, op, sources, dest, answers):
+        req = self.next_id()
+        self.helper.send({"id": req, "op": op, "sources": [self.path(s) for s in sources], "dest": self.path(dest), "conflict": "ask"})
+        answers = list(answers)
+        asked = []
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            try:
+                msg = self.helper.q.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            if msg.get("id") != req:
+                continue
+            if msg["t"] == "conflict":
+                asked.append(("folders " if msg["folders"] else "") + os.path.basename(msg["dest"]))
+                action = answers.pop(0)
+                self.helper.send({"id": req, "op": "resolve", "action": action.rstrip("*"), "applyAll": action.endswith("*"), "seq": msg["seq"]})
+            elif msg["t"] in ("done", "error"):
+                return asked, msg
+        self.fail("the job did not finish")
+
+    def two_folders(self):
+        self.write({"s/a/one": "src", "s/a/both": "src", "s/a/sub/deep": "src",
+                    "d/a/two": "dst", "d/a/both": "dst", "d/a/sub/keep": "dst"})
+
+    def test_merge_copies_into_the_folder_and_asks_only_about_clashes(self):
+        self.two_folders()
+        asked, end = self.run_job("copy", ["s/a"], "d", ["merge", "overwrite"])
+        self.assertEqual(asked, ["folders a", "both"], "the nested folder does not ask again")
+        self.assertEqual((self.read("d/a/both"), self.read("d/a/two"), self.read("d/a/one")), ("src", "dst", "src"))
+        self.assertEqual((self.read("d/a/sub/deep"), self.read("d/a/sub/keep")), ("src", "dst"))
+        self.assertEqual(self.read("s/a/both"), "src")
+        self.assertEqual(end["created"], [], "merged folders stay out of undo")
+
+    def test_merge_on_a_move_empties_the_source_folder(self):
+        self.two_folders()
+        asked, end = self.run_job("move", ["s/a"], "d", ["merge", "overwrite"])
+        self.assertEqual(asked, ["folders a", "both"])
+        self.assertEqual(self.read("d/a/both"), "src")
+        self.assertEqual(self.read("d/a/sub/keep"), "dst")
+        self.assertFalse(os.path.exists(self.path("s/a")))
+        self.assertEqual(end["errors"], [])
+
+    def test_merge_on_a_move_leaves_what_you_skip_behind(self):
+        self.two_folders()
+        self.run_job("move", ["s/a"], "d", ["merge", "skip"])
+        self.assertEqual(self.read("s/a/both"), "src")
+        self.assertEqual(self.read("d/a/both"), "dst")
+        self.assertFalse(os.path.exists(self.path("s/a/one")))
+
+    def test_replace_asks_again_and_keep_both_still_works(self):
+        self.two_folders()
+        asked, _ = self.run_job("copy", ["s/a"], "d", ["overwrite", "rename"])
+        self.assertEqual(asked, ["folders a", "a"])
+        self.assertEqual(self.read("d/a/two"), "dst")
+        self.assertEqual(self.read("d/a (1)/one"), "src")
+
+    def test_replace_takes_the_old_folder_away(self):
+        self.two_folders()
+        self.run_job("copy", ["s/a"], "d", ["overwrite", "overwrite"])
+        self.assertFalse(os.path.exists(self.path("d/a/two")))
+        self.assertEqual(self.read("d/a/one"), "src")
+
+    def test_any_other_answer_about_folders_cancels(self):
+        self.two_folders()
+        for answer in ("cancel", "skip", "rename"):
+            asked, end = self.run_job("copy", ["s/a"], "d", [answer])
+            self.assertEqual(asked, ["folders a"])
+            self.assertEqual(end["code"], "ECANCELED")
+        self.assertEqual(self.read("d/a/both"), "dst")
+
+    def test_a_file_clash_does_not_ask_about_folders(self):
+        self.write({"s/x.txt": "new", "s/fresh/f": "f", "d/x.txt": "old"})
+        asked, _ = self.run_job("copy", ["s/x.txt", "s/fresh"], "d", ["overwrite"])
+        self.assertEqual(asked, ["x.txt"])
+
+    def test_skip_for_all_also_skips_a_later_folder_clash(self):
+        self.write({"s/x.txt": "new", "s/z/f": "f", "d/x.txt": "old", "d/z/g": "g"})
+        asked, end = self.run_job("copy", ["s/x.txt", "s/z"], "d", ["skip*"])
+        self.assertEqual(asked, ["x.txt"])
+        self.assertEqual(end["skipped"], 2)
+        self.assertFalse(os.path.exists(self.path("d/z/f")))
+
+    def test_skip_for_all_inside_a_merge_keeps_merging_later_folders(self):
+        self.write({"s/a/m": "new", "s/a/n/new": "new", "d/a/m": "old", "d/a/n/old": "old"})
+        asked, _ = self.run_job("copy", ["s/a"], "d", ["merge", "skip*"])
+        self.assertEqual(asked, ["folders a", "m"])
+        self.assertEqual(self.read("d/a/m"), "old")
+        self.assertEqual(self.read("d/a/n/new"), "new")
+
+    def test_replace_for_all_asks_before_a_file_replaces_a_folder(self):
+        self.write({"s/a": "new", "s/b": "file", "d/a": "old", "d/b/precious": "keep"})
+        asked, _ = self.run_job("copy", ["s/a", "s/b"], "d", ["overwrite*", "skip"])
+        self.assertEqual(asked, ["a", "b"])
+        self.assertEqual(self.read("d/a"), "new")
+        self.assertEqual(self.read("d/b/precious"), "keep")
+
+    def test_replace_for_all_still_asks_about_a_later_folder(self):
+        self.write({"s/a": "new", "s/z/f": "f", "d/a": "old", "d/z/g": "g"})
+        asked, _ = self.run_job("copy", ["s/a", "s/z"], "d", ["overwrite*", "merge"])
+        self.assertEqual(asked, ["a", "folders z"])
+        self.assertEqual(self.read("d/z/g"), "g")
+
+    def test_a_folder_is_not_replaced_by_something_inside_it(self):
+        for op in ("copy", "move"):
+            self.write({"p/p/data": "only copy", "p/other": "other"})
+            asked, end = self.run_job(op, ["p/p"], "", ["overwrite", "overwrite"])
+            self.assertEqual(asked, ["folders p", "p"], op)
+            self.assertEqual(self.read("p/p/data"), "only copy", op)
+            self.assertEqual(self.read("p/other"), "other", op)
+            self.assertEqual(len(end["errors"]), 1, op)
+
+    def test_a_file_does_not_replace_the_folder_it_is_in(self):
+        self.write({"p/p": "inner", "p/other": "other"})
+        asked, end = self.run_job("move", ["p/p"], "", ["overwrite"])
+        self.assertEqual(asked, ["p"])
+        self.assertEqual(self.read("p/p"), "inner")
+        self.assertEqual(len(end["errors"]), 1)
+
+    def test_merging_a_folder_out_of_itself_lifts_its_contents(self):
+        self.write({"p/p/data": "inner", "p/other": "other"})
+        self.run_job("move", ["p/p"], "", ["merge"])
+        self.assertEqual(self.read("p/data"), "inner")
+        self.assertEqual(self.read("p/other"), "other")
+        self.assertFalse(os.path.exists(self.path("p/p")))
+
+    def test_a_folder_cannot_go_inside_itself(self):
+        for op in ("copy", "move"):
+            for dest in ("a", "a/a", "a/b"):
+                self.write({"a/f": "x", "a/a/g": "y", "a/b/h": "z"})
+                asked, end = self.run_job(op, ["a"], dest, [])
+                self.assertEqual(asked, [], (op, dest))
+                self.assertEqual(end["t"], "done", (op, dest))
+                self.assertEqual(end["copied"], 0, (op, dest))
+                self.assertEqual(len(end["errors"]), 1, (op, dest))
+                self.assertFalse(os.path.exists(self.path("a/a/a")), (op, dest))
+                self.assertFalse(os.path.exists(self.path("a/b/a")), (op, dest))
+
+    def test_the_old_merge_of_an_unattended_overwrite_is_unchanged(self):
+        self.two_folders()
+        msgs = self.helper.call({"id": self.next_id(), "op": "copy", "sources": [self.path("s/a")],
+                                 "dest": self.path("d"), "conflict": "overwrite"})
+        self.assertEqual(self.terminal(msgs)["t"], "done")
+        self.assertEqual(self.read("d/a/two"), "dst")
+        self.assertEqual(self.read("d/a/both"), "src")
+
 class BookmarkTests(HelperTestCase):
     def setUp(self):
         super().setUp()

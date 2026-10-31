@@ -2508,6 +2508,85 @@ ShellRoot {
         compare(browser.dialogMode, "")
       }
 
+      function raiseConflict(id, info) {
+        mock.conflictRaised(id, info)
+        tryCompare(browser, "dialogMode", "conflict")
+        wait(browser.conflictKeyDelay + 100)
+      }
+
+      function test_8ea_folderConflictsAndDoForAll() {
+        waitRows()
+        mock.calls = []
+        raiseConflict(6, { dest: "/tmp/docs", destKind: "d", seq: 1, folders: true })
+        compare(browser.dialogTitle, "Folder exists")
+        verify(browser.conflictMessage().indexOf("Replace deletes it first") >= 0)
+        keyClick(Qt.Key_K)
+        keyClick(Qt.Key_S)
+        keyClick(Qt.Key_A)
+        compare(mock.called("resolveConflict"), null, "only merge, replace and cancel answer this question")
+        compare(browser.conflictAll, false)
+        keyClick(Qt.Key_M)
+        compare(mock.called("resolveConflict").args, [6, "merge", false, 1])
+        compare(browser.dialogMode, "")
+
+        mock.calls = []
+        raiseConflict(6, { dest: "/tmp/docs", destKind: "d", seq: 2, folders: true })
+        keyClick(Qt.Key_Escape)
+        compare(mock.called("resolveConflict").args, [6, "cancel", false, 2])
+
+        mock.calls = []
+        raiseConflict(6, { dest: "/tmp/docs", destKind: "d", seq: 3 })
+        compare(browser.dialogTitle, "Folder exists")
+        verify(browser.conflictMessage().indexOf("deletes that folder") >= 0, "a second warning before a folder goes")
+        keyClick(Qt.Key_Escape)
+        compare(mock.called("resolveConflict").args, [6, "skip", false, 3])
+
+        mock.calls = []
+        raiseConflict(7, { dest: "/tmp/alpha.yml", destKind: "f", seq: 4 })
+        compare(browser.dialogTitle, "File exists")
+        compare(browser.conflictAll, false)
+        keyClick(Qt.Key_A)
+        compare(browser.conflictAll, true)
+        compare(findChild(browser, "conflictAllButton").selected, true)
+        compare(mock.called("resolveConflict"), null, "A only arms it")
+        keyClick(Qt.Key_A)
+        compare(browser.conflictAll, false)
+        mouseClick(findChild(browser, "conflictAllButton"))
+        compare(browser.conflictAll, true)
+        wait(browser.conflictKeyDelay + 100)
+        keyClick(Qt.Key_S)
+        compare(mock.called("resolveConflict").args, [7, "skip", true, 4], "the keyboard still answers after a click")
+
+        mock.calls = []
+        raiseConflict(7, { dest: "/tmp/alpha.yml", destKind: "f", seq: 5 })
+        compare(browser.conflictAll, false, "each question starts unticked")
+        keyClick(Qt.Key_S)
+        compare(mock.called("resolveConflict").args, [7, "skip", false, 5])
+      }
+
+      function test_8eb_ctrlTabCyclesTabs() {
+        waitRows()
+        browser.newTab(browser.activeSide, null)
+        browser.newTab(browser.activeSide, null)
+        var last = browser.tabsFor(browser.activeSide).length - 1
+        verify(last >= 2)
+        compare(browser.activeIndexFor(browser.activeSide), last)
+        keyClick(Qt.Key_Tab, Qt.ControlModifier)
+        compare(browser.activeIndexFor(browser.activeSide), 0, "wraps to the first tab")
+        keyClick(Qt.Key_Backtab, Qt.ControlModifier | Qt.ShiftModifier)
+        compare(browser.activeIndexFor(browser.activeSide), last, "and back")
+        compare(browser.focusZone, "pane")
+        waitRows()
+        pane().setCursor(0, false, false)
+        browser.openMenuAtCursor()
+        keyClick(Qt.Key_Tab, Qt.ControlModifier)
+        compare(browser.activeIndexFor(browser.activeSide), last, "an open menu keeps the tab")
+        browser.closeMenu()
+        browser.closeTab(browser.activeSide, last)
+        browser.closeTab(browser.activeSide, last - 1)
+        waitRows()
+      }
+
       function test_8f_networkAudioIsNotPlayedInTheShell() {
         mock.remoteRoots = ["/mnt/nas"]
         browser.showPreview(Model.decodeEntry(["song.mp3", "f", 1000, 100, 420, null], "/mnt/nas"))
