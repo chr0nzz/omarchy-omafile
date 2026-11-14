@@ -222,6 +222,16 @@ test('expandTilde and collapseTilde', function () {
   assert.equal(Model.collapseTilde('/etc', '/home/u'), '/etc');
 });
 
+test('resolveTargetPath turns any typed path into an absolute one', function () {
+  assert.equal(Model.resolveTargetPath('/etc/hosts', '/home/u/docs', '/home/u'), '/etc/hosts');
+  assert.equal(Model.resolveTargetPath('../notes.txt', '/home/u/docs/a', '/home/u'), '/home/u/docs/notes.txt');
+  assert.equal(Model.resolveTargetPath('~/books', '/home/u/docs', '/home/u'), '/home/u/books');
+  assert.equal(Model.resolveTargetPath('  a/b  ', '/home/u/docs', '/home/u'), '/home/u/docs/a/b');
+  assert.equal(Model.resolveTargetPath('', '/home/u/docs', '/home/u'), '');
+  assert.equal(Model.resolveTargetPath('notes.txt', '', '/home/u'), '',
+    'a relative path with no folder to resolve against is not a path yet');
+});
+
 test('breadcrumbs for root path', function () {
   var crumbs = Model.breadcrumbs('/');
   assert.deepEqual(plainCrumbs(crumbs), [{ label: '/', path: '/' }]);

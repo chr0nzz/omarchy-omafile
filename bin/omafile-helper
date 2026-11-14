@@ -1739,6 +1739,20 @@ def walk_targets(path_bytes, recursive, apply):
     finally:
         os.close(pfd)
 
+def account_names():
+    try:
+        return sorted(set(p.pw_name for p in pwd.getpwall()))
+    except OSError:
+        return []
+
+
+def group_names():
+    try:
+        return sorted(set(g.gr_name for g in grp.getgrall()))
+    except OSError:
+        return []
+
+
 def op_identity(req):
     req_id = req["id"]
     uid = os.geteuid()
@@ -1753,10 +1767,11 @@ def op_identity(req):
         except KeyError:
             groups.append(str(gid))
     reply = {"id": req_id, "t": "identity", "uid": uid, "user": user,
-             "groups": sorted(set(groups)), "root": uid == 0}
+             "groups": sorted(set(groups)), "root": uid == 0,
+             "allUsers": account_names(), "allGroups": group_names()}
     if uid == 0:
-        reply["users"] = sorted(p.pw_name for p in pwd.getpwall())
-        reply["groups"] = sorted(g.gr_name for g in grp.getgrall())
+        reply["users"] = reply["allUsers"]
+        reply["groups"] = reply["allGroups"]
     emit(reply)
     send_done(req_id)
 
@@ -1813,6 +1828,37 @@ def lookup_group(name):
             return int(name)
         raise OSError(errno.EINVAL, "unknown group " + name)
 
+PKEXEC_TIMEOUT = 120
+
+
+class AuthFailure(Exception):
+    def __init__(self, message):
+        Exception.__init__(self, message)
+        self.message = message
+
+
+def chown_spec(uid, gid):
+    if uid >= 0 and gid >= 0:
+        return "%d:%d" % (uid, gid)
+    if uid >= 0:
+        return "%d" % uid
+    return ":%d" % gid
+
+
+def privileged_chown(path, uid, gid, recursive):
+    """Change ownership the way mounting a drive does: pkexec asks polkit, so
+    the shell's own secure prompt decides. Fixed program paths, never a PATH
+    lookup, and never a shell. Returns how many paths chown says it changed."""
+    chown = trusted_program("chown")
+    argv = ["-h", "-c"] + (["-R"] if recursive else []) + [chown_spec(uid, gid), "--", path]
+    proc = run_trusted("pkexec", [chown] + argv, timeout=PKEXEC_TIMEOUT)
+    if proc.returncode == 126:
+        raise AuthFailure("Authentication failed or was cancelled")
+    if proc.returncode != 0:
+        raise OSError(errno.EPERM, udisks_message(proc.stderr, "the ownership could not be changed"))
+    return len([line for line in (proc.stdout or "").splitlines() if line.strip()])
+
+
 def op_chown(req):
     req_id = req["id"]
     path = req.get("path")
@@ -1824,6 +1870,10 @@ def op_chown(req):
     try:
         uid = lookup_owner(owner) if owner is not None else -1
         gid = lookup_group(group) if group is not None else -1
+        if req.get("privileged") is True:
+            changed = privileged_chown(path, uid, gid, bool(req.get("recursive")))
+            send_done(req_id, path=path, changed=changed)
+            return
         changed = [0]
 
         def apply(dir_fd, name):
@@ -1832,6 +1882,12 @@ def op_chown(req):
 
         walk_targets(to_bytes(path), bool(req.get("recursive")), apply)
         send_done(req_id, path=path, changed=changed[0])
+    except FileNotFoundError as e:
+        send_error(req_id, "EUNSUPPORTED", "%s is not installed" % (e.filename or "pkexec"), path)
+    except AuthFailure as e:
+        send_error(req_id, "EAUTH", e.message, path)
+    except subprocess.TimeoutExpired:
+        send_error(req_id, "ETIMEDOUT", "the authentication prompt timed out", path)
     except OSError as e:
         send_error(req_id, errno_code(e), e.strerror or str(e), path)
 

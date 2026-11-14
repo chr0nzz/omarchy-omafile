@@ -348,10 +348,11 @@ Item {
     })
   }
 
-  function changeOwner(path, owner, group, recursive, onDone, onError) {
+  function changeOwner(path, owner, group, recursive, privileged, onDone, onError) {
     var req = { op: "chown", path: path, recursive: !!recursive }
     if (owner) req.owner = owner
     if (group) req.group = group
+    if (privileged === true) req.privileged = true
     return request(req, { onDone: onDone, onError: onError })
   }
 
@@ -484,6 +485,18 @@ Item {
     return request({ op: "mkfile", path: path }, {
       onDone: function (m) {
         root.recordUndo({ kind: "create", path: path, isDir: false, label: "New file" })
+        if (onDone) onDone(m)
+      },
+      onError: onError
+    })
+  }
+
+  function makeLink(path, target, onDone, onError) {
+    return request({ op: "symlink", target: target, path: path }, {
+      onDone: function (m) {
+        root.recordUndo({
+          kind: "create", path: path, isDir: false, linkTarget: target, label: "New link"
+        })
         if (onDone) onDone(m)
       },
       onError: onError
@@ -878,7 +891,9 @@ Item {
         onDone(m)
       }, onError: onError })
     else if (entry.kind === "create")
-      request({ op: entry.isDir ? "mkdir" : "mkfile", path: entry.path }, { onDone: onDone, onError: onError })
+      request(entry.linkTarget
+        ? { op: "symlink", target: entry.linkTarget, path: entry.path }
+        : { op: entry.isDir ? "mkdir" : "mkfile", path: entry.path }, { onDone: onDone, onError: onError })
     else if (onError) onError({ message: "Cannot redo that" })
   }
 

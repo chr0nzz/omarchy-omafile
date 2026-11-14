@@ -1,6 +1,7 @@
 import QtQuick 6.11
 import QtTest
 import Quickshell
+import qs.Commons
 import "FilePlugin/components" as Plugin
 import "FilePlugin/tests" as Mocks
 import "FilePlugin/Model.js" as Model
@@ -2402,6 +2403,268 @@ ShellRoot {
         pane().navigate("recent:")
         compare(browser.compressTargets(report).length, 0, "nothing to compress in Recent")
         pane().navigate("/tmp")
+        waitRows()
+      }
+
+      function test_9q_mainMenuGroupsCreatePasteAndSettings() {
+        waitRows()
+        browser.openToolbarMenu("main", findChild(browser, "mainMenuButton"))
+        compare(browser.menuActions.map(function (i) { return i.label }),
+          ["New folder", "New file", "New link", "", "Paste", "", "Settings", "Keyboard shortcuts"],
+          "the menu keeps creating, pasting and settings as three separate groups")
+        browser.closeMenu()
+        var keys = browser.contextActions(null).map(function (a) { return a.key })
+        verify(keys.indexOf("newlink") >= 0, "the folder menu offers a new link as well")
+      }
+
+      function test_9r_newLinkStoresAnAbsoluteTarget() {
+        waitRows()
+        mock.calls = []
+        browser.showDialog("newlink", "New link", "", null)
+        var target = findChild(browser, "linkTargetField")
+        tryVerify(function () { return target.visible && target.activeFocus }, 3000, "the target field takes the focus")
+        verify(findChild(browser, "newlinkNote").visible)
+        verify(findChild(browser, "newlinkNote").text.indexOf("relative") >= 0, "the dialog says relative paths are fine")
+        compare(findChild(browser, "dialogConfirmButton").text, "Create link")
+        target.text = "../books/notes.txt"
+        keyClick(Qt.Key_Return)
+        verify(mock.called("makeLink") !== null, "Enter creates the link")
+        compare(mock.called("makeLink").args, ["/tmp/notes.txt", "/books/notes.txt"],
+          "a relative target is stored absolute and the name comes from it")
+        compare(browser.dialogMode, "")
+
+        mock.calls = []
+        browser.showDialog("newlink", "New link", "", null)
+        tryVerify(function () { return target.activeFocus }, 3000)
+        findChild(browser, "dialogField").text = "shortcut"
+        target.text = "/etc/hosts"
+        browser.submitDialog()
+        compare(mock.called("makeLink").args, ["/tmp/shortcut", "/etc/hosts"], "a typed name wins")
+
+        mock.calls = []
+        browser.showDialog("newlink", "New link", "", null)
+        tryVerify(function () { return target.activeFocus }, 3000)
+        target.text = "/tmp/alpha.yml"
+        findChild(browser, "dialogField").text = "alpha.yml"
+        browser.submitDialog()
+        compare(browser.dialogError, "A link cannot point at itself")
+        verify(mock.called("makeLink") === null, "a self link is refused")
+        browser.closeDialog()
+      }
+
+      function test_9s_ownerChangeAsksFirstThenAuthenticates() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+          mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" } }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me", "wheel"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        compare(findChild(browser, "ownerValue").text, "me")
+        verify(!findChild(browser, "ownerChoices").visible, "the owner menu starts closed")
+        compare(findChild(browser, "confirmQuestion").visible, false, "nothing waits for an answer yet")
+        mouseClick(findChild(browser, "ownerChangeButton"))
+        wait(400)
+        tryVerify(function () { return findChild(browser, "ownerChoices").visible }, 3000)
+        compare(findChild(browser, "choice-root").needsAuth, true, "another account cannot be set outright")
+        mouseClick(findChild(browser, "choice-root"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "confirmQuestion").visible }, 3000, "the change waits for an answer")
+        compare(findChild(browser, "confirmYes").text, "Yes")
+        compare(findChild(browser, "confirmCancel").text, "Cancel")
+        compare(findChild(browser, "confirmCancel").foreground.toString(), Color.urgent.toString(), "Cancel is the red one")
+        compare(findChild(browser, "applyPermissions").visible, false, "Apply waits behind the question")
+        compare(mock.called("changeOwner"), null, "nothing is applied before the answer")
+        mouseClick(findChild(browser, "confirmYes"))
+        wait(300)
+        var call = mock.called("changeOwner")
+        verify(call !== null, "changeOwner runs")
+        compare(call.args, ["/tmp/alpha.yml", "root", "", false, true], "the change goes the authenticated way")
+        tryVerify(function () { return !findChild(browser, "confirmQuestion").visible }, 3000)
+        browser.closeDialog()
+      }
+
+      function test_9t_cancelBacksOutOfAnOwnerChange() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+          mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" } }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me", "wheel"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        mouseClick(findChild(browser, "ownerChangeButton"))
+        wait(400)
+        tryVerify(function () { return findChild(browser, "ownerChoices").visible }, 3000)
+        mouseClick(findChild(browser, "choice-daemon"))
+        wait(300)
+        tryCompare(findChild(browser, "confirmQuestion"), "visible", true)
+        compare(findChild(browser, "ownerValue").text, "daemon", "the pending owner shows while the question is open")
+        mouseClick(findChild(browser, "confirmCancel"))
+        wait(300)
+        compare(mock.called("changeOwner"), null, "cancel applies nothing")
+        tryCompare(findChild(browser, "ownerValue"), "text", "me", 3000)
+        browser.closeDialog()
+      }
+
+      function test_9u_ownerAndGroupListsKnowWhatNeedsAuth() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+          mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" } }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me", "wheel"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        mouseClick(findChild(browser, "ownerChangeButton"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "ownerChoices").visible }, 3000)
+        compare(findChild(browser, "choice-daemon").needsAuth, true, "an account other than root cannot hand the item away")
+        compare(findChild(browser, "choice-root").needsAuth, true, "not even to root itself")
+        mouseClick(findChild(browser, "ownerChangeButton"))
+        wait(300)
+        verify(!findChild(browser, "ownerChoices").visible, "the owner menu closed again")
+        mouseClick(findChild(browser, "groupChangeButton"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "groupChoices").visible }, 3000)
+        var wheel = findChild(browser, "choice-wheel")
+        var nogroup = findChild(browser, "choice-nogroup")
+        verify(wheel !== null && nogroup !== null, "the group list offers every group")
+        compare(wheel.needsAuth, false, "a group of this account can be set outright")
+        compare(nogroup.needsAuth, true, "a group this account is not in cannot")
+        mouseClick(nogroup)
+        wait(300)
+        tryCompare(findChild(browser, "confirmQuestion"), "visible", true)
+        mouseClick(findChild(browser, "confirmYes"))
+        wait(300)
+        compare(mock.called("changeOwner").args, ["/tmp/alpha.yml", "", "nogroup", false, true])
+        browser.closeDialog()
+      }
+
+      function test_9v_rootNeedsNoAuthenticationForAnyone() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+          mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" } }
+        mock.identityInfo = { uid: 0, user: "root", root: true, users: ["daemon", "me", "root"],
+          groups: ["me", "nogroup", "users", "wheel"], allUsers: ["daemon", "me", "root"],
+          allGroups: ["me", "nogroup", "users", "wheel"] }
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsIdentity !== null && browser.propsIdentity.root === true }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        mouseClick(findChild(browser, "ownerChangeButton"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "ownerChoices").visible }, 3000)
+        compare(findChild(browser, "choice-daemon").needsAuth, false, "root may hand an item to anyone")
+        compare(findChild(browser, "choice-root").needsAuth, false, "including themselves")
+        browser.closeDialog()
+      }
+
+      function test_9w_inheritFromTemplatesThePermissions() {
+        waitRows()
+        mock.statItems = {
+          "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+            mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" },
+          "/tmp/docs/other.txt": { kind: "f", size: 10, mtime: 100, atime: 100, ctime: 100,
+            mode: 33261, uid: 1000, gid: 100, owner: "me", group: "wheel" }
+        }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me", "wheel"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        compare(findChild(browser, "modeText").text.indexOf("644"), 0)
+        mouseClick(findChild(browser, "inheritButton"))
+        var flick = findChild(browser, "propsFlick")
+        wait(200)
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        wait(200)
+        var field = findChild(browser, "inheritPathField")
+        tryVerify(function () { return field.visible && field.activeFocus }, 3000, "the path field takes the focus")
+        verify(findChild(browser, "inheritNote").text.indexOf("relative") >= 0, "the panel says relative paths are fine")
+        field.text = "docs/other.txt"
+        verify(field.activeFocus, "the path field still holds the focus")
+        mouseClick(findChild(browser, "inheritUseButton"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "modeText").text.indexOf("755") === 0 }, 3000,
+          "the mode comes from the object named")
+        tryVerify(function () { return findChild(browser, "confirmQuestion").visible }, 3000, "inheriting asks too")
+        mock.calls = []
+        mouseClick(findChild(browser, "confirmYes"))
+        wait(300)
+        compare(mock.called("changeMode").args[1], 73, "the new bits go in")
+        compare(mock.called("changeOwner").args, ["/tmp/alpha.yml", "", "wheel", false, false],
+          "a group of this account needs no authentication")
+        browser.closeDialog()
+      }
+
+      function test_9x_inheritChecksThePathItWasGiven() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+          mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" } }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me", "wheel"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        mouseClick(findChild(browser, "inheritButton"))
+        var flick = findChild(browser, "propsFlick")
+        wait(200)
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        wait(200)
+        var field = findChild(browser, "inheritPathField")
+        tryVerify(function () { return field.visible }, 3000)
+        mock.calls = []
+        mouseClick(findChild(browser, "inheritUseButton"))
+        compare(findChild(browser, "propsPanel").errorText, "Enter the path to copy permissions from")
+        verify(mock.called("statPaths") === null, "an empty path asks the helper nothing")
+        field.text = "docs/nowhere.txt"
+        mock.calls = []
+        mouseClick(findChild(browser, "inheritUseButton"))
+        tryVerify(function () { return findChild(browser, "propsPanel").errorText.indexOf("Could not read") === 0 }, 3000)
+        compare(mock.called("statPaths").args[0], ["/tmp/docs/nowhere.txt"], "the relative path is resolved first")
+        browser.closeDialog()
+      }
+
+      function test_9y_newLinkIsBlockedWhilePicking() {
+        waitRows()
+        browser.pickerRequest = { mode: "open", result: "/run/h.json", currentFolder: "/tmp" }
+        browser.beginPickSession()
+        waitRows()
+        compare(browser.pickBlockedActions["newlink"], true)
+        browser.runAction("newlink")
+        compare(browser.dialogMode, "", "no link dialog while an app is choosing")
+        verify(browser.statusText.indexOf("choosing for an app") > 0)
+        browser.cancelPick()
         waitRows()
       }
 

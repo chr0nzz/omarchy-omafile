@@ -398,6 +398,16 @@ function expandTilde(path, homePath) {
   return p;
 }
 
+function resolveTargetPath(path, folder, homePath) {
+  var raw = String(path || '').trim();
+  if (raw === '') return '';
+  var expanded = expandTilde(raw, homePath);
+  if (expanded.charAt(0) === '/') return normalizePath(expanded);
+  var base = String(folder || '');
+  if (base === '') return '';
+  return normalizePath(joinPath(base, expanded));
+}
+
 function collapseTilde(path, homePath) {
   var p = String(path || '');
   var home = String(homePath || '');

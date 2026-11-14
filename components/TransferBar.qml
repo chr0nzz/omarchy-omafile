@@ -222,7 +222,7 @@ Item {
           delegate: Column {
             id: entry
             required property var modelData
-            readonly property var item: transferBar.byId[modelData] || ({ id: modelData, state: "done", bytes: 0, total: 0 })
+            readonly property var item: transferBar.byId[modelData] || ({ id: modelData, label: "", state: "done", bytes: 0, total: 0 })
             readonly property bool open: transferBar.expanded[modelData] === true
             readonly property bool live: transferBar.active(item)
             objectName: "transfer-" + modelData

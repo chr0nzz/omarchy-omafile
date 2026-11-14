@@ -113,7 +113,8 @@ QtObject {
     })
     if (cb) cb(items)
   }
-  property var identityInfo: ({ uid: 1000, user: "me", groups: ["me", "wheel"], root: false })
+  property var identityInfo: ({ uid: 1000, user: "me", groups: ["me", "wheel"], root: false,
+    allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup", "users", "wheel"] })
   function identity(cb) { record("identity", []); if (cb) cb(identityInfo) }
   function openerFor(path, cb) { record("openerFor", [path]); if (cb) cb({ mime: "text/yaml", handler: "" }) }
   function setOpener(mime, handler, onDone, onError) { record("setOpener", [mime, handler]); if (onDone) onDone({}) }
@@ -121,9 +122,11 @@ QtObject {
     record("changeMode", [path, setBits, clearBits, recursive])
     if (onDone) onDone({})
   }
-  function changeOwner(path, owner, group, recursive, onDone, onError) {
-    record("changeOwner", [path, owner, group, recursive])
-    if (onDone) onDone({})
+  property var ownerResult: ({})
+  function changeOwner(path, owner, group, recursive, privileged, onDone, onError) {
+    record("changeOwner", [path, owner, group, recursive, privileged === true])
+    if (ownerResult.code && onError) onError(ownerResult)
+    else if (onDone) onDone({})
   }
   function beginTransfer(op, sources, dest, conflict) { record("beginTransfer", [op, sources, dest, conflict]); return 1 }
   function trashPaths(paths, onDone, onError) { record("trashPaths", [paths]); if (onDone) onDone() }
@@ -225,6 +228,8 @@ QtObject {
   function openAgent(path) { record("openAgent", [path]) }
   property var compressResult: null
   function makeDirectory(path, onDone, onError) { record("makeDirectory", [path]); if (onDone) onDone({}) }
+  function makeFile(path, onDone, onError) { record("makeFile", [path]); if (onDone) onDone({}) }
+  function makeLink(path, target, onDone, onError) { record("makeLink", [path, target]); if (onDone) onDone({}) }
   property var transcodeResult: null
   function transcodePaths(paths, format, resolution, onDone, onError) {
     record("transcodePaths", [paths, format, resolution])

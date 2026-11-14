@@ -385,6 +385,94 @@ class PermissionTests(HelperTestCase):
         self.assertEqual(ident["uid"], os.geteuid())
         self.assertIn(grp.getgrgid(os.getegid()).gr_name, ident["groups"])
 
+FAKE_PKEXEC = """#!/usr/bin/env python3
+import json
+import sys
+with open(%(log)r, "w") as out:
+    out.write("\\n".join(sys.argv[1:]))
+sys.stderr.write(json.loads(%(stderr)r))
+sys.stdout.write("changed from 1000 to 0\\n" * %(lines)d)
+raise SystemExit(%(code)d)
+"""
+
+
+class PrivilegedOwnershipTests(HelperTestCase):
+    def fake(self, code=0, lines=1, stderr=""):
+        self.log = self.path("pkexec-argv")
+        script = self.path("fake-pkexec")
+        with open(script, "w") as f:
+            f.write(FAKE_PKEXEC % {"log": self.log, "stderr": json.dumps(stderr), "lines": lines, "code": code})
+        os.chmod(script, 0o755)
+        self.helper.close()
+        self.helper = Helper(overrides={"programs": {"pkexec": script, "chown": script}})
+
+    def argv(self):
+        with open(self.log) as f:
+            return f.read().split("\n")
+
+    def file(self, name):
+        target = self.path(name)
+        with open(target, "w") as f:
+            f.write("x")
+        return target
+
+    def test_privileged_chown_runs_chown_through_pkexec(self):
+        target = self.file("mine.txt")
+        self.fake(lines=2)
+        uid = os.geteuid()
+        gid = grp.getgrgid(os.getegid()).gr_gid
+        msgs = self.helper.call({"id": self.next_id(), "op": "chown", "path": target,
+                                 "owner": str(uid), "group": str(gid), "privileged": True})
+        done = self.terminal(msgs)
+        self.assertEqual(done["t"], "done")
+        self.assertEqual(done["changed"], 2, "the tool reports how many paths changed")
+        self.assertEqual(self.argv(), [self.path("fake-pkexec"), "-h", "-c",
+                                       "%d:%d" % (uid, gid), "--", target])
+
+    def test_privileged_chown_of_a_group_alone_names_only_the_group(self):
+        target = self.file("mine.txt")
+        self.fake()
+        gid = grp.getgrgid(os.getegid()).gr_gid
+        msgs = self.helper.call({"id": self.next_id(), "op": "chown", "path": target,
+                                 "group": str(gid), "privileged": True, "recursive": True})
+        self.assertEqual(self.terminal(msgs)["t"], "done")
+        self.assertEqual(self.argv(), [self.path("fake-pkexec"), "-h", "-c", "-R",
+                                       ":%d" % gid, "--", target])
+
+    def test_a_cancelled_authentication_is_reported_as_such(self):
+        target = self.file("mine.txt")
+        self.fake(code=126, stderr="pkexec: did not authenticate\n", lines=0)
+        msgs = self.helper.call({"id": self.next_id(), "op": "chown", "path": target,
+                                 "owner": "root", "privileged": True})
+        err = self.terminal(msgs)
+        self.assertEqual(err["code"], "EAUTH")
+        self.assertIn("Authentication", err["message"])
+
+    def test_a_chown_failure_keeps_the_tools_message(self):
+        target = self.file("mine.txt")
+        self.fake(code=1, stderr="chown: invalid user: 'nobody'\n", lines=0)
+        msgs = self.helper.call({"id": self.next_id(), "op": "chown", "path": target,
+                                 "owner": "1000", "privileged": True})
+        err = self.terminal(msgs)
+        self.assertEqual(err["code"], "EPERM")
+        self.assertEqual(err["message"], "chown: invalid user: 'nobody'")
+
+    def test_an_unknown_owner_is_refused_before_any_prompt(self):
+        target = self.file("mine.txt")
+        self.fake()
+        msgs = self.helper.call({"id": self.next_id(), "op": "chown", "path": target,
+                                 "owner": "no-such-user-here", "privileged": True})
+        self.assertEqual(self.terminal(msgs)["code"], "EINVAL")
+        self.assertFalse(os.path.exists(self.log), "pkexec was never asked")
+
+    def test_identity_lists_every_account_and_group(self):
+        msgs = self.helper.call({"id": self.next_id(), "op": "identity"})
+        reply = [m for m in msgs if m["t"] == "identity"][0]
+        self.assertIn(pwd.getpwuid(os.geteuid()).pw_name, reply["allUsers"])
+        self.assertIn(grp.getgrgid(os.getegid()).gr_name, reply["allGroups"])
+        self.assertEqual(sorted(set(reply["allGroups"])), reply["allGroups"])
+
+
 class PeekTests(HelperTestCase):
     def peek(self, path, limit=None):
         req = {"id": self.next_id(), "op": "peek", "path": path}
@@ -1027,6 +1115,29 @@ class MkdirMkfileRenameTests(HelperTestCase):
         err = self.terminal(msgs)
         self.assertEqual(err["t"], "error")
         self.assertEqual(err["code"], "EEXIST")
+
+    def test_symlink_points_at_the_target_given(self):
+        target = self.file_target("target.txt")
+        link = self.path("link.txt")
+        msgs = self.helper.call({"id": self.next_id(), "op": "symlink", "target": target, "path": link})
+        done = self.terminal(msgs)
+        self.assertEqual(done["t"], "done")
+        self.assertEqual(done["path"], link)
+        self.assertEqual(os.readlink(link), target)
+
+    def test_symlink_never_replaces_an_existing_name(self):
+        target = self.file_target("target.txt")
+        link = self.file_target("taken.txt")
+        msgs = self.helper.call({"id": self.next_id(), "op": "symlink", "target": target, "path": link})
+        err = self.terminal(msgs)
+        self.assertEqual(err["code"], "EEXIST")
+        self.assertFalse(os.path.islink(link), "the existing file is still itself")
+
+    def file_target(self, name):
+        made = self.path(name)
+        with open(made, "w") as f:
+            f.write("x")
+        return made
 
     def test_rename(self):
         old = self.path("old.txt")

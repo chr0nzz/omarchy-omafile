@@ -14,7 +14,7 @@ function service() {
   const c = vm.createContext({ Model, undoStack: [], redoStack: [], transfers: [], _transferOwners: {} });
   c.root = c;
   for (const name of ['beginTransfer', 'transferOwner', 'createdPairs', 'createdPaths', 'okPaths', 'trashNames',
-    'moveBack', 'applyReverse', 'applyForward', 'recordUndo']) {
+    'moveBack', 'applyReverse', 'applyForward', 'recordUndo', 'makeLink']) {
     const match = source.match(new RegExp('^  function ' + name + '\\([^]*?^  }', 'm'));
     vm.runInContext(match[0], c);
   }
@@ -70,4 +70,18 @@ test('the window that started a transfer owns its conflicts', () => {
   assert.equal(c.transferOwner(1), owner);
   requests[0].handlers.onError({ id: 1, code: 'ECANCELED' });
   assert.equal(c.transferOwner(1), null);
+});
+
+test('a new link undoes to the trash and redoes as the same link', () => {
+  const { c, requests } = service();
+  c.makeLink('/dest/shortcut', '/home/me/notes.txt', () => {}, () => {});
+  requests[0].handlers.onDone({});
+  assert.deepEqual(plain(requests[0].payload), { op: 'symlink', target: '/home/me/notes.txt', path: '/dest/shortcut' });
+  const entry = c.undoStack[0];
+  assert.equal(entry.label, 'New link');
+  c.applyReverse(entry, () => {}, () => {});
+  assert.deepEqual(plain(requests[1].payload), { op: 'trash', paths: ['/dest/shortcut'] });
+  c.applyForward(entry, () => {}, () => {});
+  assert.deepEqual(plain(requests[2].payload), { op: 'symlink', target: '/home/me/notes.txt', path: '/dest/shortcut' },
+    'redo rebuilds a link, not an empty file');
 });

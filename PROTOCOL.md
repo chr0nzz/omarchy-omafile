@@ -127,7 +127,7 @@ yields an item with `error` set instead of the metadata fields.
 {"id": N, "op": "identity"}
 ```
 
-Replies `{"t": "identity", "uid", "user", "groups": [...], "root"}` then `done`. `groups` are the groups the caller belongs to. When the helper runs as root, `users` lists every account and `groups` every group.
+Replies `{"t": "identity", "uid", "user", "groups": [...], "root", "allUsers": [...], "allGroups": [...]}` then `done`. `groups` are the groups the caller belongs to. `allUsers` and `allGroups` list every account and every group on the machine, so the Properties Security tab can offer the choices it cannot set without an authentication. When the helper runs as root, `users` lists every account and `groups` every group.
 
 ### opener
 
@@ -156,10 +156,12 @@ Adds the `set` bits and removes the `clear` bits from the permission bits of `pa
 ### chown
 
 ```
-{"id": N, "op": "chown", "path": "/a", "owner": "name", "group": "name", "recursive": false}
+{"id": N, "op": "chown", "path": "/a", "owner": "name", "group": "name", "recursive": false, "privileged": false}
 ```
 
 `owner` and `group` are optional but one is required. Names or numeric ids. Symlinks are not followed, and the tree is walked through folder handles. Replies `done` with `changed`, or `EPERM` when the caller may not make the change.
+
+With `privileged: true` the change is made through `/usr/bin/pkexec /usr/bin/chown -h [-c] [-R] <uid>[:<gid>] -- <path>` instead, so polkit asks for authentication the way mounting a drive does. Both programs are checked as root-owned non-symlinks in `/usr/bin`, `/bin` or `/usr/local/bin` first, and the numeric ids are resolved by the helper, so an unknown name fails with `EINVAL` before anything is asked. Two minutes are allowed for the prompt. Errors: `EAUTH` when the authentication fails or is cancelled, `ETIMEDOUT` when the prompt goes unanswered, `EUNSUPPORTED` when `pkexec` or `chown` is missing, and `EPERM` with the tool's message for anything else.
 
 ### du
 
