@@ -10,7 +10,7 @@ permissions:
 jobs:
   release:
     name: Release and request verification
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       HAS_MARKETPLACE_TOKEN: ${{ secrets.MARKETPLACE_TOKEN != '' }}
     steps:
