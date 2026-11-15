@@ -29,7 +29,8 @@ Column {
   readonly property bool isOwner: info && identity ? info.uid === identity.uid : false
   readonly property bool canChmod: info !== null && !info.error && !isLink && (isOwner || isRoot)
   readonly property bool canChown: isRoot && !isLink
-  readonly property int originalBits: info ? (Number(info.mode) & 511) : 0
+  readonly property int originalBits: info ? (Number(info.mode) & 4095) : 0
+  readonly property int specialBits: info ? ((Number(info.mode) >> 9) & 7) : 0
 
   property int editBits: 0
   property string editGroup: ""
@@ -46,6 +47,8 @@ Column {
   onEntryChanged: {
     choosingOpener = false
     errorText = ""
+    inheritNotice = ""
+    probeFoldersAbove()
   }
 
   readonly property bool modeDirty: editBits !== originalBits
@@ -57,10 +60,13 @@ Column {
 
   onInfoChanged: resetEdits()
 
+  onIdentityChanged: probeFoldersAbove()
+
   function resetEdits() {
-    editBits = info ? (Number(info.mode) & 511) : 0
+    editBits = info ? (Number(info.mode) & 4095) : 0
     editGroup = info ? String(info.group || "") : ""
     editOwner = info ? String(info.owner || "") : ""
+    inheritNotice = ""
     recursive = false
     ownerMenuOpen = false
     groupMenuOpen = false
@@ -76,7 +82,50 @@ Column {
   function toggleBit(row, col) {
     if (!canChmod || busy) return
     errorText = ""
+    inheritNotice = ""
     editBits = editBits ^ bitFor(row, col)
+  }
+
+  function specialBit(index) {
+    return [2048, 1024, 512][index]
+  }
+
+  function toggleSpecial(bit) {
+    if (!canChmod || busy) return
+    errorText = ""
+    inheritNotice = ""
+    editBits = editBits ^ bit
+  }
+
+  readonly property string modeDigits: {
+    var text = Model.formatOctal(editBits)
+    return text.length >= 4 ? text : "0" + text
+  }
+
+  function templatedBits(from) {
+    var nine = Number(from.mode) & 511
+    var out = nine
+    var took = []
+    var left = []
+    var dir = entry !== null && entry.isDir === true
+    if ((Number(from.mode) & 2048) !== 0) left.push("setuid, which the first write drops")
+    if ((Number(from.mode) & 1024) !== 0) {
+      if (dir) { out = out | 1024; took.push("setgid") }
+      else left.push("setgid, which only holds on a folder")
+    }
+    if ((Number(from.mode) & 512) !== 0) {
+      if (dir && (nine & 18) !== 0) { out = out | 512; took.push("the sticky bit") }
+      else left.push("the sticky bit, which only belongs where others can write")
+    }
+    return { bits: out, took: took, left: left }
+  }
+
+  function templateNotice(copy) {
+    var text = "Copied " + (Model.formatOctal(copy.bits).length >= 4
+      ? Model.formatOctal(copy.bits) : "0" + Model.formatOctal(copy.bits))
+    if (copy.took.length > 0) text = text + ", including " + copy.took.join(" and ")
+    if (copy.left.length > 0) text = text + "; left out " + copy.left.join(" and ")
+    return text
   }
 
   function uniqueNames(lists) {
@@ -122,9 +171,59 @@ Column {
     ]), function (name) { return !groupSettable(name) })
   }
 
+  readonly property bool ownerNeedsAuth: ownerDirty && !canChown
+  readonly property bool groupNeedsAuth: groupDirty && !groupSettable(editGroup)
+
+  property string guardFolder: ""
+  property string inheritNotice: ""
+
+  readonly property bool pathGuarded: guardFolder !== "" && !canChown
+  readonly property bool ownerChangeEnabled: !isLink && (guardFolder === "" || canChown)
+  readonly property bool groupChangeEnabled: !isLink && (guardFolder === "" || canChmod
+    && (isRoot || (identity && identity.groups ? identity.groups.length > 0 : false)))
+
+  function foldersAbove(path) {
+    var out = []
+    var dir = Model.dirname(path)
+    while (out.indexOf(dir) < 0) {
+      out.push(dir)
+      if (dir === "/") break
+      dir = Model.dirname(dir)
+    }
+    return out
+  }
+
+  function probeFoldersAbove() {
+    guardFolder = ""
+    if (!service || !entry) return
+    var folders = foldersAbove(String(entry.path || ""))
+    if (folders.length === 0) return
+    var home = String(Quickshell.env("HOME") || "")
+    service.statPaths(folders, function (items) {
+      for (var i = 0; items && i < items.length; i++) {
+        var st = items[i]
+        if (!st || st.error) continue
+        var uid = Number(st.uid)
+        if (uid !== 0 && (!identity || uid !== Number(identity.uid))) {
+          panel.guardFolder = showFolder(String(st.path || ""), home)
+          return
+        }
+        var mode = Number(st.mode)
+        if ((mode & 18) !== 0 && (mode & 512) === 0) {
+          panel.guardFolder = showFolder(String(st.path || ""), home)
+          return
+        }
+      }
+    })
+  }
+
+  function showFolder(path, home) {
+    return home !== "" && path.indexOf(home + "/") === 0 ? "~" + path.substring(home.length) : path
+  }
 
   function chooseOwner(name) {
     errorText = ""
+    inheritNotice = ""
     ownerMenuOpen = false
     editOwner = name
     confirmOpen = ownerDirty || groupDirty
@@ -132,6 +231,7 @@ Column {
 
   function chooseGroup(name) {
     errorText = ""
+    inheritNotice = ""
     groupMenuOpen = false
     editGroup = name
     confirmOpen = ownerDirty || groupDirty
@@ -139,13 +239,8 @@ Column {
 
   function inheritSource() {
     if (!entry) return ""
-    var raw = String(inheritPathField.text || "").trim()
-    if (raw === "") return ""
-    var expanded = Model.expandTilde(raw, service && service.home ? String(service.home) : "")
-    if (expanded.charAt(0) === "/") return Model.normalizePath(expanded)
-    var base = Model.dirname(String(entry.path || ""))
-    if (base === "") return ""
-    return Model.normalizePath(Model.joinPath(base, expanded))
+    var home = service && service.home ? String(service.home) : ""
+    return Model.resolveTargetPath(inheritPathField.text, Model.dirname(String(entry.path || "")), home)
   }
 
   function inheritFrom() {
@@ -164,7 +259,11 @@ Column {
         panel.errorText = "Could not read " + Model.basename(source)
         return
       }
-      if (panel.canChmod) panel.editBits = Number(from.mode) & 511
+      var copy = panel.templatedBits(from)
+      if (panel.canChmod) {
+        panel.editBits = copy.bits
+        panel.inheritNotice = panel.templateNotice(copy)
+      }
       panel.editOwner = String(from.owner || panel.editOwner)
       panel.editGroup = String(from.group || panel.editGroup)
       panel.inheritOpen = false
@@ -186,8 +285,7 @@ Column {
 
   function fail(m) {
     busy = false
-    errorText = m && m.code === "EPERM" ? "Operation not permitted"
-      : String((m && m.message) || (m && m.code) || "Could not apply the change")
+    errorText = String((m && m.message) || (m && m.code) || "Could not apply the change")
     applied()
   }
 
@@ -196,6 +294,7 @@ Column {
     busy = true
     errorText = ""
     var path = entry.path
+    var privileged = ownerNeedsAuth || groupNeedsAuth
     var finish = function () {
       busy = false
       applied()
@@ -206,7 +305,7 @@ Column {
         return
       }
       service.changeOwner(path, ownerDirty ? editOwner : "", groupDirty ? editGroup : "",
-        recursive && entry.isDir, finish, panel.fail)
+        recursive && entry.isDir, privileged, finish, panel.fail)
     }
     if (modeDirty) {
       var change = Model.modeChange(originalBits, editBits)
@@ -470,7 +569,8 @@ Column {
       Text {
         objectName: "ownerValue"
         textFormat: Text.PlainText
-        width: parent.width - panel.labelWidth - ownerChangeButton.implicitWidth - Style.space(20)
+        width: parent.width - panel.labelWidth - (panel.ownerChangeEnabled ? ownerChangeButton.implicitWidth : ownerChangeLabel.implicitWidth)
+          - Style.space(20)
         anchors.verticalCenter: parent.verticalCenter
         text: panel.editOwner !== "" ? panel.editOwner : (panel.info ? String(panel.info.owner || "") : "")
         color: panel.ownerDirty ? Color.accent : panel.fg
@@ -482,6 +582,7 @@ Column {
       Button {
         id: ownerChangeButton
         objectName: "ownerChangeButton"
+        visible: panel.ownerChangeEnabled
         anchors.verticalCenter: parent.verticalCenter
         text: panel.ownerMenuOpen ? "Close" : "Change"
         bordered: true
@@ -490,16 +591,29 @@ Column {
           panel.ownerMenuOpen = !panel.ownerMenuOpen
         }
       }
+
+      Text {
+        objectName: "ownerChangeLabel"
+        textFormat: Text.PlainText
+        visible: !panel.ownerChangeEnabled
+        text: "Change N/A"
+        color: panel.dim
+        font.family: Style.font.family
+        font.pixelSize: Style.font.bodySmall
+        anchors.verticalCenter: parent.verticalCenter
+      }
     }
 
     ChoiceList {
       objectName: "ownerChoices"
       width: parent.width
+      guard: panel.pathGuarded
       visible: panel.ownerMenuOpen
       options: panel.ownerMenuOpen ? panel.ownerOptions() : []
       emptyLabel: "No other accounts to list"
       onPicked: function (value) { panel.chooseOwner(value) }
     }
+
 
     Row {
       width: parent.width
@@ -519,7 +633,8 @@ Column {
       Text {
         objectName: "groupValue"
         textFormat: Text.PlainText
-        width: parent.width - panel.labelWidth - groupChangeButton.implicitWidth - Style.space(20)
+        width: parent.width - panel.labelWidth - (panel.groupChangeEnabled ? groupChangeButton.implicitWidth : groupChangeLabel.implicitWidth)
+          - Style.space(20)
         anchors.verticalCenter: parent.verticalCenter
         text: panel.editGroup !== "" ? panel.editGroup : (panel.info ? String(panel.info.group || "") : "")
         color: panel.groupDirty ? Color.accent : panel.fg
@@ -531,6 +646,7 @@ Column {
       Button {
         id: groupChangeButton
         objectName: "groupChangeButton"
+        visible: panel.groupChangeEnabled
         anchors.verticalCenter: parent.verticalCenter
         text: panel.groupMenuOpen ? "Close" : "Change"
         bordered: true
@@ -539,15 +655,52 @@ Column {
           panel.groupMenuOpen = !panel.groupMenuOpen
         }
       }
+
+      Text {
+        objectName: "groupChangeLabel"
+        textFormat: Text.PlainText
+        visible: !panel.groupChangeEnabled
+        text: "Change N/A"
+        color: panel.dim
+        font.family: Style.font.family
+        font.pixelSize: Style.font.bodySmall
+        anchors.verticalCenter: parent.verticalCenter
+      }
     }
 
     ChoiceList {
       objectName: "groupChoices"
       width: parent.width
+      guard: panel.pathGuarded
       visible: panel.groupMenuOpen
       options: panel.groupMenuOpen ? panel.groupOptions() : []
       emptyLabel: "No other groups to list"
       onPicked: function (value) { panel.chooseGroup(value) }
+    }
+
+
+    Text {
+      objectName: "ownerNote"
+      textFormat: Text.PlainText
+      width: parent.width
+      visible: panel.isLink
+      text: "Open the link target to change its owner or group"
+      color: panel.dim
+      font.family: Style.font.family
+      font.pixelSize: Style.font.caption
+      wrapMode: Text.Wrap
+    }
+
+    Text {
+      objectName: "specialBitsNote"
+      width: parent.width
+      visible: panel.specialBits !== 0 && (panel.ownerDirty || panel.groupDirty)
+      textFormat: Text.PlainText
+      text: "Handing this item to another account or group clears its setuid and setgid bits."
+      color: Color.urgent
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
+      wrapMode: Text.WordWrap
     }
 
     Column {
@@ -577,6 +730,7 @@ Column {
             font.pixelSize: Style.font.caption
           }
         }
+
       }
 
       Repeater {
@@ -645,6 +799,90 @@ Column {
           }
         }
       }
+      Row {
+        width: parent.width
+        spacing: Style.space(10)
+        height: Style.space(22)
+
+        Text {
+          objectName: "specialBitsHeader"
+          textFormat: Text.PlainText
+          width: panel.labelWidth
+          anchors.verticalCenter: parent.verticalCenter
+          text: "Special"
+          color: panel.dim
+          font.family: Style.font.family
+          font.pixelSize: Style.font.bodySmall
+        }
+
+        Repeater {
+          model: ["Setuid", "Setgid", "Sticky"]
+
+          delegate: Text {
+            required property string modelData
+            textFormat: Text.PlainText
+            width: matrix.cellWidth - Style.space(10) * 2 / 3
+            horizontalAlignment: Text.AlignHCenter
+            text: modelData
+            color: panel.dim
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+        }
+      }
+
+      Row {
+        id: specialBitsRow
+        width: parent.width
+        spacing: Style.space(10)
+        height: Style.space(26)
+
+        Item { width: panel.labelWidth; height: 1 }
+
+        Repeater {
+          model: ["Setuid", "Setgid", "Sticky"]
+
+          delegate: Item {
+            id: specialCell
+            required property int index
+            readonly property int bit: panel.specialBit(specialCell.index)
+            readonly property bool on: (panel.editBits & bit) !== 0
+            readonly property bool changed: ((panel.originalBits & bit) !== 0) !== on
+            width: matrix.cellWidth - Style.space(10) * 2 / 3
+            height: specialBitsRow.height
+
+            Rectangle {
+              objectName: "specialBit"
+              anchors.centerIn: parent
+              width: Style.space(18)
+              height: Style.space(18)
+              radius: Math.min(Style.cornerRadius, Style.space(5))
+              color: specialCell.on ? Color.accent : "transparent"
+              opacity: panel.canChmod ? 1 : 0.5
+              border.width: Math.max(1, Style.space(1))
+              border.color: specialCell.changed ? Color.accent : Util.alpha(panel.fg, 0.4)
+
+              Text {
+                textFormat: Text.PlainText
+                anchors.centerIn: parent
+                visible: specialCell.on
+                text: "\u2713"
+                color: Color.popups.background
+                font.family: Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+              }
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              enabled: panel.canChmod
+              cursorShape: panel.canChmod ? Qt.PointingHandCursor : Qt.ArrowCursor
+              onClicked: panel.toggleSpecial(specialCell.bit)
+            }
+          }
+        }
+      }
     }
 
     Row {
@@ -664,7 +902,7 @@ Column {
         objectName: "modeText"
         textFormat: Text.PlainText
         width: parent.width - panel.labelWidth - Style.space(10)
-        text: Model.formatOctal(panel.editBits) + "   "
+        text: panel.modeDigits + "   "
           + Model.formatMode(((panel.info ? Number(panel.info.mode) : 0) & ~511) | panel.editBits)
         color: panel.modeDirty ? Color.accent : panel.fg
         font.family: Style.font.family
@@ -728,6 +966,19 @@ Column {
     }
 
     Text {
+      objectName: "templateNote"
+      textFormat: Text.PlainText
+      width: parent.width
+      visible: panel.inheritNotice !== ""
+      text: panel.inheritNotice
+      color: panel.dim
+      font.family: Style.font.family
+      font.pixelSize: Style.font.caption
+      wrapMode: Text.Wrap
+    }
+
+    Text {
+      objectName: "permNote"
       textFormat: Text.PlainText
       width: parent.width
       visible: !panel.canChmod
@@ -747,6 +998,30 @@ Column {
       description: "Also change everything inside this folder"
       checked: panel.recursive
       onClicked: panel.recursive = !panel.recursive
+    }
+
+    Text {
+      objectName: "pathGuardNote"
+      textFormat: Text.PlainText
+      width: parent.width
+      visible: panel.pathGuarded
+      text: "a folder in this path can be changed by others"
+      color: Color.urgent
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
+      wrapMode: Text.Wrap
+    }
+
+    Text {
+      objectName: "pathGuardFolder"
+      textFormat: Text.PlainText
+      width: parent.width
+      visible: panel.pathGuarded
+      text: panel.guardFolder
+      color: Color.urgent
+      font.family: Style.font.family
+      font.pixelSize: Style.font.caption
+      elide: Text.ElideMiddle
     }
 
     Text {

@@ -7,6 +7,7 @@ Rectangle {
 
   property var options: []
   property string emptyLabel: "Nothing to choose from"
+  property bool guard: false
   signal picked(string value)
 
   height: Math.min(scroll.implicitHeight, Style.space(190)) + Style.space(8)
@@ -85,8 +86,8 @@ Rectangle {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             anchors.rightMargin: Style.space(8)
-            visible: modelData.needsAuth === true
-            text: "no permission"
+            visible: modelData.needsAuth === true && !list.guard
+            text: "authenticate"
             color: Util.alpha(Color.popups.text, 0.38)
             font.family: Style.font.family
             font.pixelSize: Style.font.caption
@@ -94,7 +95,8 @@ Rectangle {
 
           MouseArea {
             anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
+            enabled: modelData.needsAuth !== true || !list.guard
+            cursorShape: modelData.needsAuth === true && list.guard ? Qt.ArrowCursor : Qt.PointingHandCursor
             onClicked: list.picked(modelData.value)
           }
         }

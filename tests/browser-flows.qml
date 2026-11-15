@@ -1834,7 +1834,7 @@ ShellRoot {
         mouseClick(findChild(browser, "securityTab"))
         wait(200)
         var mode = findChild(browser, "modeText")
-        tryVerify(function () { return mode.text.indexOf("644") === 0 }, 3000)
+        tryVerify(function () { return mode.text.indexOf("0644") === 0 }, 3000)
         var boxes = []
         function collect(item) {
           if (item.objectName === "permBox") boxes.push(item)
@@ -1842,8 +1842,10 @@ ShellRoot {
         }
         collect(findChild(browser, "dialogCard"))
         compare(boxes.length, 9)
+        verify(!!findChild(browser, "specialBitsHeader"), "the special column is titled")
+        compare(findChild(browser, "specialBitsHeader").text, "Special")
         mouseClick(boxes[0])
-        tryVerify(function () { return mode.text.indexOf("244") === 0 }, 3000)
+        tryVerify(function () { return mode.text.indexOf("0244") === 0 }, 3000)
         wait(150)
         mouseClick(findChild(browser, "applyPermissions"))
         var call = mock.called("changeMode")
@@ -1871,7 +1873,7 @@ ShellRoot {
         }
         collect(findChild(browser, "dialogCard"))
         mouseClick(boxes[0])
-        compare(findChild(browser, "modeText").text.indexOf("644"), 0)
+        compare(findChild(browser, "modeText").text.indexOf("0644"), 0)
         compare(findChild(browser, "applyPermissions").visible, false)
         browser.closeDialog()
       }
@@ -1887,7 +1889,7 @@ ShellRoot {
         mouseClick(findChild(browser, "securityTab"))
         wait(200)
         var mode = findChild(browser, "modeText")
-        tryVerify(function () { return mode.text.indexOf("644") === 0 }, 3000)
+        tryVerify(function () { return mode.text.indexOf("0644") === 0 }, 3000)
         var boxes = []
         function collect(item) {
           if (item.objectName === "permBox") boxes.push(item)
@@ -1895,8 +1897,10 @@ ShellRoot {
         }
         collect(findChild(browser, "dialogCard"))
         compare(boxes.length, 9)
+        verify(!!findChild(browser, "specialBitsHeader"), "the special column is titled")
+        compare(findChild(browser, "specialBitsHeader").text, "Special")
         mouseClick(boxes[0])
-        tryVerify(function () { return mode.text.indexOf("244") === 0 }, 3000, "a bit is pending")
+        tryVerify(function () { return mode.text.indexOf("0244") === 0 }, 3000, "a bit is pending")
         wait(150)
         mock.modeResult = { code: "ENOENT", message: "No such file or directory" }
         mock.statItems = { "/tmp/alpha.yml": { error: "ENOENT" } }
@@ -1921,7 +1925,7 @@ ShellRoot {
         mouseClick(findChild(browser, "securityTab"))
         wait(200)
         var mode = findChild(browser, "modeText")
-        tryVerify(function () { return mode.text.indexOf("644") === 0 }, 3000)
+        tryVerify(function () { return mode.text.indexOf("0644") === 0 }, 3000)
         var boxes = []
         function collect(item) {
           if (item.objectName === "permBox") boxes.push(item)
@@ -1929,7 +1933,7 @@ ShellRoot {
         }
         collect(findChild(browser, "dialogCard"))
         mouseClick(boxes[0])
-        tryVerify(function () { return mode.text.indexOf("244") === 0 }, 3000, "a bit is pending")
+        tryVerify(function () { return mode.text.indexOf("0244") === 0 }, 3000, "a bit is pending")
         wait(150)
         mock.modeResult = { code: "EPERM", message: "Operation not permitted" }
         mouseClick(findChild(browser, "applyPermissions"))
@@ -1937,7 +1941,7 @@ ShellRoot {
           "the refusal says why the change did not happen")
         compare(findChild(browser, "permissionsError").text, "Operation not permitted")
         verify(!findChild(browser, "permissionsGoneNote").visible, "the item is still where it was")
-        tryVerify(function () { return mode.text.indexOf("644") === 0 }, 3000, "the refused edit goes back")
+        tryVerify(function () { return mode.text.indexOf("0644") === 0 }, 3000, "the refused edit goes back")
         mock.modeResult = ({})
         browser.closeDialog()
       }
@@ -2564,17 +2568,17 @@ ShellRoot {
         wait(300)
         var call = mock.called("changeOwner")
         verify(call !== null, "changeOwner runs")
-        compare(call.args, ["/tmp/alpha.yml", "root", "", false], "the change runs once the answer is in")
+        compare(call.args, ["/tmp/alpha.yml", "root", "", false, true], "the change goes the authenticated way")
         tryVerify(function () { return !findChild(browser, "confirmQuestion").visible }, 3000)
         browser.closeDialog()
       }
-
       function test_9t_cancelBacksOutOfAnOwnerChange() {
         waitRows()
         mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
           mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" } }
-        mock.identityInfo = { uid: 1000, user: "me", groups: ["me", "wheel"], root: false,
-          allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.identityInfo = { uid: 0, user: "root", root: true, users: ["daemon", "me", "root"],
+          groups: ["me", "nogroup", "users", "wheel"], allUsers: ["daemon", "me", "root"],
+          allGroups: ["me", "nogroup", "users", "wheel"] }
         mock.calls = []
         browser.propsIdentity = null
         pane().setCursor(0, false, false)
@@ -2627,13 +2631,14 @@ ShellRoot {
         verify(wheel !== null && nogroup !== null, "the group list offers every group")
         compare(wheel.needsAuth, false, "a group of this account can be set outright")
         compare(nogroup.needsAuth, true, "a group this account is not in cannot")
-        mouseClick(findChild(browser, "groupChangeButton"))
+        mouseClick(nogroup)
         wait(300)
-        verify(!findChild(browser, "groupChoices").visible, "the group menu closes again")
-        verify(mock.called("changeOwner") === null, "listing the choices changes nothing")
+        tryCompare(findChild(browser, "confirmQuestion"), "visible", true)
+        mouseClick(findChild(browser, "confirmYes"))
+        wait(300)
+        compare(mock.called("changeOwner").args, ["/tmp/alpha.yml", "", "nogroup", false, true])
         browser.closeDialog()
       }
-
       function test_9v_rootMaySetAnyOwnerAndGroup() {
         waitRows()
         mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
@@ -2655,7 +2660,6 @@ ShellRoot {
         compare(findChild(browser, "choice-root").needsAuth, false, "including themselves")
         browser.closeDialog()
       }
-
       function test_9w_inheritFromTemplatesThePermissions() {
         waitRows()
         mock.statItems = {
@@ -2674,7 +2678,7 @@ ShellRoot {
         wait(200)
         mouseClick(findChild(browser, "securityTab"))
         wait(200)
-        compare(findChild(browser, "modeText").text.indexOf("644"), 0)
+        compare(findChild(browser, "modeText").text.indexOf("0644"), 0)
         mouseClick(findChild(browser, "inheritButton"))
         var flick = findChild(browser, "propsFlick")
         wait(200)
@@ -2687,18 +2691,17 @@ ShellRoot {
         verify(field.activeFocus, "the path field still holds the focus")
         mouseClick(findChild(browser, "inheritUseButton"))
         wait(300)
-        tryVerify(function () { return findChild(browser, "modeText").text.indexOf("755") === 0 }, 3000,
+        tryVerify(function () { return findChild(browser, "modeText").text.indexOf("0755") === 0 }, 3000,
           "the mode comes from the object named")
         tryVerify(function () { return findChild(browser, "confirmQuestion").visible }, 3000, "inheriting asks too")
         mock.calls = []
         mouseClick(findChild(browser, "confirmYes"))
         wait(300)
         compare(mock.called("changeMode").args[1], 73, "the new bits go in")
-        compare(mock.called("changeOwner").args, ["/tmp/alpha.yml", "", "wheel", false],
-          "a group of this account is applied directly")
+        compare(mock.called("changeOwner").args, ["/tmp/alpha.yml", "", "wheel", false, false],
+          "a group of this account needs no authentication")
         browser.closeDialog()
       }
-
       function test_9x_inheritChecksThePathItWasGiven() {
         waitRows()
         mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
@@ -2729,6 +2732,390 @@ ShellRoot {
         mouseClick(findChild(browser, "inheritUseButton"))
         tryVerify(function () { return findChild(browser, "propsPanel").errorText.indexOf("Could not read") === 0 }, 3000)
         compare(mock.called("statPaths").args[0], ["/tmp/docs/nowhere.txt"], "the relative path is resolved first")
+        browser.closeDialog()
+      }
+
+      function test_9ya_linkPointsItsChangesAtTheTarget() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "l", size: 12, mtime: 300, atime: 300, ctime: 300,
+          mode: 41471, uid: 0, gid: 0, owner: "root", group: "root", mime: "text/yaml" } }
+        mock.identityInfo = { uid: 0, user: "root", root: true, users: ["daemon", "me", "root"],
+          groups: ["me", "nogroup", "users", "wheel"], allUsers: ["daemon", "me", "root"],
+          allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        verify(!findChild(browser, "ownerChangeButton").visible, "access is checked against the target, so no choice is offered here")
+        verify(!findChild(browser, "groupChangeButton").visible, "nor for the group")
+        compare(findChild(browser, "ownerChangeLabel").text, "Change N/A", "both slots say so plainly")
+        compare(findChild(browser, "groupChangeLabel").text, "Change N/A")
+        compare(findChild(browser, "ownerNote").text, "Open the link target to change its owner or group")
+        compare(findChild(browser, "permNote").text, "Open the link target to change its permissions")
+        compare(findChild(browser, "ownerValue").text, "root", "the link still reports who it belongs to")
+        var boxes = []
+        function collect(item) {
+          if (item.objectName === "permBox") boxes.push(item)
+          for (var i = 0; i < item.children.length; i++) collect(item.children[i])
+        }
+        collect(findChild(browser, "dialogCard"))
+        compare(boxes.length, 9)
+        compare(boxes[0].enabled === false || boxes[0].opacity < 1, true, "and the boxes are inert as well")
+        browser.closeDialog()
+      }
+      function test_9za_refusedOwnershipKeepsTheBitsAlreadyWritten() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+          mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" } }
+        mock.identityInfo = { uid: 0, user: "root", root: true, users: ["daemon", "me", "root"],
+          groups: ["me", "nogroup", "users", "wheel"], allUsers: ["daemon", "me", "root"],
+          allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.ownerResult = ({})
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        var mode = findChild(browser, "modeText")
+        tryVerify(function () { return mode.text.indexOf("0644") === 0 }, 3000)
+        var boxes = []
+        function collect(item) {
+          if (item.objectName === "permBox") boxes.push(item)
+          for (var i = 0; i < item.children.length; i++) collect(item.children[i])
+        }
+        collect(findChild(browser, "dialogCard"))
+        mouseClick(boxes[0])
+        tryVerify(function () { return mode.text.indexOf("0244") === 0 }, 3000, "a bit is pending")
+        mouseClick(findChild(browser, "ownerChangeButton"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "ownerChoices").visible }, 3000)
+        mouseClick(findChild(browser, "choice-daemon"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "confirmQuestion").visible }, 3000)
+        mock.ownerResult = { code: "EPERM", message: "Operation not permitted" }
+        mouseClick(findChild(browser, "confirmYes"))
+        wait(400)
+        compare(findChild(browser, "permissionsError").text, "Operation not permitted")
+        var bits = mock.called("changeMode")
+        verify(bits !== null, "the bits go first, while the change is still ours to make")
+        compare(bits.args[2], 256)
+        var owner = mock.called("changeOwner")
+        verify(owner !== null, "the ownership was asked for as well")
+        compare(findChild(browser, "ownerValue").text, "me", "and it did not land")
+        mock.ownerResult = ({})
+        browser.closeDialog()
+      }
+      function test_9zb_inheritQueuesTheTemplateSOwnership() {
+        waitRows()
+        mock.statItems = {
+          "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+            mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" },
+          "/tmp/docs/other.txt": { kind: "f", size: 10, mtime: 100, atime: 100, ctime: 100,
+            mode: 33261, uid: 0, gid: 65534, owner: "root", group: "nogroup" }
+        }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me", "wheel"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        mouseClick(findChild(browser, "inheritButton"))
+        var flick = findChild(browser, "propsFlick")
+        wait(200)
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        wait(200)
+        var field = findChild(browser, "inheritPathField")
+        tryVerify(function () { return field.visible && field.activeFocus }, 3000)
+        field.text = "docs/other.txt"
+        mouseClick(findChild(browser, "inheritUseButton"))
+        wait(400)
+        tryVerify(function () { return findChild(browser, "modeText").text.indexOf("0755") === 0 }, 3000,
+          "the nine bits come across")
+        compare(findChild(browser, "ownerValue").text, "root", "the template's owner is queued rather than dropped")
+        compare(findChild(browser, "groupValue").text, "nogroup", "and so is its group")
+        tryVerify(function () { return findChild(browser, "confirmQuestion").visible }, 3000,
+          "and taking a foreign owner is worth asking about")
+        mouseClick(findChild(browser, "confirmCancel"))
+        wait(300)
+        tryCompare(findChild(browser, "ownerValue"), "text", "me", 3000, "backing out puts it back")
+        compare(findChild(browser, "modeText").text.indexOf("0644"), 0, "as do the bits")
+        browser.closeDialog()
+      }
+      function test_9z_ownerChangeWarnsAboutTheSpecialBits() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+          mode: 35309, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/plain" } }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me", "wheel"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        verify(!findChild(browser, "specialBitsNote").visible, "the note waits for a pending change")
+        mouseClick(findChild(browser, "ownerChangeButton"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "ownerChoices").visible }, 3000)
+        mouseClick(findChild(browser, "choice-daemon"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "confirmQuestion").visible }, 3000)
+        tryVerify(function () { return findChild(browser, "specialBitsNote").visible }, 3000,
+          "the pending hand away says the special bits go with it")
+        mouseClick(findChild(browser, "confirmCancel"))
+        wait(300)
+        verify(mock.called("changeOwner") === null, "cancel changes nothing")
+        browser.closeDialog()
+      }
+
+      function test_9zc_uncontrolledFolderGreysTheHandOver() {
+        waitRows()
+        mock.statItems = {
+          "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+            mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" },
+          "/tmp": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16895,
+            uid: 1000, gid: 1000 },
+          "/": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16877,
+            uid: 0, gid: 0 }
+        }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me", "wheel"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        tryCompare(findChild(browser, "pathGuardNote"), "visible", true, 3000)
+        compare(findChild(browser, "pathGuardNote").text, "a folder in this path can be changed by others")
+        compare(findChild(browser, "pathGuardFolder").text, "/tmp", "the offending folder is named")
+        verify(!findChild(browser, "ownerChangeButton").visible, "the hand away is not offered at all")
+        compare(findChild(browser, "ownerChangeLabel").text, "Change N/A", "the slot says so in plain words")
+        verify(findChild(browser, "groupChangeButton").visible, "a group of this account is still settable")
+        verify(!findChild(browser, "groupChangeLabel").visible, "so no label stands in its place")
+        compare(findChild(browser, "inheritButton").enabled, true, "Inherit from is never greyed")
+        var boxes = []
+        function collect(item) {
+          if (item.objectName === "permBox") boxes.push(item)
+          for (var i = 0; i < item.children.length; i++) collect(item.children[i])
+        }
+        collect(findChild(browser, "dialogCard"))
+        compare(boxes[0].opacity, 1, "the bits stay live for an item this account owns")
+        mouseClick(findChild(browser, "groupChangeButton"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "groupChoices").visible }, 3000)
+        compare(findChild(browser, "choice-nogroup").needsAuth, true, "a foreign group needs the authenticator")
+        mouseClick(findChild(browser, "choice-nogroup"))
+        wait(300)
+        compare(findChild(browser, "groupValue").text, "me", "and on such a path it cannot be picked at all")
+        compare(findChild(browser, "confirmQuestion").visible, false, "so nothing is asked")
+        browser.closeDialog()
+
+        mock.statItems["/tmp"].mode = 17407
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        tryCompare(findChild(browser, "pathGuardNote"), "visible", false, 3000,
+          "a sticky folder is one we control, so nothing is refused")
+        verify(findChild(browser, "ownerChangeButton").visible, "the hand away is offered again")
+        verify(!findChild(browser, "ownerChangeLabel").visible, "the label steps back out")
+        browser.closeDialog()
+      }
+
+      function test_9zd_rootIsNotRefusedByTheFolderGuard() {
+        waitRows()
+        mock.statItems = {
+          "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+            mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" },
+          "/tmp": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16895,
+            uid: 1000, gid: 1000 },
+          "/": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16877,
+            uid: 0, gid: 0 }
+        }
+        mock.identityInfo = { uid: 0, user: "root", root: true, users: ["daemon", "me", "root"],
+          groups: ["me", "nogroup", "users", "wheel"], allUsers: ["daemon", "me", "root"],
+          allGroups: ["me", "nogroup", "users", "wheel"] }
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsIdentity !== null && browser.propsIdentity.root === true }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        verify(!findChild(browser, "pathGuardNote").visible, "root needs no authenticator, so nothing is refused")
+        verify(findChild(browser, "ownerChangeButton").visible, "root hands it over directly")
+        verify(!findChild(browser, "ownerChangeLabel").visible, "nothing is written over the button for root")
+        browser.closeDialog()
+      }
+
+      function test_9ze_valuesStayVisibleBehindChangeNA() {
+        waitRows()
+        mock.statItems = {
+          "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+            mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" },
+          "/tmp": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16895,
+            uid: 1000, gid: 1000 },
+          "/": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16877,
+            uid: 0, gid: 0 }
+        }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup"] }
+        mock.calls = []
+        browser.propsIdentity = null
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        tryCompare(findChild(browser, "pathGuardNote"), "visible", true, 3000)
+        compare(findChild(browser, "ownerChangeButton").visible, false, "the owner slot is the plain words")
+        compare(findChild(browser, "ownerChangeLabel").visible, true)
+        compare(findChild(browser, "ownerValue").text, "me", "the owner is still named")
+        compare(findChild(browser, "groupValue").text, "me", "and so is the group")
+        verify(findChild(browser, "ownerValue").width > 40, "with room left to read them")
+        verify(findChild(browser, "groupValue").width > 40, "the same room")
+        verify(findChild(browser, "ownerValue").visible, "the value never disappears behind the label")
+        verify(findChild(browser, "groupValue").visible)
+        verify(findChild(browser, "groupChangeButton").visible,
+          "a group of this account is still offered even on such a path")
+        compare(findChild(browser, "groupChangeLabel").visible, false, "so that slot keeps its button")
+        browser.closeDialog()
+      }
+
+      function test_9zf_stickyBitShowsInTheNumber() {
+        waitRows()
+        mock.statItems = {
+          "/tmp/docs": { kind: "d", size: 0, mtime: 200, atime: 200, ctime: 200,
+            mode: 17407, uid: 1000, gid: 1000, owner: "me", group: "me" },
+          "/tmp": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16877,
+            uid: 1000, gid: 1000 },
+          "/": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16877,
+            uid: 0, gid: 0 }
+        }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me"] }
+        mock.calls = []
+        browser.propsIdentity = null
+                var docsIndex = -1
+        for (var di = 0; di < pane().rows.length; di++) if (pane().rows[di][0] === "docs") docsIndex = di
+        pane().setCursor(docsIndex, false, false)
+        compare(pane().cursorEntry().name, "docs")
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        var mode = findChild(browser, "modeText")
+        tryVerify(function () { return mode.text.indexOf("1777") === 0 }, 3000, "the fourth bit is in the number")
+        var boxes = []
+        var specials = []
+        function collect(item) {
+          if (item.objectName === "permBox") boxes.push(item)
+          if (item.objectName === "specialBit") specials.push(item)
+          for (var i = 0; i < item.children.length; i++) collect(item.children[i])
+        }
+        collect(findChild(browser, "dialogCard"))
+        compare(boxes.length, 9, "nine boxes for the nine mode bits")
+        compare(specials.length, 3, "three more down that column")
+        compare(specials[0].color.toString() === Color.accent.toString(), false, "setuid is off")
+        compare(specials[1].color.toString() === Color.accent.toString(), false, "setgid is off")
+        compare(specials[2].color.toString() === Color.accent.toString(), true, "the sticky bit is on")
+        mouseClick(specials[2])
+        tryVerify(function () { return mode.text.indexOf("0777") === 0 }, 3000, "and the box turns it off")
+        wait(150)
+        var flick = findChild(browser, "propsFlick")
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        wait(200)
+        mouseClick(findChild(browser, "applyPermissions"))
+        var call = mock.called("changeMode")
+        verify(call !== null)
+        compare(call.args[0], "/tmp/docs")
+        compare(call.args[1], 0)
+        compare(call.args[2], 512, "only the sticky bit is cleared")
+        browser.closeDialog()
+      }
+
+      function test_9zg_inheritCopiesOnlyTheBitsThatFit() {
+        waitRows()
+        mock.statItems = {
+          "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+            mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" },
+          "/tmp/docs": { kind: "d", size: 0, mtime: 200, atime: 200, ctime: 200,
+            mode: 17407, uid: 1000, gid: 1000, owner: "me", group: "me" },
+          "/tmp": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16877,
+            uid: 1000, gid: 1000 },
+          "/": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16877,
+            uid: 0, gid: 0 }
+        }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me"] }
+        mock.calls = []
+        browser.propsIdentity = null
+                var fileIndex = -1
+        for (var fi = 0; fi < pane().rows.length; fi++) if (pane().rows[fi][0] === "alpha.yml") fileIndex = fi
+        pane().setCursor(fileIndex, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        mouseClick(findChild(browser, "inheritButton"))
+        var flick = findChild(browser, "propsFlick")
+        wait(200)
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        wait(200)
+        var field = findChild(browser, "inheritPathField")
+        tryVerify(function () { return field.visible && field.activeFocus }, 3000)
+        field.text = "docs"
+        mouseClick(findChild(browser, "inheritUseButton"))
+        wait(400)
+        tryVerify(function () { return findChild(browser, "modeText").text.indexOf("0777") === 0 }, 3000,
+          "the nine bits are copied to the file")
+        compare(findChild(browser, "templateNote").visible, true)
+        compare(findChild(browser, "templateNote").text,
+          "Copied 0777; left out the sticky bit, which only belongs where others can write")
+        browser.closeDialog()
+
+                var docsIndex = -1
+        for (var di = 0; di < pane().rows.length; di++) if (pane().rows[di][0] === "docs") docsIndex = di
+        pane().setCursor(docsIndex, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        mouseClick(findChild(browser, "inheritButton"))
+        wait(200)
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        wait(200)
+        field.text = "docs"
+        mouseClick(findChild(browser, "inheritUseButton"))
+        wait(400)
+        tryCompare(findChild(browser, "templateNote"), "text",
+          "Copied 1777, including the sticky bit", 3000)
+        verify(findChild(browser, "modeText").text.indexOf("1777") === 0,
+          "a folder keeps the bit that makes it safe to share")
         browser.closeDialog()
       }
 

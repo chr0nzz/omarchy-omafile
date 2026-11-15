@@ -639,10 +639,12 @@ def trusted_link_target(dir_fd, name, mounts, message, shown):
         os.close(fd)
 
 
-def open_dir_safely(path_bytes, create=False):
+def open_dir_safely(path_bytes, create=False, check=None):
     if not path_bytes.startswith(b"/"):
         raise OSError(errno.EINVAL, "path must be absolute", to_str(path_bytes))
     fd = os.open(b"/", PATH_OPEN_FLAGS)
+    if check is not None:
+        check(os.fstat(fd))
     pending = [c for c in path_bytes.split(b"/") if c]
     hops = 0
     mounts = None
@@ -684,6 +686,8 @@ def open_dir_safely(path_bytes, create=False):
                 continue
             os.close(fd)
             fd = nxt
+            if check is not None:
+                check(os.fstat(fd))
         return fd
     except BaseException:
         os.close(fd)
@@ -698,12 +702,12 @@ def valid_leaf(name):
     return bool(name) and name not in (b".", b"..") and b"/" not in name and b"\0" not in name
 
 
-def open_parent_safely(path_bytes):
+def open_parent_safely(path_bytes, check=None):
     path_bytes = path_bytes.rstrip(b"/") or b"/"
     name = os.path.basename(path_bytes)
     if not valid_leaf(name):
         raise OSError(errno.EINVAL, "not a valid file name", to_str(path_bytes))
-    return open_dir_safely(os.path.dirname(path_bytes) or b"/"), name
+    return open_dir_safely(os.path.dirname(path_bytes) or b"/", check=check), name
 
 
 RENAME_NOREPLACE = 1
@@ -1828,6 +1832,42 @@ def lookup_group(name):
             return int(name)
         raise OSError(errno.EINVAL, "unknown group " + name)
 
+PKEXEC_TIMEOUT = 120
+
+
+class AuthFailure(Exception):
+    def __init__(self, message):
+        Exception.__init__(self, message)
+        self.message = message
+
+
+def chown_spec(uid, gid):
+    if uid >= 0 and gid >= 0:
+        return "%d:%d" % (uid, gid)
+    if uid >= 0:
+        return "%d" % uid
+    return ":%d" % gid
+
+
+def ownership_at(dir_fd, name):
+    st = lstat_at(dir_fd, name)
+    if st is None:
+        raise OSError(errno.ENOENT, os.strerror(errno.ENOENT), to_str(name))
+    return int(st.st_uid), int(st.st_gid)
+
+
+def privileged_chown(path, uid, gid, recursive, from_uid, from_gid):
+    chown = trusted_program("chown")
+    argv = ["-h", "-c", "--from=" + chown_spec(from_uid, from_gid)] + (["-R"] if recursive else [])
+    argv += [chown_spec(uid, gid), "--", path]
+    proc = run_trusted("pkexec", [chown] + argv, timeout=PKEXEC_TIMEOUT)
+    if proc.returncode == 126:
+        raise AuthFailure("Authentication failed or was cancelled")
+    if proc.returncode != 0:
+        raise OSError(errno.EPERM, udisks_message(proc.stderr, "the ownership could not be changed"))
+    return len([line for line in (proc.stdout or "").splitlines() if line.strip()])
+
+
 def op_chown(req):
     req_id = req["id"]
     path = req.get("path")
@@ -1839,6 +1879,26 @@ def op_chown(req):
     try:
         uid = lookup_owner(owner) if owner is not None else -1
         gid = lookup_group(group) if group is not None else -1
+        if req.get("privileged") is True:
+            def own_folders(st):
+                if not folder_we_control(st):
+                    raise OSError(errno.EPERM, "a folder in this path can be changed by others", path)
+            parent_fd, name = open_parent_safely(to_bytes(path), check=own_folders)
+            try:
+                from_uid, from_gid = ownership_at(parent_fd, name)
+            finally:
+                os.close(parent_fd)
+            try:
+                changed = privileged_chown(path, uid, gid, bool(req.get("recursive")), from_uid, from_gid)
+            except FileNotFoundError as e:
+                send_error(req_id, "EUNSUPPORTED", "%s is not installed" % (e.filename or "pkexec"), path)
+            except AuthFailure as e:
+                send_error(req_id, "EAUTH", e.message, path)
+            except subprocess.TimeoutExpired:
+                send_error(req_id, "ETIMEDOUT", "the authentication prompt timed out", path)
+            else:
+                send_done(req_id, path=path, changed=changed)
+            return
         changed = [0]
 
         def apply(dir_fd, name):
@@ -2981,6 +3041,10 @@ UNSAFE_WRITE_BITS = stat.S_IWGRP | stat.S_IWOTH
 
 def trusted_node(st):
     return st.st_uid == 0 and not (st.st_mode & UNSAFE_WRITE_BITS)
+
+
+def folder_we_control(st):
+    return st.st_uid in (0, os.geteuid()) and not (st.st_mode & UNSAFE_WRITE_BITS and not st.st_mode & stat.S_ISVTX)
 
 
 def trusted_directory_chain(directory):

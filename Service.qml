@@ -348,10 +348,11 @@ Item {
     })
   }
 
-  function changeOwner(path, owner, group, recursive, onDone, onError) {
+  function changeOwner(path, owner, group, recursive, privileged, onDone, onError) {
     var req = { op: "chown", path: path, recursive: !!recursive }
     if (owner) req.owner = owner
     if (group) req.group = group
+    if (privileged === true) req.privileged = true
     return request(req, { onDone: onDone, onError: onError })
   }
 
