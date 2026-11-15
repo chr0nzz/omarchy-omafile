@@ -124,5 +124,4 @@ ShellRoot {
       }
     }
   }
-  Timer { interval: 15000; running: true; onTriggered: { console.log("OMAFILE_PANE_CLICKS_TIMEOUT"); Qt.quit() } }
 }

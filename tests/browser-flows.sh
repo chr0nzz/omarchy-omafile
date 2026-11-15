@@ -21,7 +21,12 @@ with wave.open(sys.argv[1], "wb") as out:
     out.setframerate(8000)
     out.writeframes(b"".join(struct.pack("<h", int(8000 * math.sin(i / 8000 * 2 * math.pi * 440))) for i in range(8000 * 20)))
 EOF
-if ! OMAFILE_TEST_TONE="$stage/tone.wav" QT_QPA_PLATFORM=offscreen qs -p "$stage/shell.qml" --no-color > "$stage/output.log" 2>&1; then
+status=0
+OMAFILE_TEST_TONE="$stage/tone.wav" QT_QPA_PLATFORM=offscreen timeout -k 5 60 qs -p "$stage/shell.qml" --no-color > "$stage/output.log" 2>&1 || status=$?
+if (( status == 124 || status == 137 )); then
+  printf 'OMAFILE_BROWSER_FLOWS_TIMEOUT\n' >> "$stage/output.log"
+fi
+if (( status != 0 )); then
   cat "$stage/output.log"
   exit 1
 fi

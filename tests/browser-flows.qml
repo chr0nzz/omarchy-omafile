@@ -2706,5 +2706,4 @@ ShellRoot {
       }
     }
   }
-  Timer { interval: 60000; running: true; onTriggered: { console.log("OMAFILE_BROWSER_FLOWS_TIMEOUT"); Qt.quit() } }
 }
