@@ -32,7 +32,7 @@ function assertValidGlyph(glyph, label) {
 var placeKeys = ['home', 'desktop', 'documents', 'downloads', 'music', 'pictures', 'videos',
   'templates', 'publicshare', 'trash', 'trashfull', 'root', 'drive', 'usb', 'network', 'pinned', 'recent', 'search'];
 
-var actionKeys = ['copy', 'cut', 'paste', 'rename', 'trash', 'trashFull', 'delete', 'restore', 'newfolder', 'newfile', 'up',
+var actionKeys = ['copy', 'cut', 'paste', 'rename', 'trash', 'trashFull', 'delete', 'restore', 'newfolder', 'newfile', 'link', 'up',
   'back', 'forward', 'refresh', 'search', 'hidden', 'list', 'grid', 'columns', 'split', 'close', 'add',
   'sort', 'menu', 'eject', 'lock', 'transcode', 'open', 'terminal', 'editor', 'properties', 'cancel', 'check', 'warning',
   'error', 'chevronRight', 'chevronDown', 'chevronUp', 'chevronLeft', 'extract', 'play', 'pause',

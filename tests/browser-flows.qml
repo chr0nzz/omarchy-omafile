@@ -2405,6 +2405,65 @@ ShellRoot {
         waitRows()
       }
 
+      function test_9q_mainMenuGroupsCreatePasteAndSettings() {
+        waitRows()
+        browser.openToolbarMenu("main", findChild(browser, "mainMenuButton"))
+        compare(browser.menuActions.map(function (i) { return i.label }),
+          ["New folder", "New file", "New link", "", "Paste", "", "Settings", "Keyboard shortcuts"],
+          "the menu keeps creating, pasting and settings as three separate groups")
+        browser.closeMenu()
+        var keys = browser.contextActions(null).map(function (a) { return a.key })
+        verify(keys.indexOf("newlink") >= 0, "the folder menu offers a new link as well")
+      }
+
+      function test_9r_newLinkStoresAnAbsoluteTarget() {
+        waitRows()
+        mock.calls = []
+        browser.showDialog("newlink", "New link", "", null)
+        var target = findChild(browser, "linkTargetField")
+        tryVerify(function () { return target.visible && target.activeFocus }, 3000, "the target field takes the focus")
+        verify(findChild(browser, "newlinkNote").visible)
+        verify(findChild(browser, "newlinkNote").text.indexOf("relative") >= 0, "the dialog says relative paths are fine")
+        compare(findChild(browser, "dialogConfirmButton").text, "Create link")
+        target.text = "../books/notes.txt"
+        keyClick(Qt.Key_Return)
+        verify(mock.called("makeLink") !== null, "Enter creates the link")
+        compare(mock.called("makeLink").args, ["/tmp/notes.txt", "/books/notes.txt"],
+          "a relative target is stored absolute and the name comes from it")
+        compare(browser.dialogMode, "")
+
+        mock.calls = []
+        browser.showDialog("newlink", "New link", "", null)
+        tryVerify(function () { return target.activeFocus }, 3000)
+        findChild(browser, "dialogField").text = "shortcut"
+        target.text = "/etc/hosts"
+        browser.submitDialog()
+        compare(mock.called("makeLink").args, ["/tmp/shortcut", "/etc/hosts"], "a typed name wins")
+
+        mock.calls = []
+        browser.showDialog("newlink", "New link", "", null)
+        tryVerify(function () { return target.activeFocus }, 3000)
+        target.text = "/tmp/alpha.yml"
+        findChild(browser, "dialogField").text = "alpha.yml"
+        browser.submitDialog()
+        compare(browser.dialogError, "A link cannot point at itself")
+        verify(mock.called("makeLink") === null, "a self link is refused")
+        browser.closeDialog()
+      }
+
+      function test_9s_newLinkIsBlockedWhilePicking() {
+        waitRows()
+        browser.pickerRequest = { mode: "open", result: "/run/h.json", currentFolder: "/tmp" }
+        browser.beginPickSession()
+        waitRows()
+        compare(browser.pickBlockedActions["newlink"], true)
+        browser.runAction("newlink")
+        compare(browser.dialogMode, "", "no link dialog while an app is choosing")
+        verify(browser.statusText.indexOf("choosing for an app") > 0)
+        browser.cancelPick()
+        waitRows()
+      }
+
       function test_8b_pickSaveNamesStayInTheFolder() {
         mock.calls = []
         browser.pickerRequest = { mode: "save", result: "/run/u.json", currentFolder: "/tmp", currentName: "x.txt" }

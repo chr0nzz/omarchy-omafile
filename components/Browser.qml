@@ -386,7 +386,7 @@ Item {
   readonly property int pickKeyDelay: 600
   readonly property var pickBlockedActions: ({
     cut: true, paste: true, rename: true, trash: true, delete: true, restore: true, emptytrash: true,
-    extract: true, compress: true, transcode: true, edittext: true, duplicates: true, properties: true, newfile: true, terminal: true, agent: true,
+    extract: true, compress: true, transcode: true, edittext: true, duplicates: true, properties: true, newfile: true, newlink: true, terminal: true, agent: true,
     openwith: true, editor: true, undo: true, redo: true, drop: true, transfer: true,
     "place:emptytrash": true, "place:properties": true
   })
@@ -621,7 +621,11 @@ Item {
     appFilter = ""
     appAlways = false
     Qt.callLater(function () {
-      if (dialogMode === "rename" || dialogMode === "newfolder" || dialogMode === "newfile" || dialogMode === "path"
+      if (dialogMode === "newlink") {
+        dialogField.text = root.dialogValue
+        linkTargetField.text = ""
+        linkTargetField.forceActiveFocus()
+      } else if (dialogMode === "rename" || dialogMode === "newfolder" || dialogMode === "newfile" || dialogMode === "path"
           || dialogMode === "bookmarkname" || dialogMode === "compress") {
         dialogField.text = root.dialogValue
         dialogField.forceActiveFocus()
@@ -755,6 +759,27 @@ Item {
       var place = dialogPayload
       closeDialog()
       if (place && place.path) service.renameBookmark(place.path, value)
+      return
+    }
+    if (dialogMode === "newlink") {
+      var target = Model.resolveTargetPath(String(linkTargetField.text || ""), p.path, root.home)
+      if (target === "" || target === "/") {
+        dialogError = "Enter the path to link to"
+        return
+      }
+      var linkName = value !== "" ? value : Model.basename(target)
+      if (linkName === "" || linkName === "." || linkName === ".." || linkName.indexOf("/") >= 0) {
+        dialogError = "Name cannot contain a slash"
+        return
+      }
+      var link = Model.joinPath(p.path, linkName)
+      if (link === target) {
+        dialogError = "A link cannot point at itself"
+        return
+      }
+      service.makeLink(link, target,
+        function () { closeDialog(); p.refresh() },
+        function (m) { root.dialogError = String(m.message || "Could not create the link") })
       return
     }
     if (!value) {
@@ -1497,6 +1522,7 @@ Item {
     } else {
       items.push({ key: "newfolder", label: "New folder", glyph: Icons.actionGlyph("newfolder"), hint: "Ctrl+Shift+N" })
       items.push({ key: "newfile", label: "New file", glyph: Icons.actionGlyph("newfile"), hint: "Ctrl+N" })
+      items.push({ key: "newlink", label: "New link", glyph: Icons.actionGlyph("link") })
       items.push({ key: "paste", label: "Paste", glyph: Icons.actionGlyph("paste"), hint: "Ctrl+V", disabled: !service })
       separator()
       items.push({ key: "terminal", label: "Open in terminal", glyph: Icons.actionGlyph("terminal"), hint: "Ctrl+." })
@@ -1803,6 +1829,7 @@ Item {
     else if (key === "properties") showProperties(entry)
     else if (key === "newfolder") showDialog("newfolder", "New folder", "untitled folder", null)
     else if (key === "newfile") showDialog("newfile", "New file", "untitled", null)
+    else if (key === "newlink") showDialog("newlink", "New link", "", null)
     else if (key === "bookmark") service.togglePinned(entry && entry.isDir ? entry.path : p.path)
     else if (key === "terminal") service.openTerminal(entry && entry.isDir ? entry.path : p.path, function (m) { statusText = m })
     else if (key === "agent") service.openAgent(entry && entry.isDir ? entry.path : p.path, function (m) { statusText = m })
@@ -2115,8 +2142,15 @@ Item {
     var items = []
     var check = Icons.actionGlyph("check")
     if (kind === "main") {
+      var canCreate = service && p && !p.virtualView
       items.push({ key: "newfolder", label: "New folder", glyph: Icons.actionGlyph("newfolder"), hint: "Ctrl+Shift+N",
-        disabled: !service || !p || p.virtualView })
+        disabled: !canCreate })
+      items.push({ key: "newfile", label: "New file", glyph: Icons.actionGlyph("newfile"), hint: "Ctrl+N",
+        disabled: !canCreate })
+      items.push({ key: "newlink", label: "New link", glyph: Icons.actionGlyph("link"),
+        disabled: !canCreate })
+      items.push({ label: "" })
+      items.push({ key: "paste", label: "Paste", glyph: Icons.actionGlyph("paste"), hint: "Ctrl+V", disabled: !service })
       items.push({ label: "" })
       items.push({ key: "settings", label: "Settings", glyph: Icons.actionGlyph("settings"), hint: "Ctrl+," })
       items.push({ key: "shortcuts", label: "Keyboard shortcuts", glyph: Icons.actionGlyph("keyboard"), hint: "F1" })
@@ -3736,11 +3770,35 @@ Item {
             id: dialogField
             objectName: "dialogField"
             width: parent.width
+            placeholderText: root.dialogMode === "newlink" ? "Name of the link, or leave it empty to use the linked name" : ""
             visible: root.dialogMode === "rename" || root.dialogMode === "newfolder"
               || root.dialogMode === "newfile" || root.dialogMode === "path"
               || root.dialogMode === "bookmarkname" || root.dialogMode === "compress"
+              || root.dialogMode === "newlink"
             onAccepted: root.submitDialog()
             Keys.onEscapePressed: root.closeDialog()
+          }
+
+          EditField {
+            id: linkTargetField
+            objectName: "linkTargetField"
+            width: parent.width
+            placeholderText: "Path to link to"
+            visible: root.dialogMode === "newlink"
+            onAccepted: root.submitDialog()
+            Keys.onEscapePressed: root.closeDialog()
+          }
+
+          Text {
+            objectName: "newlinkNote"
+            textFormat: Text.PlainText
+            width: parent.width
+            visible: root.dialogMode === "newlink"
+            text: "Type the absolute path to link to. A relative path is accepted too: it resolves to an absolute link against this folder."
+            color: Util.alpha(Color.popups.text, 0.55)
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.Wrap
           }
 
           Dropdown {
@@ -4803,7 +4861,8 @@ Item {
                   : (root.dialogMode === "unlock" ? "Unlock" : (root.dialogMode === "editorpick" ? "Open"
                     : (root.dialogMode === "openwith" ? "Open"
                       : (root.dialogMode === "compress" ? "Compress"
-                        : (root.dialogMode === "transcode" ? "Transcode" : "Confirm"))))))
+                        : (root.dialogMode === "transcode" ? "Transcode"
+                          : (root.dialogMode === "newlink" ? "Create link" : "Confirm")))))))
               bordered: true
               onClicked: {
                 if (root.isReadOnlyDialog()) root.closeDialog()

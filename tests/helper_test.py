@@ -1028,6 +1028,29 @@ class MkdirMkfileRenameTests(HelperTestCase):
         self.assertEqual(err["t"], "error")
         self.assertEqual(err["code"], "EEXIST")
 
+    def test_symlink_points_at_the_target_given(self):
+        target = self.file_target("target.txt")
+        link = self.path("link.txt")
+        msgs = self.helper.call({"id": self.next_id(), "op": "symlink", "target": target, "path": link})
+        done = self.terminal(msgs)
+        self.assertEqual(done["t"], "done")
+        self.assertEqual(done["path"], link)
+        self.assertEqual(os.readlink(link), target)
+
+    def test_symlink_never_replaces_an_existing_name(self):
+        target = self.file_target("target.txt")
+        link = self.file_target("taken.txt")
+        msgs = self.helper.call({"id": self.next_id(), "op": "symlink", "target": target, "path": link})
+        err = self.terminal(msgs)
+        self.assertEqual(err["code"], "EEXIST")
+        self.assertFalse(os.path.islink(link), "the existing file is still itself")
+
+    def file_target(self, name):
+        made = self.path(name)
+        with open(made, "w") as f:
+            f.write("x")
+        return made
+
     def test_rename(self):
         old = self.path("old.txt")
         with open(old, "w") as f:

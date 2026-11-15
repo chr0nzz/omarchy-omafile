@@ -225,6 +225,8 @@ QtObject {
   function openAgent(path) { record("openAgent", [path]) }
   property var compressResult: null
   function makeDirectory(path, onDone, onError) { record("makeDirectory", [path]); if (onDone) onDone({}) }
+  function makeFile(path, onDone, onError) { record("makeFile", [path]); if (onDone) onDone({}) }
+  function makeLink(path, target, onDone, onError) { record("makeLink", [path, target]); if (onDone) onDone({}) }
   property var transcodeResult: null
   function transcodePaths(paths, format, resolution, onDone, onError) {
     record("transcodePaths", [paths, format, resolution])

@@ -74,6 +74,7 @@ var actionGlyphs = {
   restore: '',
   newfolder: '',
   newfile: '',
+  link: '',
   up: '',
   back: '',
   forward: '',

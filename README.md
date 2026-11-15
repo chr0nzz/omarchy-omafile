@@ -16,6 +16,7 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * Freedesktop trash integration, compatible with GNOME Files, with Empty trash and Restore in the trash view
 * Recursive file search across directories
 * Find duplicate files and compare two copies side by side before trashing one
+* New folder, new file, and a new symbolic link whose target may be typed as an absolute or a relative path
 * A simple built in text editor for config files, notes and scripts
 * Thumbnails in list, compact, grid and gallery view for images, videos, PDFs, office files and anything else your system has a thumbnailer for
 * Recent files, and bookmarks for the folders you use most

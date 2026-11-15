@@ -490,6 +490,18 @@ Item {
     })
   }
 
+  function makeLink(path, target, onDone, onError) {
+    return request({ op: "symlink", target: target, path: path }, {
+      onDone: function (m) {
+        root.recordUndo({
+          kind: "create", path: path, isDir: false, linkTarget: target, label: "New link"
+        })
+        if (onDone) onDone(m)
+      },
+      onError: onError
+    })
+  }
+
   function renamePath(path, newName, onDone, onError) {
     return request({ op: "rename", path: path, newName: newName }, {
       onDone: function (m) {
@@ -878,7 +890,9 @@ Item {
         onDone(m)
       }, onError: onError })
     else if (entry.kind === "create")
-      request({ op: entry.isDir ? "mkdir" : "mkfile", path: entry.path }, { onDone: onDone, onError: onError })
+      request(entry.linkTarget
+        ? { op: "symlink", target: entry.linkTarget, path: entry.path }
+        : { op: entry.isDir ? "mkdir" : "mkfile", path: entry.path }, { onDone: onDone, onError: onError })
     else if (onError) onError({ message: "Cannot redo that" })
   }
 
