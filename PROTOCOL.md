@@ -127,7 +127,7 @@ yields an item with `error` set instead of the metadata fields.
 {"id": N, "op": "identity"}
 ```
 
-Replies `{"t": "identity", "uid", "user", "groups": [...], "root"}` then `done`. `groups` are the groups the caller belongs to. When the helper runs as root, `users` lists every account and `groups` every group.
+Replies `{"t": "identity", "uid", "user", "groups": [...], "root", "allUsers": [...], "allGroups": [...]}` then `done`. `groups` are the groups the caller belongs to. `allUsers` and `allGroups` list every account and every group on the machine, so the Properties Security tab can name every choice it has, including the ones the caller cannot set itself. When the helper runs as root, `users` lists every account and `groups` every group.
 
 ### opener
 
@@ -156,10 +156,20 @@ Adds the `set` bits and removes the `clear` bits from the permission bits of `pa
 ### chown
 
 ```
-{"id": N, "op": "chown", "path": "/a", "owner": "name", "group": "name", "recursive": false}
+{"id": N, "op": "chown", "path": "/a", "owner": "name", "group": "name", "recursive": false, "privileged": false}
 ```
 
 `owner` and `group` are optional but one is required. Names or numeric ids. Symlinks are not followed, and the tree is walked through folder handles. Replies `done` with `changed`, or `EPERM` when the caller may not make the change.
+
+With `privileged: true` the change is made through `/usr/bin/pkexec /usr/bin/chown -h [-c] --from=<uid>:<gid> [-R] <uid>[:<gid>] -- <path>` instead, so polkit asks for authentication the way mounting a drive does. Both programs are checked as root-owned non-symlinks in `/usr/bin`, `/bin` or `/usr/local/bin` first, and the numeric ids are resolved by the helper, so an unknown name fails with `EINVAL` before anything is asked.
+
+The `--from` pair is the current owner and group of the item as read through its parent folder handle, so the change lands only on the item that was checked, and with `recursive` entries inside that have another owner are left alone. The route is refused with `EPERM`, before any prompt, when a folder in the path belongs to someone other than root or you, or is writable by group or others without the sticky bit, since that user could swap the item while the prompt is open. A missing path gives `ENOENT` here as elsewhere. Two minutes are allowed for the prompt. Errors: `EAUTH` when the authentication fails or is cancelled, `ETIMEDOUT` when the prompt goes unanswered, `EUNSUPPORTED` when `pkexec` or `chown` is missing, and `EPERM` with the tool's message for anything else.
+
+The request goes to polkit's `org.freedesktop.policykit.exec` action, whose policy is `auth_admin` with no `_keep`, so nothing is remembered once the dialog closes and the next change is asked for again. Cancelling or letting the prompt expire ends the whole process group the prompt was started in, so no privileged helper is left running behind the window. The password is never held by omafile: keystrokes reach the session's polkit agent and PAM, and the helper only ever passes paths and numeric ids.
+
+When a change touches both the bits and the ownership the panel writes the bits first, since handing an item to another account can take this account's right to change the bits with it. If the ownership change is then refused or cancelled, the panel puts the bits back on a single item and says so. For a folder changed with everything inside it, the bits stay written and the message says that instead.
+
+The op follows `-h`, so it acts on the link itself when it is asked to. The panel does not offer an owner or group change for a link: the kernel checks the target's ids for access, so the row points at the target instead.
 
 ### du
 
