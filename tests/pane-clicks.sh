@@ -13,7 +13,12 @@ for module in Commons Ui services; do
 done
 ln -s "$repo_root" "$stage/FilePlugin"
 cp "$repo_root/tests/pane-clicks.qml" "$stage/shell.qml"
-if ! QT_QPA_PLATFORM=offscreen qs -p "$stage/shell.qml" --no-color > "$stage/output.log" 2>&1; then
+status=0
+QT_QPA_PLATFORM=offscreen timeout -k 5 15 qs -p "$stage/shell.qml" --no-color > "$stage/output.log" 2>&1 || status=$?
+if (( status == 124 || status == 137 )); then
+  printf 'OMAFILE_PANE_CLICKS_TIMEOUT\n' >> "$stage/output.log"
+fi
+if (( status != 0 )); then
   cat "$stage/output.log"
   exit 1
 fi
