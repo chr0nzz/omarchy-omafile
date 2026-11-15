@@ -385,6 +385,13 @@ class PermissionTests(HelperTestCase):
         self.assertEqual(ident["uid"], os.geteuid())
         self.assertIn(grp.getgrgid(os.getegid()).gr_name, ident["groups"])
 
+    def test_identity_lists_every_account_and_group(self):
+        msgs = self.helper.call({"id": self.next_id(), "op": "identity"})
+        reply = [m for m in msgs if m["t"] == "identity"][0]
+        self.assertIn(pwd.getpwuid(os.geteuid()).pw_name, reply["allUsers"])
+        self.assertIn(grp.getgrgid(os.getegid()).gr_name, reply["allGroups"])
+        self.assertEqual(sorted(set(reply["allGroups"])), reply["allGroups"])
+
 class PeekTests(HelperTestCase):
     def peek(self, path, limit=None):
         req = {"id": self.next_id(), "op": "peek", "path": path}

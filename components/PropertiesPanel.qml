@@ -28,7 +28,6 @@ Column {
   readonly property bool isRoot: identity ? identity.root === true : false
   readonly property bool isOwner: info && identity ? info.uid === identity.uid : false
   readonly property bool canChmod: info !== null && !info.error && !isLink && (isOwner || isRoot)
-  readonly property bool canChgrp: canChmod && identity !== null
   readonly property bool canChown: isRoot && !isLink
   readonly property int originalBits: info ? (Number(info.mode) & 511) : 0
 
@@ -40,6 +39,10 @@ Column {
   property string errorText: ""
   property string tab: "general"
   property bool choosingOpener: false
+  property bool ownerMenuOpen: false
+  property bool groupMenuOpen: false
+  property bool inheritOpen: false
+  property bool confirmOpen: false
   onEntryChanged: choosingOpener = false
 
   readonly property bool modeDirty: editBits !== originalBits
@@ -57,7 +60,12 @@ Column {
     editOwner = info ? String(info.owner || "") : ""
     recursive = false
     errorText = ""
+    ownerMenuOpen = false
+    groupMenuOpen = false
+    inheritOpen = false
+    confirmOpen = false
   }
+  onInheritOpenChanged: if (!inheritOpen && typeof inheritPathField !== "undefined") inheritPathField.text = ""
 
   function bitFor(row, col) {
     return 1 << (8 - (row * 3 + col))
@@ -68,18 +76,106 @@ Column {
     editBits = editBits ^ bitFor(row, col)
   }
 
-  function groupOptions() {
-    var names = identity && identity.groups ? identity.groups.slice() : []
-    var current = info ? String(info.group || "") : ""
-    if (current !== "" && names.indexOf(current) < 0) names.push(current)
-    return names
+  function uniqueNames(lists) {
+    var out = []
+    var seen = {}
+    for (var i = 0; i < lists.length; i++)
+      for (var j = 0; j < lists[i].length; j++) {
+        var name = String(lists[i][j] || "")
+        if (name === "" || seen[name] === true) continue
+        seen[name] = true
+        out.push(name)
+      }
+    return out
+  }
+
+  function optionList(names, needsAuth) {
+    var out = []
+    for (var i = 0; i < names.length; i++)
+      out.push({ value: names[i], label: names[i], needsAuth: needsAuth(names[i]) === true })
+    return out
   }
 
   function ownerOptions() {
-    var names = identity && identity.users ? identity.users.slice() : []
-    var current = info ? String(info.owner || "") : ""
-    if (current !== "" && names.indexOf(current) < 0) names.push(current)
-    return names
+    return optionList(uniqueNames([
+      identity && identity.users ? identity.users : [],
+      identity && identity.allUsers ? identity.allUsers : [],
+      info ? [String(info.owner || "")] : []
+    ]), function () { return !canChown })
+  }
+
+  function groupSettable(name) {
+    if (!canChmod) return false
+    if (isRoot) return true
+    var mine = identity && identity.groups ? identity.groups : []
+    return mine.indexOf(name) >= 0
+  }
+
+  function groupOptions() {
+    return optionList(uniqueNames([
+      identity && identity.groups ? identity.groups : [],
+      info ? [String(info.group || "")] : [],
+      identity && identity.allGroups ? identity.allGroups : []
+    ]), function (name) { return !groupSettable(name) })
+  }
+
+
+  function chooseOwner(name) {
+    ownerMenuOpen = false
+    editOwner = name
+    confirmOpen = ownerDirty || groupDirty
+  }
+
+  function chooseGroup(name) {
+    groupMenuOpen = false
+    editGroup = name
+    confirmOpen = ownerDirty || groupDirty
+  }
+
+  function inheritSource() {
+    if (!entry) return ""
+    var raw = String(inheritPathField.text || "").trim()
+    if (raw === "") return ""
+    var expanded = Model.expandTilde(raw, service && service.home ? String(service.home) : "")
+    if (expanded.charAt(0) === "/") return Model.normalizePath(expanded)
+    var base = Model.dirname(String(entry.path || ""))
+    if (base === "") return ""
+    return Model.normalizePath(Model.joinPath(base, expanded))
+  }
+
+  function inheritFrom() {
+    if (!service || !entry || busy) return
+    var source = inheritSource()
+    if (source === "") {
+      errorText = "Enter the path to copy permissions from"
+      return
+    }
+    busy = true
+    errorText = ""
+    service.statPaths([source], function (items) {
+      panel.busy = false
+      var from = items && items.length > 0 ? items[0] : null
+      if (!from || from.error) {
+        panel.errorText = "Could not read " + Model.basename(source)
+        return
+      }
+      if (panel.canChmod) panel.editBits = Number(from.mode) & 511
+      panel.editOwner = String(from.owner || panel.editOwner)
+      panel.editGroup = String(from.group || panel.editGroup)
+      panel.inheritOpen = false
+      if (panel.dirty) panel.confirmOpen = true
+      else panel.errorText = "Those permissions are already the same here"
+    })
+  }
+
+  function acceptConfirm() {
+    confirmOpen = false
+    apply()
+  }
+
+  function cancelConfirm() {
+    confirmOpen = false
+    resetEdits()
   }
 
   function fail(m) {
@@ -94,22 +190,22 @@ Column {
     busy = true
     errorText = ""
     var path = entry.path
-    var finishMode = function () {
-      if (!modeDirty) {
-        busy = false
-        applied()
+    var finish = function () {
+      busy = false
+      applied()
+    }
+    var changeOwnerNow = function () {
+      if (!groupDirty && !ownerDirty) {
+        finish()
         return
       }
-      var change = Model.modeChange(originalBits, editBits)
-      service.changeMode(path, change.set, change.clear, recursive && entry.isDir, function () {
-        busy = false
-        applied()
-      }, panel.fail)
-    }
-    if (groupDirty || ownerDirty) {
       service.changeOwner(path, ownerDirty ? editOwner : "", groupDirty ? editGroup : "",
-        recursive && entry.isDir, finishMode, panel.fail)
-    } else finishMode()
+        recursive && entry.isDir, finish, panel.fail)
+    }
+    if (modeDirty) {
+      var change = Model.modeChange(originalBits, editBits)
+      service.changeMode(path, change.set, change.clear, recursive && entry.isDir, changeOwnerNow, panel.fail)
+    } else changeOwnerNow()
   }
 
   Row {
@@ -365,28 +461,38 @@ Column {
         font.pixelSize: Style.font.bodySmall
       }
 
-      Dropdown {
-        objectName: "ownerDropdown"
-        width: parent.width - panel.labelWidth - Style.space(10)
-        anchors.verticalCenter: parent.verticalCenter
-        visible: panel.canChown
-        showLabel: false
-        options: panel.ownerOptions()
-        value: panel.editOwner
-        onChanged: function (v) { panel.editOwner = v }
-      }
-
       Text {
+        objectName: "ownerValue"
         textFormat: Text.PlainText
-        width: parent.width - panel.labelWidth - Style.space(10)
+        width: parent.width - panel.labelWidth - ownerChangeButton.implicitWidth - Style.space(20)
         anchors.verticalCenter: parent.verticalCenter
-        visible: !panel.canChown
-        text: panel.info ? String(panel.info.owner || "") : ""
-        color: panel.fg
+        text: panel.editOwner !== "" ? panel.editOwner : (panel.info ? String(panel.info.owner || "") : "")
+        color: panel.ownerDirty ? Color.accent : panel.fg
         font.family: Style.font.family
         font.pixelSize: Style.font.bodySmall
         elide: Text.ElideRight
       }
+
+      Button {
+        id: ownerChangeButton
+        objectName: "ownerChangeButton"
+        anchors.verticalCenter: parent.verticalCenter
+        text: panel.ownerMenuOpen ? "Close" : "Change"
+        bordered: true
+        onClicked: {
+          panel.groupMenuOpen = false
+          panel.ownerMenuOpen = !panel.ownerMenuOpen
+        }
+      }
+    }
+
+    ChoiceList {
+      objectName: "ownerChoices"
+      width: parent.width
+      visible: panel.ownerMenuOpen
+      options: panel.ownerMenuOpen ? panel.ownerOptions() : []
+      emptyLabel: "No other accounts to list"
+      onPicked: function (value) { panel.chooseOwner(value) }
     }
 
     Row {
@@ -404,28 +510,38 @@ Column {
         font.pixelSize: Style.font.bodySmall
       }
 
-      Dropdown {
-        objectName: "groupDropdown"
-        width: parent.width - panel.labelWidth - Style.space(10)
-        anchors.verticalCenter: parent.verticalCenter
-        visible: panel.canChgrp
-        showLabel: false
-        options: panel.groupOptions()
-        value: panel.editGroup
-        onChanged: function (v) { panel.editGroup = v }
-      }
-
       Text {
+        objectName: "groupValue"
         textFormat: Text.PlainText
-        width: parent.width - panel.labelWidth - Style.space(10)
+        width: parent.width - panel.labelWidth - groupChangeButton.implicitWidth - Style.space(20)
         anchors.verticalCenter: parent.verticalCenter
-        visible: !panel.canChgrp
-        text: panel.info ? String(panel.info.group || "") : ""
-        color: panel.fg
+        text: panel.editGroup !== "" ? panel.editGroup : (panel.info ? String(panel.info.group || "") : "")
+        color: panel.groupDirty ? Color.accent : panel.fg
         font.family: Style.font.family
         font.pixelSize: Style.font.bodySmall
         elide: Text.ElideRight
       }
+
+      Button {
+        id: groupChangeButton
+        objectName: "groupChangeButton"
+        anchors.verticalCenter: parent.verticalCenter
+        text: panel.groupMenuOpen ? "Close" : "Change"
+        bordered: true
+        onClicked: {
+          panel.ownerMenuOpen = false
+          panel.groupMenuOpen = !panel.groupMenuOpen
+        }
+      }
+    }
+
+    ChoiceList {
+      objectName: "groupChoices"
+      width: parent.width
+      visible: panel.groupMenuOpen
+      options: panel.groupMenuOpen ? panel.groupOptions() : []
+      emptyLabel: "No other groups to list"
+      onPicked: function (value) { panel.chooseGroup(value) }
     }
 
     Column {
@@ -550,6 +666,61 @@ Column {
       }
     }
 
+    Button {
+      objectName: "inheritButton"
+      text: "Inherit from"
+      bordered: true
+      visible: !panel.isLink
+      onClicked: {
+        panel.inheritOpen = !panel.inheritOpen
+        if (panel.inheritOpen) Qt.callLater(function () { inheritPathField.forceActiveFocus() })
+      }
+    }
+
+    Column {
+      width: parent.width
+      visible: panel.inheritOpen && !panel.isLink
+      spacing: Style.space(6)
+
+      Item {
+        width: parent.width
+        height: Style.spacing.controlHeight
+
+        Button {
+          id: inheritUseButton
+          objectName: "inheritUseButton"
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          text: panel.busy ? "Reading" : "Use"
+          bordered: true
+          onClicked: panel.inheritFrom()
+        }
+
+        EditField {
+          id: inheritPathField
+          objectName: "inheritPathField"
+          anchors.left: parent.left
+          anchors.right: inheritUseButton.left
+          anchors.rightMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          placeholderText: "Absolute path to copy permissions from"
+          onAccepted: panel.inheritFrom()
+          Keys.onEscapePressed: panel.inheritOpen = false
+        }
+      }
+
+      Text {
+        objectName: "inheritNote"
+        textFormat: Text.PlainText
+        width: parent.width
+        text: "Type the absolute path to copy permissions from. A relative path is accepted too: it resolves to an absolute path against this folder."
+        color: panel.dim
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.Wrap
+      }
+    }
+
     Text {
       textFormat: Text.PlainText
       width: parent.width
@@ -584,10 +755,44 @@ Column {
     }
 
     Row {
+      objectName: "confirmRow"
       width: parent.width
       layoutDirection: Qt.RightToLeft
       spacing: Style.space(8)
-      visible: panel.dirty
+      visible: panel.confirmOpen && panel.dirty
+
+      Button {
+        objectName: "confirmYes"
+        text: panel.busy ? "Applying" : "Yes"
+        bordered: true
+        selected: true
+        onClicked: panel.acceptConfirm()
+      }
+
+      Button {
+        objectName: "confirmCancel"
+        text: "Cancel"
+        bordered: true
+        foreground: Color.urgent
+        onClicked: panel.cancelConfirm()
+      }
+
+      Text {
+        objectName: "confirmQuestion"
+        textFormat: Text.PlainText
+        anchors.verticalCenter: parent.verticalCenter
+        text: "Are you sure?"
+        color: panel.fg
+        font.family: Style.font.family
+        font.pixelSize: Style.font.bodySmall
+      }
+    }
+
+    Row {
+      width: parent.width
+      layoutDirection: Qt.RightToLeft
+      spacing: Style.space(8)
+      visible: panel.dirty && !panel.confirmOpen
 
       Button {
         objectName: "applyPermissions"

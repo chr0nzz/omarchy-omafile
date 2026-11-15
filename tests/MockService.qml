@@ -113,7 +113,8 @@ QtObject {
     })
     if (cb) cb(items)
   }
-  property var identityInfo: ({ uid: 1000, user: "me", groups: ["me", "wheel"], root: false })
+  property var identityInfo: ({ uid: 1000, user: "me", groups: ["me", "wheel"], root: false,
+    allUsers: ["daemon", "me", "root"], allGroups: ["me", "nogroup", "users", "wheel"] })
   function identity(cb) { record("identity", []); if (cb) cb(identityInfo) }
   function openerFor(path, cb) { record("openerFor", [path]); if (cb) cb({ mime: "text/yaml", handler: "" }) }
   function setOpener(mime, handler, onDone, onError) { record("setOpener", [mime, handler]); if (onDone) onDone({}) }

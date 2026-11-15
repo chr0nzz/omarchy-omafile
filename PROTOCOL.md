@@ -127,7 +127,7 @@ yields an item with `error` set instead of the metadata fields.
 {"id": N, "op": "identity"}
 ```
 
-Replies `{"t": "identity", "uid", "user", "groups": [...], "root"}` then `done`. `groups` are the groups the caller belongs to. When the helper runs as root, `users` lists every account and `groups` every group.
+Replies `{"t": "identity", "uid", "user", "groups": [...], "root", "allUsers": [...], "allGroups": [...]}` then `done`. `groups` are the groups the caller belongs to. `allUsers` and `allGroups` list every account and every group on the machine, so the Properties Security tab can name every choice it has, including the ones the caller cannot set itself. When the helper runs as root, `users` lists every account and `groups` every group.
 
 ### opener
 

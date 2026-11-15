@@ -1739,6 +1739,20 @@ def walk_targets(path_bytes, recursive, apply):
     finally:
         os.close(pfd)
 
+def account_names():
+    try:
+        return sorted(set(p.pw_name for p in pwd.getpwall()))
+    except OSError:
+        return []
+
+
+def group_names():
+    try:
+        return sorted(set(g.gr_name for g in grp.getgrall()))
+    except OSError:
+        return []
+
+
 def op_identity(req):
     req_id = req["id"]
     uid = os.geteuid()
@@ -1753,10 +1767,11 @@ def op_identity(req):
         except KeyError:
             groups.append(str(gid))
     reply = {"id": req_id, "t": "identity", "uid": uid, "user": user,
-             "groups": sorted(set(groups)), "root": uid == 0}
+             "groups": sorted(set(groups)), "root": uid == 0,
+             "allUsers": account_names(), "allGroups": group_names()}
     if uid == 0:
-        reply["users"] = sorted(p.pw_name for p in pwd.getpwall())
-        reply["groups"] = sorted(g.gr_name for g in grp.getgrall())
+        reply["users"] = reply["allUsers"]
+        reply["groups"] = reply["allGroups"]
     emit(reply)
     send_done(req_id)
 
