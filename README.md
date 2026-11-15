@@ -17,7 +17,6 @@ A lightweight, fast file manager plugin for Omarchy running in the shell.
 * Recursive file search across directories
 * Find duplicate files and compare two copies side by side before trashing one
 * New folder, new file, and a new symbolic link whose target may be typed as an absolute or a relative path
-* Owner and group on the Security tab, with a password asked only for a change your account cannot make, and Inherit from to copy another item's permissions
 * A simple built in text editor for config files, notes and scripts
 * Thumbnails in list, compact, grid and gallery view for images, videos, PDFs, office files and anything else your system has a thumbnailer for
 * Recent files, and bookmarks for the folders you use most
