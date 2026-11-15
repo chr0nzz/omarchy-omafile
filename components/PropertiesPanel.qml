@@ -289,15 +289,36 @@ Column {
     applied()
   }
 
+  function withNote(reason, note) {
+    var text = String(reason || "Could not apply the change")
+    return (/[.!?]$/.test(text) ? text + " " : text + ". ") + note
+  }
+
   function apply() {
     if (!service || !entry || busy || !dirty) return
     busy = true
     errorText = ""
     var path = entry.path
+    var tree = recursive && entry.isDir
     var privileged = ownerNeedsAuth || groupNeedsAuth
+    var written = null
     var finish = function () {
       busy = false
       applied()
+    }
+    var ownerFailed = function (m) {
+      if (written === null) {
+        panel.fail(m)
+        return
+      }
+      var reason = (m && m.message) || (m && m.code) || ""
+      if (tree) {
+        panel.fail({ message: panel.withNote(reason, "The permission bits were already written.") })
+        return
+      }
+      service.changeMode(path, written.clear, written.set, false,
+        function () { panel.fail({ message: panel.withNote(reason, "The permission bits were put back.") }) },
+        function () { panel.fail({ message: panel.withNote(reason, "The permission bits were written and could not be put back.") }) })
     }
     var changeOwnerNow = function () {
       if (!groupDirty && !ownerDirty) {
@@ -305,11 +326,14 @@ Column {
         return
       }
       service.changeOwner(path, ownerDirty ? editOwner : "", groupDirty ? editGroup : "",
-        recursive && entry.isDir, privileged, finish, panel.fail)
+        tree, privileged, finish, ownerFailed)
     }
     if (modeDirty) {
       var change = Model.modeChange(originalBits, editBits)
-      service.changeMode(path, change.set, change.clear, recursive && entry.isDir, changeOwnerNow, panel.fail)
+      service.changeMode(path, change.set, change.clear, tree, function () {
+        written = change
+        changeOwnerNow()
+      }, panel.fail)
     } else changeOwnerNow()
   }
 

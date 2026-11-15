@@ -167,7 +167,7 @@ The `--from` pair is the current owner and group of the item as read through its
 
 The request goes to polkit's `org.freedesktop.policykit.exec` action, whose policy is `auth_admin` with no `_keep`, so nothing is remembered once the dialog closes and the next change is asked for again. Cancelling or letting the prompt expire ends the whole process group the prompt was started in, so no privileged helper is left running behind the window. The password is never held by omafile: keystrokes reach the session's polkit agent and PAM, and the helper only ever passes paths and numeric ids.
 
-When a change touches both the bits and the ownership the panel writes the bits first, since handing an item to another account can take this account's right to change the bits with it, so a refused ownership change leaves the bits written.
+When a change touches both the bits and the ownership the panel writes the bits first, since handing an item to another account can take this account's right to change the bits with it. If the ownership change is then refused or cancelled, the panel puts the bits back on a single item and says so. For a folder changed with everything inside it, the bits stay written and the message says that instead.
 
 The op follows `-h`, so it acts on the link itself when it is asked to. The panel does not offer an owner or group change for a link: the kernel checks the target's ids for access, so the row points at the target instead.
 

@@ -2767,7 +2767,7 @@ ShellRoot {
         compare(boxes[0].enabled === false || boxes[0].opacity < 1, true, "and the boxes are inert as well")
         browser.closeDialog()
       }
-      function test_9za_refusedOwnershipKeepsTheBitsAlreadyWritten() {
+      function test_9za_refusedOwnershipPutsTheBitsBack() {
         waitRows()
         mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
           mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" } }
@@ -2802,13 +2802,76 @@ ShellRoot {
         mock.ownerResult = { code: "EPERM", message: "Operation not permitted" }
         mouseClick(findChild(browser, "confirmYes"))
         wait(400)
-        compare(findChild(browser, "permissionsError").text, "Operation not permitted")
-        var bits = mock.called("changeMode")
-        verify(bits !== null, "the bits go first, while the change is still ours to make")
-        compare(bits.args[2], 256)
+        compare(findChild(browser, "permissionsError").text,
+          "Operation not permitted. The permission bits were put back.")
+        var modes = mock.calls.filter(function (c) { return c.name === "changeMode" })
+        compare(modes.length, 2, "the bits go first, then come back")
+        compare(modes[0].args, ["/tmp/alpha.yml", 0, 256, false], "while the change is still ours to make")
+        compare(modes[1].args, ["/tmp/alpha.yml", 256, 0, false], "and the refusal puts them back")
         var owner = mock.called("changeOwner")
         verify(owner !== null, "the ownership was asked for as well")
         compare(findChild(browser, "ownerValue").text, "me", "and it did not land")
+        mock.ownerResult = ({})
+        browser.closeDialog()
+      }
+      function test_9zaa_refusedOwnershipOfATreeSaysTheBitsStayed() {
+        waitRows()
+        mock.statItems = {
+          "/tmp/docs": { kind: "d", size: 0, mtime: 200, atime: 200, ctime: 200,
+            mode: 16877, uid: 1000, gid: 1000, owner: "me", group: "me" },
+          "/tmp": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16877,
+            uid: 1000, gid: 1000 },
+          "/": { kind: "d", size: 4096, mtime: 100, atime: 100, ctime: 100, mode: 16877,
+            uid: 0, gid: 0 }
+        }
+        mock.identityInfo = { uid: 1000, user: "me", groups: ["me"], root: false,
+          allUsers: ["daemon", "me", "root"], allGroups: ["me"] }
+        mock.ownerResult = ({})
+        mock.calls = []
+        browser.propsIdentity = null
+        var docsIndex = -1
+        for (var di = 0; di < pane().rows.length; di++) if (pane().rows[di][0] === "docs") docsIndex = di
+        pane().setCursor(docsIndex, false, false)
+        compare(pane().cursorEntry().name, "docs")
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null && browser.propsIdentity !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        var mode = findChild(browser, "modeText")
+        tryVerify(function () { return mode.text.indexOf("0755") === 0 }, 3000)
+        var boxes = []
+        function collect(item) {
+          if (item.objectName === "permBox") boxes.push(item)
+          for (var i = 0; i < item.children.length; i++) collect(item.children[i])
+        }
+        collect(findChild(browser, "dialogCard"))
+        mouseClick(boxes[0])
+        tryVerify(function () { return mode.text.indexOf("0355") === 0 }, 3000, "a bit is pending")
+        var flick = findChild(browser, "propsFlick")
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        wait(200)
+        mouseClick(findChild(browser, "recursiveToggle"))
+        wait(200)
+        flick.contentY = 0
+        wait(200)
+        mouseClick(findChild(browser, "ownerChangeButton"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "ownerChoices").visible }, 3000)
+        mouseClick(findChild(browser, "choice-root"))
+        wait(300)
+        tryVerify(function () { return findChild(browser, "confirmQuestion").visible }, 3000)
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        wait(200)
+        mock.ownerResult = { code: "EAUTH", message: "Authentication failed or was cancelled" }
+        mouseClick(findChild(browser, "confirmYes"))
+        wait(400)
+        var modes = mock.calls.filter(function (c) { return c.name === "changeMode" })
+        compare(modes.length, 1, "a whole tree is not guessed back")
+        compare(modes[0].args, ["/tmp/docs", 0, 256, true])
+        compare(mock.called("changeOwner").args, ["/tmp/docs", "root", "", true, true])
+        compare(findChild(browser, "permissionsError").text,
+          "Authentication failed or was cancelled. The permission bits were already written.")
         mock.ownerResult = ({})
         browser.closeDialog()
       }

@@ -58,7 +58,7 @@ qmllint -I /usr/share/omarchy/shell -I . *.qml components/*.qml
 - No em dashes anywhere: code, docs, commit messages. Use a comma, a hyphen, or a full stop.
 - Match the shell: build on `Button`, `TextField`, `Toggle`, `ConfirmDialog`, and `KeyboardPanel`, and take colours, spacing, and fonts from `qs.Commons`. Never hardcode a colour, a size, or a font.
 - The shell is one process for the whole desktop. Nothing may block it. Every filesystem call belongs in the helper, and the helper must answer on a worker thread.
-- The helper is Python standard library only. No third party imports, no `sudo`, no `pkexec`, no `shell=True`. The exceptions are `bin/omafile-filemanager1` and `bin/omafile-portal`, which need PyGObject for D-Bus, and `bin/omafile-portal-setup`, which uses `pkexec` once to install the portal file. They are optional, feature detected, and never on the path of a normal file operation.
+- The helper is Python standard library only. No third party imports, no `sudo`, no `shell=True`. It uses `pkexec` in one place only: an owner or group change your own account cannot make, run as `pkexec chown` with both programs resolved to verified root-owned paths, a `--from` guard, and never a shell. See `SECURITY.md`. The exceptions are `bin/omafile-filemanager1` and `bin/omafile-portal`, which need PyGObject for D-Bus, and `bin/omafile-portal-setup`, which uses `pkexec` once to install the portal file. They are optional, feature detected, and never on the path of a normal file operation.
 - Paths go to the helper as JSON on standard input, never in argv and never through a shell.
 - Keep docs short. Prefer a table to a paragraph. Describe what a thing does, not why.
 
