@@ -118,9 +118,11 @@ QtObject {
   function identity(cb) { record("identity", []); if (cb) cb(identityInfo) }
   function openerFor(path, cb) { record("openerFor", [path]); if (cb) cb({ mime: "text/yaml", handler: "" }) }
   function setOpener(mime, handler, onDone, onError) { record("setOpener", [mime, handler]); if (onDone) onDone({}) }
+  property var modeResult: ({})
   function changeMode(path, setBits, clearBits, recursive, onDone, onError) {
     record("changeMode", [path, setBits, clearBits, recursive])
-    if (onDone) onDone({})
+    if (modeResult.code && onError) onError(modeResult)
+    else if (onDone) onDone({})
   }
   function changeOwner(path, owner, group, recursive, onDone, onError) {
     record("changeOwner", [path, owner, group, recursive])

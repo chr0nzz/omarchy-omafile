@@ -1876,6 +1876,72 @@ ShellRoot {
         browser.closeDialog()
       }
 
+      function test_9y_goneItemKeepsItsErrorMessageVisible() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+          mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" } }
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        var mode = findChild(browser, "modeText")
+        tryVerify(function () { return mode.text.indexOf("644") === 0 }, 3000)
+        var boxes = []
+        function collect(item) {
+          if (item.objectName === "permBox") boxes.push(item)
+          for (var i = 0; i < item.children.length; i++) collect(item.children[i])
+        }
+        collect(findChild(browser, "dialogCard"))
+        compare(boxes.length, 9)
+        mouseClick(boxes[0])
+        tryVerify(function () { return mode.text.indexOf("244") === 0 }, 3000, "a bit is pending")
+        wait(150)
+        mock.modeResult = { code: "ENOENT", message: "No such file or directory" }
+        mock.statItems = { "/tmp/alpha.yml": { error: "ENOENT" } }
+        mouseClick(findChild(browser, "applyPermissions"))
+        tryVerify(function () { return findChild(browser, "permissionsGoneNote").visible }, 3000,
+          "the Security tab says plainly that the item is no longer there")
+        compare(findChild(browser, "permissionsGoneError").text, "No such file or directory",
+          "the reason stays on screen instead of blanking the tab")
+        mock.modeResult = ({})
+        mock.statItems = {}
+        browser.closeDialog()
+      }
+
+      function test_9yb_failureMessageStaysWhileTheItemIsHere() {
+        waitRows()
+        mock.statItems = { "/tmp/alpha.yml": { kind: "f", size: 30, mtime: 300, atime: 300, ctime: 300,
+          mode: 33188, uid: 1000, gid: 1000, owner: "me", group: "me", mime: "text/yaml" } }
+        pane().setCursor(0, false, false)
+        browser.showProperties(pane().cursorEntry())
+        tryVerify(function () { return browser.propsInfo !== null }, 3000)
+        wait(200)
+        mouseClick(findChild(browser, "securityTab"))
+        wait(200)
+        var mode = findChild(browser, "modeText")
+        tryVerify(function () { return mode.text.indexOf("644") === 0 }, 3000)
+        var boxes = []
+        function collect(item) {
+          if (item.objectName === "permBox") boxes.push(item)
+          for (var i = 0; i < item.children.length; i++) collect(item.children[i])
+        }
+        collect(findChild(browser, "dialogCard"))
+        mouseClick(boxes[0])
+        tryVerify(function () { return mode.text.indexOf("244") === 0 }, 3000, "a bit is pending")
+        wait(150)
+        mock.modeResult = { code: "EPERM", message: "Operation not permitted" }
+        mouseClick(findChild(browser, "applyPermissions"))
+        tryVerify(function () { return findChild(browser, "permissionsError").visible }, 3000,
+          "the refusal says why the change did not happen")
+        compare(findChild(browser, "permissionsError").text, "Operation not permitted")
+        verify(!findChild(browser, "permissionsGoneNote").visible, "the item is still where it was")
+        tryVerify(function () { return mode.text.indexOf("644") === 0 }, 3000, "the refused edit goes back")
+        mock.modeResult = ({})
+        browser.closeDialog()
+      }
+
       function test_9g_extractArchives() {
         waitRows()
         var zip = { name: "pack.zip", path: "/tmp/pack.zip", isDir: false, ext: "zip" }

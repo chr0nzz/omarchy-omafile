@@ -43,7 +43,10 @@ Column {
   property bool groupMenuOpen: false
   property bool inheritOpen: false
   property bool confirmOpen: false
-  onEntryChanged: choosingOpener = false
+  onEntryChanged: {
+    choosingOpener = false
+    errorText = ""
+  }
 
   readonly property bool modeDirty: editBits !== originalBits
   readonly property bool groupDirty: info !== null && editGroup !== "" && editGroup !== String(info.group)
@@ -59,7 +62,6 @@ Column {
     editGroup = info ? String(info.group || "") : ""
     editOwner = info ? String(info.owner || "") : ""
     recursive = false
-    errorText = ""
     ownerMenuOpen = false
     groupMenuOpen = false
     inheritOpen = false
@@ -73,6 +75,7 @@ Column {
 
   function toggleBit(row, col) {
     if (!canChmod || busy) return
+    errorText = ""
     editBits = editBits ^ bitFor(row, col)
   }
 
@@ -121,12 +124,14 @@ Column {
 
 
   function chooseOwner(name) {
+    errorText = ""
     ownerMenuOpen = false
     editOwner = name
     confirmOpen = ownerDirty || groupDirty
   }
 
   function chooseGroup(name) {
+    errorText = ""
     groupMenuOpen = false
     editGroup = name
     confirmOpen = ownerDirty || groupDirty
@@ -176,6 +181,7 @@ Column {
   function cancelConfirm() {
     confirmOpen = false
     resetEdits()
+    errorText = ""
   }
 
   function fail(m) {
@@ -744,6 +750,7 @@ Column {
     }
 
     Text {
+      objectName: "permissionsError"
       textFormat: Text.PlainText
       width: parent.width
       visible: panel.errorText !== ""
@@ -804,13 +811,46 @@ Column {
       Button {
         text: "Revert"
         bordered: true
-        onClicked: panel.resetEdits()
+        onClicked: {
+          panel.resetEdits()
+          panel.errorText = ""
+        }
       }
+    }
+  }
+
+  Column {
+    id: permissionsGoneSection
+    width: parent.width
+    visible: panel.tab === "security" && panel.info !== null && !!panel.info.error
+    spacing: Style.space(8)
+
+    Text {
+      objectName: "permissionsGoneNote"
+      textFormat: Text.PlainText
+      width: parent.width
+      text: "This item is no longer here."
+      color: panel.dim
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
+    }
+
+    Text {
+      objectName: "permissionsGoneError"
+      textFormat: Text.PlainText
+      width: parent.width
+      visible: panel.errorText !== ""
+      text: panel.errorText
+      color: Color.urgent
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
+      wrapMode: Text.Wrap
     }
   }
 
   Item {
     width: 1
-    height: Math.max(0, panel.tallest - (panel.tab === "general" ? generalSection.implicitHeight : permissionsSection.implicitHeight))
+    height: Math.max(0, panel.tallest - (panel.tab === "general" ? generalSection.implicitHeight
+      : Math.max(permissionsSection.implicitHeight, permissionsGoneSection.implicitHeight)))
   }
 }
