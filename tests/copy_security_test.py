@@ -207,5 +207,69 @@ class CopyTreeTests(CopyFixture):
         self.assertFalse(os.path.exists(base))
 
 
+class PlainCopyOs:
+    def __init__(self, real, write_size):
+        self.real = real
+        self.write_size = write_size
+
+    def __getattr__(self, name):
+        return getattr(self.real, name)
+
+    def copy_file_range(self, *args, **kwargs):
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+    def write(self, fd, data):
+        return self.real.write(fd, bytes(data)[:self.write_size(len(data))])
+
+
+class ShortWriteTests(CopyFixture):
+    def big_file(self, name):
+        data = os.urandom(3 * 1024 * 1024 + 123)
+        with open(self.path("shared", name), "wb") as f:
+            f.write(data)
+        return data
+
+    def test_short_writes_still_copy_every_byte(self):
+        data = self.big_file("movie.bin")
+        self.helper.os = PlainCopyOs(os, lambda wanted: min(wanted, 4096))
+        try:
+            done = self.run_op([self.path("shared", "movie.bin")], self.path("dest"))
+        finally:
+            self.helper.os = os
+        self.assertEqual(done["errors"], [])
+        with open(self.path("dest", "movie.bin"), "rb") as f:
+            self.assertEqual(f.read(), data)
+
+    def test_a_write_that_stops_keeps_the_source_of_a_cross_drive_move(self):
+        data = self.big_file("movie.bin")
+        budget = [1024 * 1024 + 7]
+
+        def stalling(wanted):
+            allowed = min(wanted, budget[0])
+            budget[0] -= allowed
+            return allowed
+
+        real_noreplace = self.helper.rename_noreplace
+
+        def cross_drive(*args, **kwargs):
+            if os.fsencode(args[0]).startswith(b".omafile-part-"):
+                return real_noreplace(*args, **kwargs)
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+        self.helper.os = PlainCopyOs(os, stalling)
+        self.helper.rename_noreplace = cross_drive
+        try:
+            done = self.run_op([self.path("shared", "movie.bin")], self.path("dest"), is_move=True)
+        finally:
+            self.helper.os = os
+            self.helper.rename_noreplace = real_noreplace
+        self.assertEqual(len(done["errors"]), 1)
+        with open(self.path("shared", "movie.bin"), "rb") as f:
+            self.assertEqual(f.read(), data, "the source is kept whole")
+        self.assertFalse(os.path.exists(self.path("dest", "movie.bin")), "no truncated copy is published")
+        self.assertEqual([n for n in os.listdir(self.path("dest")) if n.startswith(".omafile-part-")], [],
+                         "and the partial file is cleaned up")
+
+
 if __name__ == "__main__":
     unittest.main()

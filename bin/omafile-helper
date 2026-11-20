@@ -523,7 +523,7 @@ def copy_file_data(src_fd, dst_fd, progress_cb, cancel_event):
             buf = os.read(src_fd, 1024 * 1024)
             if not buf:
                 break
-            os.write(dst_fd, buf)
+            write_all(dst_fd, buf)
             copied += len(buf)
         progress_cb(copied)
     return copied
@@ -1334,7 +1334,7 @@ def trash_one(src):
                 deletion_date = time.strftime("%Y-%m-%dT%H:%M:%S")
                 content = "[Trash Info]\nPath=%s\nDeletionDate=%s\n" % (percent_encode(path_for_info), deletion_date)
                 try:
-                    os.write(fd, content.encode("utf-8"))
+                    write_all(fd, content.encode("utf-8"))
                 finally:
                     os.close(fd)
                 try:
@@ -4940,6 +4940,8 @@ def write_all(fd, data):
     view = memoryview(data)
     while view:
         written = os.write(fd, view)
+        if written <= 0:
+            raise OSError(errno.EIO, "the write made no progress")
         view = view[written:]
 
 
