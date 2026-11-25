@@ -207,6 +207,63 @@ class CopyTreeTests(CopyFixture):
         self.assertFalse(os.path.exists(base))
 
 
+class SymlinkDestinationTests(CopyFixture):
+    def setUp(self):
+        super().setUp()
+        with open(self.path("shared", "report.txt"), "w") as f:
+            f.write("report")
+
+    def test_a_copy_into_a_linked_folder_lands_in_the_folder(self):
+        os.symlink(self.path("dest"), self.path("linked"))
+        done = self.run_op([self.path("shared", "report.txt")], self.path("linked"))
+        self.assertEqual(done["t"], "done")
+        self.assertEqual(done["errors"], [])
+        with open(self.path("dest", "report.txt")) as f:
+            self.assertEqual(f.read(), "report")
+
+    def test_a_move_into_a_linked_folder_lands_and_removes_the_source(self):
+        os.symlink("dest", self.path("linked"))
+        done = self.run_op([self.path("shared", "report.txt")], self.path("linked"), is_move=True)
+        self.assertEqual(done["errors"], [])
+        self.assertTrue(os.path.exists(self.path("dest", "report.txt")))
+        self.assertFalse(os.path.exists(self.path("shared", "report.txt")))
+
+    def test_a_link_to_a_file_is_not_a_destination(self):
+        os.symlink(self.path("private", "victim.txt"), self.path("linked"))
+        done = self.run_op([self.path("shared", "report.txt")], self.path("linked"))
+        self.assertEqual(done["t"], "error")
+        self.assertEqual(done["code"], "EINVAL")
+        with open(self.path("private", "victim.txt")) as f:
+            self.assertEqual(f.read(), "keep me")
+
+    def test_a_link_omafile_does_not_trust_is_still_refused(self):
+        os.symlink(self.path("dest"), self.path("linked"))
+        self.helper.link_trusted = lambda *args: False
+        done = self.run_op([self.path("shared", "report.txt")], self.path("linked"))
+        self.assertEqual(done["t"], "error")
+        self.assertEqual(done["code"], "ELOOP")
+        self.assertEqual(os.listdir(self.path("dest")), [])
+
+    def test_a_linked_folder_swapped_after_the_check_is_not_written(self):
+        os.symlink(self.path("dest"), self.path("linked"))
+        real = self.helper.open_dir_safely
+
+        def swapping(path_bytes, *args, **kwargs):
+            if path_bytes == os.fsencode(self.path("linked")) and not swapping.done:
+                swapping.done = True
+                os.unlink(self.path("linked"))
+                os.symlink(self.path("private"), self.path("linked"))
+            return real(path_bytes, *args, **kwargs)
+
+        swapping.done = False
+        self.helper.open_dir_safely = swapping
+        done = self.run_op([self.path("shared", "report.txt")], self.path("linked"))
+        self.assertEqual(done["t"], "error")
+        self.assertEqual(done["code"], "ESTALE")
+        self.assertEqual(os.listdir(self.path("dest")), [])
+        self.assertFalse(os.path.exists(self.path("private", "report.txt")))
+
+
 class PlainCopyOs:
     def __init__(self, real, write_size):
         self.real = real

@@ -808,7 +808,7 @@ def op_copy_move(req, cancel_event, is_move):
         return
     dest_bytes = to_bytes(dest)
     try:
-        dest_lst = os.lstat(dest_bytes)
+        dest_lst = os.stat(dest_bytes)
         if not stat.S_ISDIR(dest_lst.st_mode):
             send_error(req_id, "EINVAL", "dest is not a directory", dest)
             return
